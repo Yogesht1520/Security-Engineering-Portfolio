@@ -30,3 +30,11 @@ module "network" {
   private_subnet_cidrs = var.private_subnet_cidrs
   tags                 = var.tags
 }
+
+module "security_groups" {
+  source = "./modules/security_groups"
+
+  project_name = var.project_name
+  vpc_id       = module.network.vpc_id
+  tags         = var.tags
+}
