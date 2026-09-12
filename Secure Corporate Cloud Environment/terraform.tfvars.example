@@ -1,0 +1,9 @@
+# Copy to terraform.tfvars only if you need to override these defaults.
+# terraform.tfvars is intentionally ignored by Git.
+
+aws_region   = "ap-south-1"
+project_name = "secure-corp-env"
+
+tags = {
+  Owner = "Yogesh"
+}

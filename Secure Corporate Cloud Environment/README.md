@@ -19,3 +19,7 @@ terraform init
 ```
 
 Do not commit Terraform state files or AWS credentials.
+
+## Phase 1 cost warning
+
+Phase 1 creates one managed NAT Gateway and an Elastic IP address. A NAT Gateway is a billable AWS resource while it exists, with hourly and data-processing charges. Apply the stack only for testing, capture your verification screenshots, then run `terraform destroy` immediately. Do not continue to later phases until the destroy completes successfully.
