@@ -27,3 +27,13 @@ output "app_security_group_id" {
   description = "ID of the private application-tier security group."
   value       = module.security_groups.app_security_group_id
 }
+
+output "cloudtrail_log_bucket_name" {
+  description = "Name of the private S3 bucket that stores CloudTrail logs."
+  value       = module.logging.log_bucket_name
+}
+
+output "cloudtrail_arn" {
+  description = "ARN of the multi-Region CloudTrail trail."
+  value       = module.logging.cloudtrail_arn
+}

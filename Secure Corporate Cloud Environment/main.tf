@@ -21,6 +21,8 @@ provider "aws" {
   }
 }
 
+data "aws_caller_identity" "current" {}
+
 module "network" {
   source = "./modules/network"
 
@@ -36,5 +38,14 @@ module "security_groups" {
 
   project_name = var.project_name
   vpc_id       = module.network.vpc_id
+  tags         = var.tags
+}
+
+module "logging" {
+  source = "./modules/logging"
+
+  account_id   = data.aws_caller_identity.current.account_id
+  aws_region   = var.aws_region
+  project_name = var.project_name
   tags         = var.tags
 }
