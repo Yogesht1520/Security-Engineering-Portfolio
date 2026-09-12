@@ -1,0 +1,20 @@
+<group name="syslog,sshd,bruteforce,">
+  <!--
+    Custom Rule: SSH Brute-Force Success
+    Detects a successful SSH authentication that immediately follows a brute-force
+    attack from the same source IP. This is a critical correlation indicating
+    compromise.
+    Maps to MITRE ATT&CK T1110 (Brute Force) and T1078 (Valid Accounts).
+  -->
+  <rule id="100040" level="14">
+    <if_matched_sid>100010</if_matched_sid> <!-- Base rule: Custom brute-force detected -->
+    <if_sid>5715</if_sid> <!-- Base rule: sshd: authentication success -->
+    <same_source_ip />
+    <description>sshd: CRITICAL - Successful login after brute-force attack from $(srcip).</description>
+    <mitre>
+      <id>T1110</id>
+      <id>T1078</id>
+    </mitre>
+    <group>authentication_success,pci_dss_10.2.4,pci_dss_10.2.5,pci_dss_11.4,</group>
+  </rule>
+</group>

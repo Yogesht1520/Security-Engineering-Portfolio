@@ -1,0 +1,17 @@
+<group name="auditd,suspicious_commands,">
+  <!--
+    Custom Rule: Suspicious Command Execution (Living off the Land)
+    Detects common post-exploitation reconnaissance and exfiltration commands 
+    logged via auditd.
+    Maps to MITRE ATT&CK T1059 (Command and Scripting Interpreter).
+  -->
+  <rule id="100030" level="12">
+    <if_sid>80792</if_sid> <!-- Base rule for auditd execve events -->
+    <regex>exe="/usr/bin/wget"|exe="/usr/bin/curl"|exe="/usr/bin/nc"|exe="/usr/bin/ncat"|exe="/usr/bin/chmod"</regex>
+    <description>Suspicious post-exploitation tool executed via auditd: $(exe).</description>
+    <mitre>
+      <id>T1059</id>
+    </mitre>
+    <group>living_off_the_land,</group>
+  </rule>
+</group>

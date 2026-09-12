@@ -1,0 +1,16 @@
+<group name="syslog,sshd,bruteforce,">
+  <!--
+    Custom Rule: SSH Brute-Force Aggregation
+    Detects 8+ failed SSH logins from the same source IP within a 120-second window.
+    Maps to MITRE ATT&CK T1110 (Brute Force).
+  -->
+  <rule id="100010" level="10" frequency="8" timeframe="120">
+    <if_matched_sid>5716</if_matched_sid> <!-- Base rule for SSH authentication failed -->
+    <same_source_ip />
+    <description>sshd: High-frequency brute-force attack detected from $(srcip).</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+    <group>authentication_failures,</group>
+  </rule>
+</group>

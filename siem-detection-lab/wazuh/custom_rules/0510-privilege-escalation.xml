@@ -1,0 +1,30 @@
+<group name="syslog,privilege_escalation,">
+  <!--
+    Custom Rule: Privilege Escalation - New User Added
+    Detects when a new user account is created.
+    Maps to MITRE ATT&CK T1078 (Valid Accounts) / T1548 (Abuse Elevation Control Mechanism)
+  -->
+  <rule id="100020" level="8">
+    <if_sid>5902</if_sid> <!-- Base rule: useradd command executed -->
+    <description>System administration: New user account created.</description>
+    <mitre>
+      <id>T1078</id>
+      <id>T1548</id>
+    </mitre>
+    <group>account_creation,</group>
+  </rule>
+
+  <!--
+    Custom Rule: Privilege Escalation - Sudoers Modified
+    Detects modifications to /etc/sudoers or files in /etc/sudoers.d/
+  -->
+  <rule id="100021" level="12">
+    <if_sid>500</if_sid> <!-- Base rule: File integrity monitoring event -->
+    <match>/etc/sudoers</match>
+    <description>System administration: Sudoers file modified - possible privilege escalation backdoor.</description>
+    <mitre>
+      <id>T1548.003</id>
+    </mitre>
+    <group>sudoers_modification,</group>
+  </rule>
+</group>

@@ -1,0 +1,25 @@
+# ============================================================
+# SIEM Detection Lab — terraform.tfvars EXAMPLE
+# Copy this file to terraform.tfvars and fill in real values
+# ============================================================
+
+# ── GCP Configuration ────────────────────────────────────────────────────────
+project_id       = "your-gcp-project-id"
+region           = "us-central1"
+zone             = "us-central1-a"
+credentials_file = "~/.gcp/terraform-sa.json"
+
+# ── Access Control ────────────────────────────────────────────────────────────
+# Your public IP — find it with: curl https://ifconfig.me
+# This locks the SIEM dashboard (443) and SSH (22) to your IP only
+# Format: "x.x.x.x/32"
+your_public_ip = "0.0.0.0/32"   # REPLACE THIS — do not leave as 0.0.0.0
+
+# ── SSH Key ───────────────────────────────────────────────────────────────────
+# Path to the SSH public key to inject into both VMs
+# Generate with: ssh-keygen -t rsa -b 4096 -f ~/.ssh/siem_lab_key
+ssh_public_key_path = "~/.ssh/siem_lab_key.pub"
+
+# ── VM Sizing ─────────────────────────────────────────────────────────────────
+honeypot_machine_type = "e2-micro"
+siem_machine_type     = "e2-standard-2"
