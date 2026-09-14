@@ -5,7 +5,7 @@ locals {
 
 resource "aws_s3_bucket" "cloudtrail_logs" {
   bucket        = local.log_bucket_name
-  force_destroy = false
+  force_destroy = true
 
   tags = merge(var.tags, {
     Name    = local.log_bucket_name

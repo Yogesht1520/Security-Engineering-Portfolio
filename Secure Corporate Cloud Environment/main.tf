@@ -52,10 +52,10 @@ module "alerting" {
 module "logging" {
   source = "./modules/logging"
 
-  account_id   = data.aws_caller_identity.current.account_id
-  aws_region   = var.aws_region
+  account_id                = data.aws_caller_identity.current.account_id
+  aws_region                = var.aws_region
   cloudwatch_logs_group_arn = module.alerting.cloudwatch_log_group_arn
   cloudwatch_logs_role_arn  = module.alerting.cloudwatch_logs_role_arn
-  project_name = var.project_name
-  tags         = var.tags
+  project_name              = var.project_name
+  tags                      = var.tags
 }
