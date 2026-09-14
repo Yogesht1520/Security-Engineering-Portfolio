@@ -89,6 +89,8 @@ resource "aws_cloudtrail" "this" {
   is_multi_region_trail         = true
   enable_log_file_validation    = true
   enable_logging                = true
+  cloud_watch_logs_group_arn    = var.cloudwatch_logs_group_arn
+  cloud_watch_logs_role_arn     = var.cloudwatch_logs_role_arn
 
   # Only management events are recorded. Data and network event logging remain disabled to avoid extra charges.
   event_selector {

@@ -37,3 +37,8 @@ output "cloudtrail_arn" {
   description = "ARN of the multi-Region CloudTrail trail."
   value       = module.logging.cloudtrail_arn
 }
+
+output "root_activity_alarm_arn" {
+  description = "ARN of the CloudWatch alarm for direct root-account activity."
+  value       = module.alerting.root_activity_alarm_arn
+}

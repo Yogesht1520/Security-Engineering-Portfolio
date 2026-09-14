@@ -3,6 +3,7 @@
 
 aws_region   = "eu-north-1"
 project_name = "secure-corp-env"
+admin_email  = "you@example.com"
 
 tags = {
   Owner = "Yogesh"

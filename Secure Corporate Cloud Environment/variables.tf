@@ -33,3 +33,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "admin_email" {
+  description = "Email address that receives root-account activity alerts."
+  type        = string
+  sensitive   = true
+}
