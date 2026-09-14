@@ -17,7 +17,7 @@ security engineering projects, each solving a real problem end-to-end — archit
 implementation, and proof it actually works.
 
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-blue?logo=linkedin)](https://www.linkedin.com/in/yogesht1520/)
-[![Email](https://img.shields.io/badge/Email-Contact-red?logo=gmail)](mailto: yogesht1520@gmail.com)
+[![Email](https://img.shields.io/badge/Email-Contact-red?logo=gmail)](yogesht1520@gmail.com)
 
 </div>
 
