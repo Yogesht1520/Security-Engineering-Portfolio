@@ -1,0 +1,11 @@
+flowchart TB
+  Internet --> ALB[Future public ALB\nTCP 443 only]
+  subgraph AWS["AWS account / eu-north-1"]
+    subgraph VPC["VPC 10.0.0.0/16"]
+      ALB --> APP[Application tier\nALB SG only]
+      PUB[Public subnets] --> NAT[Managed NAT Gateway]
+      NAT --> PRIV[Private subnets]
+    end
+    CT[CloudTrail] --> S3[(Versioned, encrypted S3)]
+    CT --> CW[CloudWatch Logs] --> MF[Root metric filter] --> ALARM[Alarm] --> SNS[SNS email]
+  end

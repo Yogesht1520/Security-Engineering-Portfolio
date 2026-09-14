@@ -1,0 +1,24 @@
+# Terraform working directory and state
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Terraform variable files can contain sensitive values
+*.tfvars
+*.tfvars.json
+!terraform.tfvars.example
+
+# Terraform CLI configuration and override files
+.terraformrc
+terraform.rc
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Local environment files and editor settings
+.env
+.env.*
+.vscode/
