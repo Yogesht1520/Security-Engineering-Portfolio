@@ -33,9 +33,11 @@ jobs:
         continue-on-error: true # We want the gate to handle the blocking logic
 
       - name: Save Secret Scan Status
+        if: always()
         run: echo "${{ steps.trufflehog.outcome }}" > secret_status.txt
         
       - name: Upload Status Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: secret_status
@@ -56,7 +58,7 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: fs
-          scan-ref: ./app
+          scan-ref: './Automated DevSecOps CI-CD Security Pipeline/app'
           severity: HIGH,CRITICAL
           format: sarif
           output: trivy-results.sarif
@@ -69,9 +71,11 @@ jobs:
           sarif_file: trivy-results.sarif
 
       - name: Save SCA Status
+        if: always()
         run: echo "${{ steps.trivy-dep.outcome }}" > sca_status.txt
         
       - name: Upload Status Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: sca_status
@@ -97,7 +101,7 @@ jobs:
 
       - name: Semgrep Scan
         id: semgrep
-        run: semgrep scan --config p/security-audit --sarif --output semgrep-results.sarif --error ./app
+        run: semgrep scan --config p/security-audit --sarif --output semgrep-results.sarif --error './Automated DevSecOps CI-CD Security Pipeline/app'
         continue-on-error: true
 
       - name: Upload SARIF
@@ -106,9 +110,11 @@ jobs:
           sarif_file: semgrep-results.sarif
 
       - name: Save SAST Status
+        if: always()
         run: echo "${{ steps.semgrep.outcome }}" > sast_status.txt
         
       - name: Upload Status Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: sast_status
@@ -128,7 +134,7 @@ jobs:
         id: checkov
         uses: bridgecrewio/checkov-action@master
         with:
-          directory: ./infra
+          directory: './Automated DevSecOps CI-CD Security Pipeline/infra'
           framework: terraform
           soft_fail: false
           output_format: cli,sarif
@@ -141,9 +147,11 @@ jobs:
           sarif_file: checkov.sarif
 
       - name: Save IaC Status
+        if: always()
         run: echo "${{ steps.checkov.outcome }}" > iac_status.txt
         
       - name: Upload Status Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: iac_status
@@ -160,7 +168,7 @@ jobs:
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
 
       - name: Build Image
-        run: docker build -t temp-image:latest .
+        run: docker build -t temp-image:latest './Automated DevSecOps CI-CD Security Pipeline'
 
       - name: Trivy Image Scan
         id: trivy-img
@@ -179,9 +187,11 @@ jobs:
           sarif_file: trivy-image.sarif
 
       - name: Save Container Status
+        if: always()
         run: echo "${{ steps.trivy-img.outcome }}" > container_status.txt
         
       - name: Upload Status Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: container_status
@@ -198,11 +208,11 @@ jobs:
         
       - name: Evaluate Security Gate
         run: |
-          SECRET_STATUS=$(cat secret_status/secret_status.txt)
-          SCA_STATUS=$(cat sca_status/sca_status.txt)
-          SAST_STATUS=$(cat sast_status/sast_status.txt)
-          IAC_STATUS=$(cat iac_status/iac_status.txt)
-          CONTAINER_STATUS=$(cat container_status/container_status.txt)
+          SECRET_STATUS=$(cat secret_status/secret_status.txt 2>/dev/null || echo "failed")
+          SCA_STATUS=$(cat sca_status/sca_status.txt 2>/dev/null || echo "failed")
+          SAST_STATUS=$(cat sast_status/sast_status.txt 2>/dev/null || echo "failed")
+          IAC_STATUS=$(cat iac_status/iac_status.txt 2>/dev/null || echo "failed")
+          CONTAINER_STATUS=$(cat container_status/container_status.txt 2>/dev/null || echo "failed")
           
           echo "## Security Pipeline Report" >> $GITHUB_STEP_SUMMARY
           echo "═══════════════════════════════════" >> $GITHUB_STEP_SUMMARY
@@ -249,7 +259,7 @@ jobs:
         run: |
           IMAGE_NAME=ghcr.io/${{ github.repository }}
           IMAGE_NAME=$(echo $IMAGE_NAME | tr '[A-Z]' '[a-z]')
-          docker build -t $IMAGE_NAME:${{ github.sha }} .
+          docker build -t $IMAGE_NAME:${{ github.sha }} './Automated DevSecOps CI-CD Security Pipeline'
           docker tag $IMAGE_NAME:${{ github.sha }} $IMAGE_NAME:latest
           echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
 

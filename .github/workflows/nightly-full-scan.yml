@@ -26,13 +26,13 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: fs
-          scan-ref: ./app
+          scan-ref: './Automated DevSecOps CI-CD Security Pipeline/app'
           severity: HIGH,CRITICAL
           format: sarif
           output: trivy-fs.sarif
 
       - name: Build Current Container
-        run: docker build -t nightly-image:latest .
+        run: docker build -t nightly-image:latest './Automated DevSecOps CI-CD Security Pipeline'
 
       - name: Trivy Container Scan
         uses: aquasecurity/trivy-action@master
