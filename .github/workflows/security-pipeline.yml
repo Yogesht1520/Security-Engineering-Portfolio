@@ -33,9 +33,11 @@ jobs:
         continue-on-error: true # We want the gate to handle the blocking logic
 
       - name: Save Secret Scan Status
+        if: always()
         run: echo "${{ steps.trufflehog.outcome }}" > secret_status.txt
         
       - name: Upload Status Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: secret_status
@@ -69,9 +71,11 @@ jobs:
           sarif_file: trivy-results.sarif
 
       - name: Save SCA Status
+        if: always()
         run: echo "${{ steps.trivy-dep.outcome }}" > sca_status.txt
         
       - name: Upload Status Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: sca_status
@@ -106,9 +110,11 @@ jobs:
           sarif_file: semgrep-results.sarif
 
       - name: Save SAST Status
+        if: always()
         run: echo "${{ steps.semgrep.outcome }}" > sast_status.txt
         
       - name: Upload Status Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: sast_status
@@ -141,9 +147,11 @@ jobs:
           sarif_file: checkov.sarif
 
       - name: Save IaC Status
+        if: always()
         run: echo "${{ steps.checkov.outcome }}" > iac_status.txt
         
       - name: Upload Status Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: iac_status
@@ -179,9 +187,11 @@ jobs:
           sarif_file: trivy-image.sarif
 
       - name: Save Container Status
+        if: always()
         run: echo "${{ steps.trivy-img.outcome }}" > container_status.txt
         
       - name: Upload Status Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: container_status
@@ -198,11 +208,11 @@ jobs:
         
       - name: Evaluate Security Gate
         run: |
-          SECRET_STATUS=$(cat secret_status/secret_status.txt)
-          SCA_STATUS=$(cat sca_status/sca_status.txt)
-          SAST_STATUS=$(cat sast_status/sast_status.txt)
-          IAC_STATUS=$(cat iac_status/iac_status.txt)
-          CONTAINER_STATUS=$(cat container_status/container_status.txt)
+          SECRET_STATUS=$(cat secret_status/secret_status.txt 2>/dev/null || echo "failed")
+          SCA_STATUS=$(cat sca_status/sca_status.txt 2>/dev/null || echo "failed")
+          SAST_STATUS=$(cat sast_status/sast_status.txt 2>/dev/null || echo "failed")
+          IAC_STATUS=$(cat iac_status/iac_status.txt 2>/dev/null || echo "failed")
+          CONTAINER_STATUS=$(cat container_status/container_status.txt 2>/dev/null || echo "failed")
           
           echo "## Security Pipeline Report" >> $GITHUB_STEP_SUMMARY
           echo "═══════════════════════════════════" >> $GITHUB_STEP_SUMMARY
