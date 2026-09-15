@@ -56,7 +56,7 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: fs
-          scan-ref: ./app
+          scan-ref: './Automated DevSecOps CI-CD Security Pipeline/app'
           severity: HIGH,CRITICAL
           format: sarif
           output: trivy-results.sarif
@@ -97,7 +97,7 @@ jobs:
 
       - name: Semgrep Scan
         id: semgrep
-        run: semgrep scan --config p/security-audit --sarif --output semgrep-results.sarif --error ./app
+        run: semgrep scan --config p/security-audit --sarif --output semgrep-results.sarif --error './Automated DevSecOps CI-CD Security Pipeline/app'
         continue-on-error: true
 
       - name: Upload SARIF
@@ -128,7 +128,7 @@ jobs:
         id: checkov
         uses: bridgecrewio/checkov-action@master
         with:
-          directory: ./infra
+          directory: './Automated DevSecOps CI-CD Security Pipeline/infra'
           framework: terraform
           soft_fail: false
           output_format: cli,sarif
@@ -160,7 +160,7 @@ jobs:
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
 
       - name: Build Image
-        run: docker build -t temp-image:latest .
+        run: docker build -t temp-image:latest './Automated DevSecOps CI-CD Security Pipeline'
 
       - name: Trivy Image Scan
         id: trivy-img
@@ -249,7 +249,7 @@ jobs:
         run: |
           IMAGE_NAME=ghcr.io/${{ github.repository }}
           IMAGE_NAME=$(echo $IMAGE_NAME | tr '[A-Z]' '[a-z]')
-          docker build -t $IMAGE_NAME:${{ github.sha }} .
+          docker build -t $IMAGE_NAME:${{ github.sha }} './Automated DevSecOps CI-CD Security Pipeline'
           docker tag $IMAGE_NAME:${{ github.sha }} $IMAGE_NAME:latest
           echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
 
