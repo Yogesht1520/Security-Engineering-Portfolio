@@ -45,7 +45,7 @@ Incident Response
 **Architecture / Tools:** Terraform · AWS VPC/CloudTrail/CloudWatch · GitHub Actions · Checkov/tfsec
 **Implementation:** A fully IaC-defined VPC with least-privilege security groups, CloudTrail + VPC Flow Logs for dual-layer visibility, and a CI/CD pipeline that lints, security-scans, and gates every infrastructure change before it merges.
 **Proof:** `terraform plan` shows zero drift · CI blocks a deliberately-introduced `0.0.0.0/0` rule · root-login triggers an email alert within minutes
-**Connects to:** Feeds network telemetry into → [Project 4 (SIEM Lab)](https://github.com/Yogesht1520/sec-portfolio-04-siem-lab)
+**Connects to:** Feeds network telemetry into → [Project 4 (SIEM Lab)](https://github.com/Yogesht1520//siem-detection-lab)
 
 ---
 
