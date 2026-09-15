@@ -4,7 +4,7 @@
   This file goes in a repo named EXACTLY the same as your GitHub username
   (e.g. if your username is "jsingh", create a repo called "jsingh/jsingh").
   GitHub automatically renders that repo's README.md on your profile page.
-  Replace every [YOUR-USERNAME] and [Your Name] placeholder below before publishing.
+  Replace every [Yogesht1520] and [Your Name] placeholder below before publishing.
 -->
 
 <div align="center">
@@ -40,70 +40,70 @@ Incident Response
 
 ## 🗂️ The 8 Projects
 
-### 1. [Secure Corporate Cloud Environment](https://github.com/YOUR-USERNAME/sec-portfolio-01-cloud-iac)
+### 1. [Secure Corporate Cloud Environment](./Secure%20Corporate%20Cloud%20Environment)
 **The Problem:** Manually configured cloud environments drift, get misconfigured, and leave no audit trail.
 **Architecture / Tools:** Terraform · AWS VPC/CloudTrail/CloudWatch · GitHub Actions · Checkov/tfsec
 **Implementation:** A fully IaC-defined VPC with least-privilege security groups, CloudTrail + VPC Flow Logs for dual-layer visibility, and a CI/CD pipeline that lints, security-scans, and gates every infrastructure change before it merges.
 **Proof:** `terraform plan` shows zero drift · CI blocks a deliberately-introduced `0.0.0.0/0` rule · root-login triggers an email alert within minutes
-**Connects to:** Feeds network telemetry into → [Project 4 (SIEM Lab)](https://github.com/YOUR-USERNAME/sec-portfolio-04-siem-lab)
+**Connects to:** Feeds network telemetry into → [Project 4 (SIEM Lab)](https://github.com/Yogesht1520/sec-portfolio-04-siem-lab)
 
 ---
 
-### 2. [Automated Log Parser & Threat Report Generator](https://github.com/YOUR-USERNAME/sec-portfolio-02-log-analyzer)
+### 2. [Automated Log Parser & Threat Report Generator](https://github.com/Yogesht1520/sec-portfolio-02-log-analyzer)
 **The Problem:** Raw server logs contain evidence of attacks, but nobody reads thousands of lines by hand.
 **Architecture / Tools:** Python (streaming parsers) · Jinja2 · Plotly · MaxMind GeoLite2
 **Implementation:** A pluggable detection engine (SQLi, brute-force, path traversal, scanner fingerprints) that processes multi-GB logs without loading them into memory, and outputs a dark-themed, SOC-style HTML report.
 **Proof:** Correctly flags 100% of injected attacks in a synthetic demo log · benchmarked throughput of X,XXX lines/sec
-**Connects to:** Same detection philosophy as → [Project 4 (SIEM Lab)](https://github.com/YOUR-USERNAME/sec-portfolio-04-siem-lab), applied to static logs instead of live streams
+**Connects to:** Same detection philosophy as → [Project 4 (SIEM Lab)](https://github.com/Yogesht1520/sec-portfolio-04-siem-lab), applied to static logs instead of live streams
 
 ---
 
-### 3. [Hybrid Enterprise Identity & Conditional Access Lab](https://github.com/YOUR-USERNAME/sec-portfolio-03-identity-lab)
+### 3. [Hybrid Enterprise Identity & Conditional Access Lab](https://github.com/Yogesht1520/sec-portfolio-03-identity-lab)
 **The Problem:** Identity, not the network, is the perimeter that actually gets attacked first.
 **Architecture / Tools:** Microsoft Entra ID · Conditional Access · Microsoft Graph PowerShell
 **Implementation:** A modeled enterprise identity tenant enforcing MFA for admin roles, geo-based access blocking, legacy-auth blocking, and risk-based sign-in policies — configured as code via Graph PowerShell, not clicked manually.
 **Proof:** Screenshots of denied sign-in from a blocked region · MFA challenge triggered for an admin-role test account
-**Connects to:** Identity-layer counterpart to → [Project 6 (Zero-Trust Network)](https://github.com/YOUR-USERNAME/sec-portfolio-06-zero-trust-vpn)'s network-layer trust boundaries
+**Connects to:** Identity-layer counterpart to → [Project 6 (Zero-Trust Network)](https://github.com/Yogesht1520/sec-portfolio-06-zero-trust-vpn)'s network-layer trust boundaries
 
 ---
 
-### 4. [Enterprise SIEM & Live Threat Detection Lab](https://github.com/YOUR-USERNAME/sec-portfolio-04-siem-lab)
+### 4. [Enterprise SIEM & Live Threat Detection Lab](./siem-detection-lab)
 **The Problem:** Logs without correlation and alerting are just noise nobody looks at until it's too late.
 **Architecture / Tools:** Wazuh (OpenSearch-based SIEM) · a real internet-facing honeypot · custom MITRE-mapped detection rules
 **Implementation:** A live SIEM ingesting real attack traffic from a deliberately exposed honeypot VM, with custom rules for brute-force and privilege escalation, visualized on a world-attack-map dashboard.
 **Proof:** Dashboard showing real (not synthetic) internet attack traffic · a custom rule firing, mapped to a MITRE ATT&CK technique ID
-**Connects to:** Natural home for telemetry from → [Project 1](https://github.com/YOUR-USERNAME/sec-portfolio-01-cloud-iac)'s VPC Flow Logs and → [Project 7](https://github.com/YOUR-USERNAME/sec-portfolio-07-threat-intel-blacklister)'s IOC feed
+**Connects to:** Natural home for telemetry from → [Project 1](https://github.com/Yogesht1520/sec-portfolio-01-cloud-iac)'s VPC Flow Logs and → [Project 7](https://github.com/Yogesht1520/sec-portfolio-07-threat-intel-blacklister)'s IOC feed
 
 ---
 
-### 5. [Automated DevSecOps CI/CD Security Pipeline](https://github.com/YOUR-USERNAME/sec-portfolio-05-devsecops-pipeline)
+### 5. 🌟 **FEATURED:** [Automated DevSecOps CI-CD Security Pipeline](./Automated%20DevSecOps%20CI-CD%20Security%20Pipeline)
 **The Problem:** Security scanning that happens after deployment is security scanning that happens too late.
 **Architecture / Tools:** GitHub Actions · TruffleHog · Trivy · Semgrep · SARIF/GitHub Code Scanning
 **Implementation:** A shift-left pipeline that scans every push for leaked secrets, vulnerable dependencies, and insecure code patterns — and blocks the merge if anything HIGH/CRITICAL is found.
-**Proof:** A PR carrying a fake secret and a known-vulnerable dependency is automatically blocked, then goes green after remediation
-**Connects to:** The same CI/CD discipline is applied to infrastructure code in → [Project 1](https://github.com/YOUR-USERNAME/sec-portfolio-01-cloud-iac)
+**Proof:** A PR carrying a fake secret and a known-vulnerable dependency is automatically blocked, then goes green after remediation. *(Check out the Open PR on this repo!)*
+**Connects to:** The same CI/CD discipline is applied to infrastructure code in → [Project 1](./Secure%20Corporate%20Cloud%20Environment)
 
 ---
 
-### 6. [Zero-Trust Network & VPN Topology Architecture](https://github.com/YOUR-USERNAME/sec-portfolio-06-zero-trust-vpn)
+### 6. [Zero-Trust Network & VPN Topology Architecture](https://github.com/Yogesht1520/sec-portfolio-06-zero-trust-vpn)
 **The Problem:** "Connected to the VPN" is too often treated as equivalent to "trusted" — that's the opposite of zero trust.
 **Architecture / Tools:** WireGuard · nftables · per-peer network segmentation
 **Implementation:** A real WireGuard gateway enforcing per-user access to isolated Dev/Prod/Corp-HR network segments, with defense-in-depth enforced at both the tunnel-routing layer and the firewall layer independently.
 **Proof:** A contractor peer can reach Dev but is explicitly denied (and logged) trying to reach Prod or HR, even after deliberately weakening one enforcement layer
-**Connects to:** Network-layer counterpart to → [Project 3 (Identity Lab)](https://github.com/YOUR-USERNAME/sec-portfolio-03-identity-lab)'s identity-layer trust boundaries
+**Connects to:** Network-layer counterpart to → [Project 3 (Identity Lab)](https://github.com/Yogesht1520/sec-portfolio-03-identity-lab)'s identity-layer trust boundaries
 
 ---
 
-### 7. [Automated Threat Intelligence & IP Blacklisting Engine](https://github.com/YOUR-USERNAME/sec-portfolio-07-threat-intel-blacklister)
+### 7. [Automated Threat Intelligence & IP Blacklisting Engine](https://github.com/Yogesht1520/sec-portfolio-07-threat-intel-blacklister)
 **The Problem:** Reacting to attacks after they happen is slower than defending against IPs already known to be malicious.
 **Architecture / Tools:** Python · AbuseIPDB/AlienVault OTX APIs · SQLite · ipset/nftables
 **Implementation:** A scheduled pipeline that collects, deduplicates, and confidence-scores malicious IPs from multiple free threat-intel feeds, then automatically enforces a TTL-based firewall blocklist — avoiding the common mistake of blocklists that only ever grow.
 **Proof:** `ipset list` showing real, automatically-enforced entries · audit log showing add/expire decisions with source attribution
-**Connects to:** Could enrich alerts in → [Project 4 (SIEM Lab)](https://github.com/YOUR-USERNAME/sec-portfolio-04-siem-lab) with known-bad-IP context
+**Connects to:** Could enrich alerts in → [Project 4 (SIEM Lab)](https://github.com/Yogesht1520/sec-portfolio-04-siem-lab) with known-bad-IP context
 
 ---
 
-### 8. [Controlled Ransomware Simulation & Digital Forensics](https://github.com/YOUR-USERNAME/sec-portfolio-08-dfir-ransomware-sim)
+### 8. [Controlled Ransomware Simulation & Digital Forensics](https://github.com/Yogesht1520/sec-portfolio-08-dfir-ransomware-sim)
 **The Problem:** Understanding an attack after it's already happened — using only forensic evidence — is a fundamentally different skill from preventing one.
 **Architecture / Tools:** Air-gapped VirtualBox VM · Atomic Red Team · Volatility 3 · Autopsy
 **Implementation:** A safe, non-destructive, MITRE-mapped attack simulation run inside a fully isolated VM, investigated blind using memory and disk forensics, and written up as a consulting-grade Incident Response report.
