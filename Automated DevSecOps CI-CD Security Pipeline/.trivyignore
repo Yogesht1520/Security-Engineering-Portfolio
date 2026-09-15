@@ -1,0 +1,12 @@
+# .trivyignore
+# This file contains justified exceptions for Trivy dependency/config scanning.
+# Do NOT add exceptions here without a documented reason and approval.
+
+# Format: CVE-ID or Misconfiguration ID
+# Example entry:
+# CVE-2023-XXXXX
+# Reason: False positive — vulnerable function is not reachable in our execution path
+# Risk: LOW — no user input reaches this module
+# Owner: @yogesht1520
+# Review date: 2026-12-01
+# Compensating control: Input validation at API gateway layer

@@ -1,0 +1,55 @@
+name: Nightly Security Scan
+
+on:
+  schedule:
+    # Run at 2:00 AM UTC every day
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  nightly-scan:
+    name: Full Dep & Container Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+
+      # Note: We do not use --exit-code 1 here. 
+      # Nightly scans are ADVISORY. They report newly discovered CVEs in 
+      # existing code to GitHub Code Scanning, but do not "fail" a build
+      # because there is no PR to block.
+
+      - name: Trivy Dependency Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: ./app
+          severity: HIGH,CRITICAL
+          format: sarif
+          output: trivy-fs.sarif
+
+      - name: Build Current Container
+        run: docker build -t nightly-image:latest .
+
+      - name: Trivy Container Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'nightly-image:latest'
+          severity: HIGH,CRITICAL
+          format: sarif
+          output: trivy-img.sarif
+
+      - name: Upload FS SARIF
+        uses: github/codeql-action/upload-sarif@b56ba49b26e50535fa1e7f7db0f4f7b4bf65d80d
+        with:
+          sarif_file: trivy-fs.sarif
+          category: file-system
+
+      - name: Upload Container SARIF
+        uses: github/codeql-action/upload-sarif@b56ba49b26e50535fa1e7f7db0f4f7b4bf65d80d
+        with:
+          sarif_file: trivy-img.sarif
+          category: container

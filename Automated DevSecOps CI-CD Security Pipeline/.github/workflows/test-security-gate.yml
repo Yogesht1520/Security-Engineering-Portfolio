@@ -1,0 +1,21 @@
+name: Test Security Gate Logic
+
+on:
+  push:
+    paths:
+      - 'tests/test_gate_logic.sh'
+  workflow_dispatch:
+
+jobs:
+  test-gate:
+    name: Run Gate Logic Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Make script executable
+        run: chmod +x tests/test_gate_logic.sh
+        
+      - name: Run Tests
+        run: ./tests/test_gate_logic.sh
