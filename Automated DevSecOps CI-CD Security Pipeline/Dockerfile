@@ -1,6 +1,6 @@
 # Using python:3.9-slim deliberately because it contains known CVEs in its OS packages
 # This gives Trivy's container scanner something real to catch at the HIGH/CRITICAL level.
-FROM python:3.12-alpine
+FROM python:3.9-slim
 
 # Set working directory
 WORKDIR /app
