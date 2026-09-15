@@ -1,0 +1,278 @@
+name: Security Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+# Supply Chain Security: Pin actions to SHAs
+env:
+  CHECKOUT_ACTION: "actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11" # v4.1.1
+  PYTHON_SETUP_ACTION: "actions/setup-python@0b93645e5fea7318ecaed2b359559ac225c90a2b" # v5.3.0
+  CODEQL_UPLOAD_ACTION: "github/codeql-action/upload-sarif@b56ba49b26e50535fa1e7f7db0f4f7b4bf65d80d" # v3.28.10
+
+jobs:
+  secret-scan:
+    name: TruffleHog Secret Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog Secret Scan
+        id: trufflehog
+        # Continuing to use @main here for demo purposes since TruffleHog gets frequent signature updates
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified=false --fail
+        continue-on-error: true # We want the gate to handle the blocking logic
+
+      - name: Save Secret Scan Status
+        run: echo "${{ steps.trufflehog.outcome }}" > secret_status.txt
+        
+      - name: Upload Status Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: secret_status
+          path: secret_status.txt
+
+  dependency-scan:
+    name: Trivy Dependency Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+
+      - name: Trivy Dependency Scan
+        id: trivy-dep
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: ./app
+          severity: HIGH,CRITICAL
+          format: sarif
+          output: trivy-results.sarif
+          exit-code: 1
+        continue-on-error: true
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@b56ba49b26e50535fa1e7f7db0f4f7b4bf65d80d
+        with:
+          sarif_file: trivy-results.sarif
+
+      - name: Save SCA Status
+        run: echo "${{ steps.trivy-dep.outcome }}" > sca_status.txt
+        
+      - name: Upload Status Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sca_status
+          path: sca_status.txt
+
+  sast-scan:
+    name: Semgrep SAST Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+
+      - name: Set up Python
+        uses: actions/setup-python@0b93645e5fea7318ecaed2b359559ac225c90a2b
+        with:
+          python-version: '3.10'
+
+      - name: Install Semgrep
+        run: pip install semgrep
+
+      - name: Semgrep Scan
+        id: semgrep
+        run: semgrep scan --config p/security-audit --sarif --output semgrep-results.sarif --error ./app
+        continue-on-error: true
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@b56ba49b26e50535fa1e7f7db0f4f7b4bf65d80d
+        with:
+          sarif_file: semgrep-results.sarif
+
+      - name: Save SAST Status
+        run: echo "${{ steps.semgrep.outcome }}" > sast_status.txt
+        
+      - name: Upload Status Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast_status
+          path: sast_status.txt
+
+  iac-scan:
+    name: Checkov IaC Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+
+      - name: Checkov Scan
+        id: checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: ./infra
+          framework: terraform
+          soft_fail: false
+          output_format: cli,sarif
+          output_file_path: console,checkov.sarif
+        continue-on-error: true
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@b56ba49b26e50535fa1e7f7db0f4f7b4bf65d80d
+        with:
+          sarif_file: checkov.sarif
+
+      - name: Save IaC Status
+        run: echo "${{ steps.checkov.outcome }}" > iac_status.txt
+        
+      - name: Upload Status Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: iac_status
+          path: iac_status.txt
+
+  container-scan:
+    name: Trivy Image Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+
+      - name: Build Image
+        run: docker build -t temp-image:latest .
+
+      - name: Trivy Image Scan
+        id: trivy-img
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'temp-image:latest'
+          severity: HIGH,CRITICAL
+          format: sarif
+          output: trivy-image.sarif
+          exit-code: 1
+        continue-on-error: true
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@b56ba49b26e50535fa1e7f7db0f4f7b4bf65d80d
+        with:
+          sarif_file: trivy-image.sarif
+
+      - name: Save Container Status
+        run: echo "${{ steps.trivy-img.outcome }}" > container_status.txt
+        
+      - name: Upload Status Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: container_status
+          path: container_status.txt
+
+  security-gate:
+    name: Security Gate
+    needs: [secret-scan, dependency-scan, sast-scan, iac-scan, container-scan]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all status artifacts
+        uses: actions/download-artifact@v4
+        
+      - name: Evaluate Security Gate
+        run: |
+          SECRET_STATUS=$(cat secret_status/secret_status.txt)
+          SCA_STATUS=$(cat sca_status/sca_status.txt)
+          SAST_STATUS=$(cat sast_status/sast_status.txt)
+          IAC_STATUS=$(cat iac_status/iac_status.txt)
+          CONTAINER_STATUS=$(cat container_status/container_status.txt)
+          
+          echo "## Security Pipeline Report" >> $GITHUB_STEP_SUMMARY
+          echo "═══════════════════════════════════" >> $GITHUB_STEP_SUMMARY
+          echo "| Scanner | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Secrets (TruffleHog) | $SECRET_STATUS |" >> $GITHUB_STEP_SUMMARY
+          echo "| SCA (Trivy) | $SCA_STATUS |" >> $GITHUB_STEP_SUMMARY
+          echo "| SAST (Semgrep) | $SAST_STATUS |" >> $GITHUB_STEP_SUMMARY
+          echo "| IaC (Checkov) | $IAC_STATUS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Container (Trivy) | $CONTAINER_STATUS |" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "$SECRET_STATUS" != "success" ] || \
+             [ "$SCA_STATUS" != "success" ] || \
+             [ "$SAST_STATUS" != "success" ] || \
+             [ "$IAC_STATUS" != "success" ] || \
+             [ "$CONTAINER_STATUS" != "success" ]; then
+            echo "### ❌ Security Gate Failed" >> $GITHUB_STEP_SUMMARY
+            echo "**Action Required:** High or Critical vulnerabilities were found. This PR is blocked." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          else
+            echo "### ✅ Security Gate Passed" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+
+  build-and-deploy:
+    name: Build, Generate SBOM & Push to GHCR
+    needs: [security-gate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker Image
+        run: |
+          IMAGE_NAME=ghcr.io/${{ github.repository }}
+          IMAGE_NAME=$(echo $IMAGE_NAME | tr '[A-Z]' '[a-z]')
+          docker build -t $IMAGE_NAME:${{ github.sha }} .
+          docker tag $IMAGE_NAME:${{ github.sha }} $IMAGE_NAME:latest
+          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+
+      - name: Generate SBOM
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.IMAGE_NAME }}:${{ github.sha }}'
+          format: 'cyclonedx'
+          output: 'sbom.json'
+
+      - name: Upload SBOM Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.json
+
+      - name: Push to GHCR
+        run: |
+          # Only push if this is the main branch (not a PR)
+          if [ "${{ github.event_name }}" == "push" ]; then
+            docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            docker push ${{ env.IMAGE_NAME }}:latest
+            echo "Image successfully pushed to GHCR."
+          else
+            echo "Pull request detected. Skipping GHCR push."
+          fi

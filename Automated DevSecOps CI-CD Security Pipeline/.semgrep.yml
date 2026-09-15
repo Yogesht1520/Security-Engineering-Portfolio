@@ -1,0 +1,4 @@
+# This configuration file explicitly declares the ruleset we are using
+# to scan our codebase for insecure patterns (e.g. SQL Injection).
+# We are using the 'p/security-audit' community ruleset.
+rules: []
