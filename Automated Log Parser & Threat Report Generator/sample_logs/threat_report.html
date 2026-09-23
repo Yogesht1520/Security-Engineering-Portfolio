@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SOC Web Threat Analysis Report - Security Threat Analysis Report</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    :root {
+  --bg-main: #0d1117;
+  --bg-card: #161b22;
+  --bg-card-hover: #1c2128;
+  --border-color: #30363d;
+  --text-main: #c9d1d9;
+  --text-muted: #8b949e;
+  --text-white: #f0f6fc;
+  
+  --sev-critical: #f85149;
+  --sev-critical-bg: rgba(248, 81, 73, 0.15);
+  --sev-high: #da3633;
+  --sev-high-bg: rgba(218, 54, 51, 0.15);
+  --sev-medium: #d29922;
+  --sev-medium-bg: rgba(210, 153, 34, 0.15);
+  --sev-low: #58a6ff;
+  --sev-low-bg: rgba(88, 166, 255, 0.15);
+  --sev-info: #3fb950;
+  --sev-info-bg: rgba(63, 185, 80, 0.15);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  padding: 24px;
+}
+
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Header Banner */
+.header-banner {
+  background: linear-gradient(135deg, #161b22 0%, #1f242c 100%);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 24px 28px;
+  margin-bottom: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.header-title-group h1 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-white);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-title-group p {
+  color: var(--text-muted);
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+.badge-soc {
+  background: rgba(88, 166, 255, 0.2);
+  color: var(--sev-low);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(88, 166, 255, 0.4);
+}
+
+.header-meta {
+  display: flex;
+  gap: 20px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.meta-item strong {
+  color: var(--text-white);
+  display: block;
+  font-size: 15px;
+}
+
+/* KPI Summary Cards */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.kpi-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 18px 20px;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.kpi-card:hover {
+  transform: translateY(-2px);
+  border-color: #58a6ff;
+}
+
+.kpi-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.kpi-value {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text-white);
+  margin-top: 6px;
+}
+
+.kpi-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* Severity Pill */
+.severity-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.sev-CRITICAL {
+  background: var(--sev-critical-bg);
+  color: var(--sev-critical);
+  border: 1px solid var(--sev-critical);
+}
+
+.sev-HIGH {
+  background: var(--sev-high-bg);
+  color: var(--sev-high);
+  border: 1px solid var(--sev-high);
+}
+
+.sev-MEDIUM {
+  background: var(--sev-medium-bg);
+  color: var(--sev-medium);
+  border: 1px solid var(--sev-medium);
+}
+
+.sev-LOW {
+  background: var(--sev-low-bg);
+  color: var(--sev-low);
+  border: 1px solid var(--sev-low);
+}
+
+/* Charts Grid */
+.charts-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.charts-row-secondary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.chart-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+/* Section Titles */
+.section-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-white);
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Tables */
+.card-table-wrapper {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.table-header-bar {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.search-input {
+  background: var(--bg-main);
+  border: 1px solid var(--border-color);
+  color: var(--text-white);
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  min-width: 240px;
+}
+
+.search-input:focus {
+  border-color: #58a6ff;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+
+.data-table th {
+  background: #1c2128;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.data-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: top;
+}
+
+.data-table tr:hover {
+  background: var(--bg-card-hover);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* Collapsible Evidence */
+details.evidence-drawer {
+  margin-top: 6px;
+}
+
+details.evidence-drawer summary {
+  color: #58a6ff;
+  cursor: pointer;
+  font-size: 12px;
+  user-select: none;
+}
+
+details.evidence-drawer summary:hover {
+  text-decoration: underline;
+}
+
+.evidence-block {
+  background: #0d1117;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #ff7b72;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+/* Footer */
+footer {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: 40px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-color);
+}
+
+/* Print Media Query */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 0;
+  }
+  .header-banner, .kpi-card, .chart-card, .card-table-wrapper {
+    background: #ffffff !important;
+    border: 1px solid #cccccc !important;
+    box-shadow: none !important;
+    color: #000000 !important;
+  }
+  .data-table th {
+    background: #f0f0f0 !important;
+    color: #000000 !important;
+  }
+  .data-table td {
+    color: #000000 !important;
+  }
+  .search-input {
+    display: none !important;
+  }
+  .evidence-block {
+    background: #f8f8f8 !important;
+    color: #b30000 !important;
+    border: 1px solid #e0e0e0 !important;
+  }
+}
+
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header Banner -->
+    <header class="header-banner">
+      <div class="header-title-group">
+        <h1>
+          <span>🛡️ Automated Log Threat Analysis Report</span>
+          <span class="badge-soc">SOC / SIEM Grade</span>
+        </h1>
+        <p>Source Log: <strong class="mono" style="color:#f0f6fc;">attack_demo.log</strong> | Generated: 2026-09-23 20:30:23 UTC</p>
+      </div>
+      <div class="header-meta">
+        <div class="meta-item">
+          <span>Events Analyzed</span>
+          <strong>273</strong>
+        </div>
+        <div class="meta-item">
+          <span>Parsing Throughput</span>
+          <strong>4,614 lines/s</strong>
+        </div>
+        <div class="meta-item">
+          <span>Total Findings</span>
+          <strong style="color: #f85149;">18</strong>
+        </div>
+      </div>
+    </header>
+
+    <!-- KPI Summary Row -->
+    <section class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">Total Security Threats</div>
+        <div class="kpi-value" style="color: #f85149;">18</div>
+        <div class="kpi-sub">Across 5 distinct vectors</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Unique Attacker IPs</div>
+        <div class="kpi-value" style="color: #d29922;">5</div>
+        <div class="kpi-sub">From 5 countries</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Top Threat Category</div>
+        <div class="kpi-value" style="font-size: 20px; color: #58a6ff;">Path Traversal</div>
+        <div class="kpi-sub">7 events detected</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Highest Threat Severity</div>
+        <div class="kpi-value">
+          <span class="severity-pill sev-CRITICAL">CRITICAL</span>
+        </div>
+        <div class="kpi-sub">14 Critical / High priority</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Log Ingestion Health</div>
+        <div class="kpi-value" style="color: #3fb950;">100.0%</div>
+        <div class="kpi-sub">0 malformed lines skipped</div>
+      </div>
+    </section>
+
+    <!-- Primary Charts Grid -->
+    <section class="charts-grid">
+      <div class="chart-card">
+        <div style="height:320px; width:100%;">                            <div id="4c53a6a5-f51c-4ada-9f1a-e2e8f3bddeb8" class="plotly-graph-div" style="height:100%; width:100%;"></div>            <script>                window.PLOTLYENV=window.PLOTLYENV || {};                                if (document.getElementById("4c53a6a5-f51c-4ada-9f1a-e2e8f3bddeb8")) {                    Plotly.newPlot(                        "4c53a6a5-f51c-4ada-9f1a-e2e8f3bddeb8",                        [{"hovertemplate":"\u003cb\u003e%{x}\u003c\u002fb\u003e\u003cbr\u003eBrute-Force Attack: %{y} events\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#f85149"},"name":"Brute-Force Attack","x":["2026-09-24 10:02:08","2026-09-24 10:02:10","2026-09-24 10:02:12","2026-09-24 10:02:14","2026-09-24 10:03:30","2026-09-24 10:03:32","2026-09-24 10:03:34","2026-09-24 10:03:36","2026-09-24 10:05:05","2026-09-24 10:05:06","2026-09-24 10:05:07","2026-09-24 10:05:08","2026-09-24 10:05:09","2026-09-24 10:06:54","2026-09-24 10:08:30"],"y":[0,0,0,0,0,0,0,0,0,0,0,0,0,1,0],"type":"bar"},{"hovertemplate":"\u003cb\u003e%{x}\u003c\u002fb\u003e\u003cbr\u003ePath Traversal: %{y} events\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#58a6ff"},"name":"Path Traversal","x":["2026-09-24 10:02:08","2026-09-24 10:02:10","2026-09-24 10:02:12","2026-09-24 10:02:14","2026-09-24 10:03:30","2026-09-24 10:03:32","2026-09-24 10:03:34","2026-09-24 10:03:36","2026-09-24 10:05:05","2026-09-24 10:05:06","2026-09-24 10:05:07","2026-09-24 10:05:08","2026-09-24 10:05:09","2026-09-24 10:06:54","2026-09-24 10:08:30"],"y":[0,0,0,0,2,2,2,1,0,0,0,0,0,0,0],"type":"bar"},{"hovertemplate":"\u003cb\u003e%{x}\u003c\u002fb\u003e\u003cbr\u003eSQL Injection: %{y} events\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#3fb950"},"name":"SQL Injection","x":["2026-09-24 10:02:08","2026-09-24 10:02:10","2026-09-24 10:02:12","2026-09-24 10:02:14","2026-09-24 10:03:30","2026-09-24 10:03:32","2026-09-24 10:03:34","2026-09-24 10:03:36","2026-09-24 10:05:05","2026-09-24 10:05:06","2026-09-24 10:05:07","2026-09-24 10:05:08","2026-09-24 10:05:09","2026-09-24 10:06:54","2026-09-24 10:08:30"],"y":[1,1,1,1,0,0,0,0,0,0,0,0,0,0,0],"type":"bar"},{"hovertemplate":"\u003cb\u003e%{x}\u003c\u002fb\u003e\u003cbr\u003eScanner Reconnaissance: %{y} events\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#d29922"},"name":"Scanner Reconnaissance","x":["2026-09-24 10:02:08","2026-09-24 10:02:10","2026-09-24 10:02:12","2026-09-24 10:02:14","2026-09-24 10:03:30","2026-09-24 10:03:32","2026-09-24 10:03:34","2026-09-24 10:03:36","2026-09-24 10:05:05","2026-09-24 10:05:06","2026-09-24 10:05:07","2026-09-24 10:05:08","2026-09-24 10:05:09","2026-09-24 10:06:54","2026-09-24 10:08:30"],"y":[0,0,0,0,0,0,0,0,1,1,1,1,1,0,0],"type":"bar"},{"hovertemplate":"\u003cb\u003e%{x}\u003c\u002fb\u003e\u003cbr\u003eStatus-Code Burst Anomaly: %{y} events\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#a371f7"},"name":"Status-Code Burst Anomaly","x":["2026-09-24 10:02:08","2026-09-24 10:02:10","2026-09-24 10:02:12","2026-09-24 10:02:14","2026-09-24 10:03:30","2026-09-24 10:03:32","2026-09-24 10:03:34","2026-09-24 10:03:36","2026-09-24 10:05:05","2026-09-24 10:05:06","2026-09-24 10:05:07","2026-09-24 10:05:08","2026-09-24 10:05:09","2026-09-24 10:06:54","2026-09-24 10:08:30"],"y":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],"type":"bar"}],                        {"template":{"data":{"histogram2dcontour":[{"type":"histogram2dcontour","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"choropleth":[{"type":"choropleth","colorbar":{"outlinewidth":0,"ticks":""}}],"histogram2d":[{"type":"histogram2d","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"heatmap":[{"type":"heatmap","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"contourcarpet":[{"type":"contourcarpet","colorbar":{"outlinewidth":0,"ticks":""}}],"contour":[{"type":"contour","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"surface":[{"type":"surface","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"mesh3d":[{"type":"mesh3d","colorbar":{"outlinewidth":0,"ticks":""}}],"scatter":[{"fillpattern":{"fillmode":"overlay","size":10,"solidity":0.2},"type":"scatter"}],"parcoords":[{"type":"parcoords","line":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterpolargl":[{"type":"scatterpolargl","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"bar":[{"error_x":{"color":"#2a3f5f"},"error_y":{"color":"#2a3f5f"},"marker":{"line":{"color":"#E5ECF6","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"bar"}],"scattergeo":[{"type":"scattergeo","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterpolar":[{"type":"scatterpolar","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"histogram":[{"marker":{"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"histogram"}],"scattergl":[{"type":"scattergl","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatter3d":[{"type":"scatter3d","line":{"colorbar":{"outlinewidth":0,"ticks":""}},"marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattermap":[{"type":"scattermap","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterternary":[{"type":"scatterternary","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattercarpet":[{"type":"scattercarpet","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"carpet":[{"aaxis":{"endlinecolor":"#2a3f5f","gridcolor":"white","linecolor":"white","minorgridcolor":"white","startlinecolor":"#2a3f5f"},"baxis":{"endlinecolor":"#2a3f5f","gridcolor":"white","linecolor":"white","minorgridcolor":"white","startlinecolor":"#2a3f5f"},"type":"carpet"}],"table":[{"cells":{"fill":{"color":"#EBF0F8"},"line":{"color":"white"}},"header":{"fill":{"color":"#C8D4E3"},"line":{"color":"white"}},"type":"table"}],"barpolar":[{"marker":{"line":{"color":"#E5ECF6","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"barpolar"}],"pie":[{"automargin":true,"type":"pie"}]},"layout":{"autotypenumbers":"strict","colorway":["#636efa","#EF553B","#00cc96","#ab63fa","#FFA15A","#19d3f3","#FF6692","#B6E880","#FF97FF","#FECB52"],"font":{"color":"#2a3f5f"},"hovermode":"closest","hoverlabel":{"align":"left"},"paper_bgcolor":"white","plot_bgcolor":"#E5ECF6","polar":{"bgcolor":"#E5ECF6","angularaxis":{"gridcolor":"white","linecolor":"white","ticks":""},"radialaxis":{"gridcolor":"white","linecolor":"white","ticks":""}},"ternary":{"bgcolor":"#E5ECF6","aaxis":{"gridcolor":"white","linecolor":"white","ticks":""},"baxis":{"gridcolor":"white","linecolor":"white","ticks":""},"caxis":{"gridcolor":"white","linecolor":"white","ticks":""}},"coloraxis":{"colorbar":{"outlinewidth":0,"ticks":""}},"colorscale":{"sequential":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"sequentialminus":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"diverging":[[0,"#8e0152"],[0.1,"#c51b7d"],[0.2,"#de77ae"],[0.3,"#f1b6da"],[0.4,"#fde0ef"],[0.5,"#f7f7f7"],[0.6,"#e6f5d0"],[0.7,"#b8e186"],[0.8,"#7fbc41"],[0.9,"#4d9221"],[1,"#276419"]]},"xaxis":{"gridcolor":"white","linecolor":"white","ticks":"","title":{"standoff":15},"zerolinecolor":"white","automargin":true,"zerolinewidth":2},"yaxis":{"gridcolor":"white","linecolor":"white","ticks":"","title":{"standoff":15},"zerolinecolor":"white","automargin":true,"zerolinewidth":2},"scene":{"xaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2},"yaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2},"zaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2}},"shapedefaults":{"line":{"color":"#2a3f5f"}},"annotationdefaults":{"arrowcolor":"#2a3f5f","arrowhead":0,"arrowwidth":1},"geo":{"bgcolor":"white","landcolor":"#E5ECF6","subunitcolor":"white","showland":true,"showlakes":true,"lakecolor":"white"},"title":{"x":0.05}}},"title":{"font":{"color":"#c9d1d9","size":15},"text":"Threat Events Over Time"},"font":{"family":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","color":"#c9d1d9"},"xaxis":{"title":{"text":"Timestamp"},"gridcolor":"#30363d","showgrid":true,"tickangle":-30},"yaxis":{"title":{"text":"Event Count"},"gridcolor":"#30363d","showgrid":true,"dtick":1},"legend":{"font":{"size":11},"orientation":"h","yanchor":"bottom","y":1.02,"xanchor":"right","x":1},"margin":{"l":40,"r":20,"t":50,"b":50},"barmode":"stack","paper_bgcolor":"rgba(0,0,0,0)","plot_bgcolor":"rgba(0,0,0,0)","height":320},                        {"displayModeBar": false, "responsive": true}                    )                };            </script>        </div>
+      </div>
+      <div class="chart-card">
+        <div style="height:320px; width:100%;">                            <div id="3000008c-ca03-4084-b21b-7e2dba061c73" class="plotly-graph-div" style="height:100%; width:100%;"></div>            <script>                window.PLOTLYENV=window.PLOTLYENV || {};                                if (document.getElementById("3000008c-ca03-4084-b21b-7e2dba061c73")) {                    Plotly.newPlot(                        "3000008c-ca03-4084-b21b-7e2dba061c73",                        [{"hole":0.55,"hoverinfo":"label+value+percent","hovertemplate":"\u003cb\u003e%{label}\u003c\u002fb\u003e\u003cbr\u003eFindings: %{value} (%{percent})\u003cextra\u003e\u003c\u002fextra\u003e","labels":["SQL Injection","Path Traversal","Scanner Reconnaissance","Brute-Force Attack","Status-Code Burst Anomaly"],"marker":{"colors":["#f85149","#58a6ff","#3fb950","#d29922","#a371f7"]},"textinfo":"label+percent","values":[4,7,5,1,1],"type":"pie"}],                        {"template":{"data":{"histogram2dcontour":[{"type":"histogram2dcontour","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"choropleth":[{"type":"choropleth","colorbar":{"outlinewidth":0,"ticks":""}}],"histogram2d":[{"type":"histogram2d","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"heatmap":[{"type":"heatmap","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"contourcarpet":[{"type":"contourcarpet","colorbar":{"outlinewidth":0,"ticks":""}}],"contour":[{"type":"contour","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"surface":[{"type":"surface","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"mesh3d":[{"type":"mesh3d","colorbar":{"outlinewidth":0,"ticks":""}}],"scatter":[{"fillpattern":{"fillmode":"overlay","size":10,"solidity":0.2},"type":"scatter"}],"parcoords":[{"type":"parcoords","line":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterpolargl":[{"type":"scatterpolargl","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"bar":[{"error_x":{"color":"#2a3f5f"},"error_y":{"color":"#2a3f5f"},"marker":{"line":{"color":"#E5ECF6","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"bar"}],"scattergeo":[{"type":"scattergeo","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterpolar":[{"type":"scatterpolar","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"histogram":[{"marker":{"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"histogram"}],"scattergl":[{"type":"scattergl","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatter3d":[{"type":"scatter3d","line":{"colorbar":{"outlinewidth":0,"ticks":""}},"marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattermap":[{"type":"scattermap","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterternary":[{"type":"scatterternary","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattercarpet":[{"type":"scattercarpet","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"carpet":[{"aaxis":{"endlinecolor":"#2a3f5f","gridcolor":"white","linecolor":"white","minorgridcolor":"white","startlinecolor":"#2a3f5f"},"baxis":{"endlinecolor":"#2a3f5f","gridcolor":"white","linecolor":"white","minorgridcolor":"white","startlinecolor":"#2a3f5f"},"type":"carpet"}],"table":[{"cells":{"fill":{"color":"#EBF0F8"},"line":{"color":"white"}},"header":{"fill":{"color":"#C8D4E3"},"line":{"color":"white"}},"type":"table"}],"barpolar":[{"marker":{"line":{"color":"#E5ECF6","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"barpolar"}],"pie":[{"automargin":true,"type":"pie"}]},"layout":{"autotypenumbers":"strict","colorway":["#636efa","#EF553B","#00cc96","#ab63fa","#FFA15A","#19d3f3","#FF6692","#B6E880","#FF97FF","#FECB52"],"font":{"color":"#2a3f5f"},"hovermode":"closest","hoverlabel":{"align":"left"},"paper_bgcolor":"white","plot_bgcolor":"#E5ECF6","polar":{"bgcolor":"#E5ECF6","angularaxis":{"gridcolor":"white","linecolor":"white","ticks":""},"radialaxis":{"gridcolor":"white","linecolor":"white","ticks":""}},"ternary":{"bgcolor":"#E5ECF6","aaxis":{"gridcolor":"white","linecolor":"white","ticks":""},"baxis":{"gridcolor":"white","linecolor":"white","ticks":""},"caxis":{"gridcolor":"white","linecolor":"white","ticks":""}},"coloraxis":{"colorbar":{"outlinewidth":0,"ticks":""}},"colorscale":{"sequential":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"sequentialminus":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"diverging":[[0,"#8e0152"],[0.1,"#c51b7d"],[0.2,"#de77ae"],[0.3,"#f1b6da"],[0.4,"#fde0ef"],[0.5,"#f7f7f7"],[0.6,"#e6f5d0"],[0.7,"#b8e186"],[0.8,"#7fbc41"],[0.9,"#4d9221"],[1,"#276419"]]},"xaxis":{"gridcolor":"white","linecolor":"white","ticks":"","title":{"standoff":15},"zerolinecolor":"white","automargin":true,"zerolinewidth":2},"yaxis":{"gridcolor":"white","linecolor":"white","ticks":"","title":{"standoff":15},"zerolinecolor":"white","automargin":true,"zerolinewidth":2},"scene":{"xaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2},"yaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2},"zaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2}},"shapedefaults":{"line":{"color":"#2a3f5f"}},"annotationdefaults":{"arrowcolor":"#2a3f5f","arrowhead":0,"arrowwidth":1},"geo":{"bgcolor":"white","landcolor":"#E5ECF6","subunitcolor":"white","showland":true,"showlakes":true,"lakecolor":"white"},"title":{"x":0.05}}},"title":{"font":{"color":"#c9d1d9","size":15},"text":"Attack Vector Distribution"},"font":{"family":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","color":"#c9d1d9"},"legend":{"font":{"size":11},"orientation":"v"},"margin":{"l":20,"r":20,"t":40,"b":20},"paper_bgcolor":"rgba(0,0,0,0)","plot_bgcolor":"rgba(0,0,0,0)","showlegend":true,"height":320},                        {"displayModeBar": false, "responsive": true}                    )                };            </script>        </div>
+      </div>
+    </section>
+
+    <!-- Secondary Charts Row -->
+    <section class="charts-row-secondary">
+      <div class="chart-card">
+        <div style="height:240px; width:100%;">                            <div id="371e6789-8b28-4ad3-ad3c-f4700ca9f663" class="plotly-graph-div" style="height:100%; width:100%;"></div>            <script>                window.PLOTLYENV=window.PLOTLYENV || {};                                if (document.getElementById("371e6789-8b28-4ad3-ad3c-f4700ca9f663")) {                    Plotly.newPlot(                        "371e6789-8b28-4ad3-ad3c-f4700ca9f663",                        [{"hovertemplate":"\u003cb\u003eIP: %{y}\u003c\u002fb\u003e\u003cbr\u003eThreat Events: %{x}\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#f85149","line":{"color":"#f85149","width":1},"opacity":0.85},"orientation":"h","x":[7,5,4,1,1],"y":["45.33.32.156","194.26.29.112","185.220.101.5","91.240.118.80","103.203.57.18"],"type":"bar"}],                        {"template":{"data":{"histogram2dcontour":[{"type":"histogram2dcontour","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"choropleth":[{"type":"choropleth","colorbar":{"outlinewidth":0,"ticks":""}}],"histogram2d":[{"type":"histogram2d","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"heatmap":[{"type":"heatmap","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"contourcarpet":[{"type":"contourcarpet","colorbar":{"outlinewidth":0,"ticks":""}}],"contour":[{"type":"contour","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"surface":[{"type":"surface","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"mesh3d":[{"type":"mesh3d","colorbar":{"outlinewidth":0,"ticks":""}}],"scatter":[{"fillpattern":{"fillmode":"overlay","size":10,"solidity":0.2},"type":"scatter"}],"parcoords":[{"type":"parcoords","line":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterpolargl":[{"type":"scatterpolargl","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"bar":[{"error_x":{"color":"#2a3f5f"},"error_y":{"color":"#2a3f5f"},"marker":{"line":{"color":"#E5ECF6","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"bar"}],"scattergeo":[{"type":"scattergeo","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterpolar":[{"type":"scatterpolar","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"histogram":[{"marker":{"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"histogram"}],"scattergl":[{"type":"scattergl","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatter3d":[{"type":"scatter3d","line":{"colorbar":{"outlinewidth":0,"ticks":""}},"marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattermap":[{"type":"scattermap","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterternary":[{"type":"scatterternary","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattercarpet":[{"type":"scattercarpet","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"carpet":[{"aaxis":{"endlinecolor":"#2a3f5f","gridcolor":"white","linecolor":"white","minorgridcolor":"white","startlinecolor":"#2a3f5f"},"baxis":{"endlinecolor":"#2a3f5f","gridcolor":"white","linecolor":"white","minorgridcolor":"white","startlinecolor":"#2a3f5f"},"type":"carpet"}],"table":[{"cells":{"fill":{"color":"#EBF0F8"},"line":{"color":"white"}},"header":{"fill":{"color":"#C8D4E3"},"line":{"color":"white"}},"type":"table"}],"barpolar":[{"marker":{"line":{"color":"#E5ECF6","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"barpolar"}],"pie":[{"automargin":true,"type":"pie"}]},"layout":{"autotypenumbers":"strict","colorway":["#636efa","#EF553B","#00cc96","#ab63fa","#FFA15A","#19d3f3","#FF6692","#B6E880","#FF97FF","#FECB52"],"font":{"color":"#2a3f5f"},"hovermode":"closest","hoverlabel":{"align":"left"},"paper_bgcolor":"white","plot_bgcolor":"#E5ECF6","polar":{"bgcolor":"#E5ECF6","angularaxis":{"gridcolor":"white","linecolor":"white","ticks":""},"radialaxis":{"gridcolor":"white","linecolor":"white","ticks":""}},"ternary":{"bgcolor":"#E5ECF6","aaxis":{"gridcolor":"white","linecolor":"white","ticks":""},"baxis":{"gridcolor":"white","linecolor":"white","ticks":""},"caxis":{"gridcolor":"white","linecolor":"white","ticks":""}},"coloraxis":{"colorbar":{"outlinewidth":0,"ticks":""}},"colorscale":{"sequential":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"sequentialminus":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"diverging":[[0,"#8e0152"],[0.1,"#c51b7d"],[0.2,"#de77ae"],[0.3,"#f1b6da"],[0.4,"#fde0ef"],[0.5,"#f7f7f7"],[0.6,"#e6f5d0"],[0.7,"#b8e186"],[0.8,"#7fbc41"],[0.9,"#4d9221"],[1,"#276419"]]},"xaxis":{"gridcolor":"white","linecolor":"white","ticks":"","title":{"standoff":15},"zerolinecolor":"white","automargin":true,"zerolinewidth":2},"yaxis":{"gridcolor":"white","linecolor":"white","ticks":"","title":{"standoff":15},"zerolinecolor":"white","automargin":true,"zerolinewidth":2},"scene":{"xaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2},"yaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2},"zaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2}},"shapedefaults":{"line":{"color":"#2a3f5f"}},"annotationdefaults":{"arrowcolor":"#2a3f5f","arrowhead":0,"arrowwidth":1},"geo":{"bgcolor":"white","landcolor":"#E5ECF6","subunitcolor":"white","showland":true,"showlakes":true,"lakecolor":"white"},"title":{"x":0.05}}},"title":{"font":{"color":"#c9d1d9","size":15},"text":"Top 5 Malicious Sources"},"font":{"family":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","color":"#c9d1d9"},"xaxis":{"title":{"text":"Total Threat Events"},"gridcolor":"#30363d","showgrid":true},"yaxis":{"autorange":"reversed"},"margin":{"l":100,"r":20,"t":40,"b":40},"paper_bgcolor":"rgba(0,0,0,0)","plot_bgcolor":"rgba(0,0,0,0)","height":240},                        {"displayModeBar": false, "responsive": true}                    )                };            </script>        </div>
+      </div>
+      <div class="chart-card">
+        <div style="height:240px; width:100%;">                            <div id="8de810eb-f264-413c-bb27-052666e439e7" class="plotly-graph-div" style="height:100%; width:100%;"></div>            <script>                window.PLOTLYENV=window.PLOTLYENV || {};                                if (document.getElementById("8de810eb-f264-413c-bb27-052666e439e7")) {                    Plotly.newPlot(                        "8de810eb-f264-413c-bb27-052666e439e7",                        [{"hovertemplate":"\u003cb\u003eSeverity: %{y}\u003c\u002fb\u003e\u003cbr\u003eCount: %{x}\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":["#f85149","#da3633","#d29922","#58a6ff"],"line":{"color":"#30363d","width":1}},"orientation":"h","x":[5,9,3,1],"y":["CRITICAL","HIGH","MEDIUM","LOW"],"type":"bar"}],                        {"template":{"data":{"histogram2dcontour":[{"type":"histogram2dcontour","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"choropleth":[{"type":"choropleth","colorbar":{"outlinewidth":0,"ticks":""}}],"histogram2d":[{"type":"histogram2d","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"heatmap":[{"type":"heatmap","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"contourcarpet":[{"type":"contourcarpet","colorbar":{"outlinewidth":0,"ticks":""}}],"contour":[{"type":"contour","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"surface":[{"type":"surface","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"mesh3d":[{"type":"mesh3d","colorbar":{"outlinewidth":0,"ticks":""}}],"scatter":[{"fillpattern":{"fillmode":"overlay","size":10,"solidity":0.2},"type":"scatter"}],"parcoords":[{"type":"parcoords","line":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterpolargl":[{"type":"scatterpolargl","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"bar":[{"error_x":{"color":"#2a3f5f"},"error_y":{"color":"#2a3f5f"},"marker":{"line":{"color":"#E5ECF6","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"bar"}],"scattergeo":[{"type":"scattergeo","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterpolar":[{"type":"scatterpolar","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"histogram":[{"marker":{"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"histogram"}],"scattergl":[{"type":"scattergl","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatter3d":[{"type":"scatter3d","line":{"colorbar":{"outlinewidth":0,"ticks":""}},"marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattermap":[{"type":"scattermap","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterternary":[{"type":"scatterternary","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattercarpet":[{"type":"scattercarpet","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"carpet":[{"aaxis":{"endlinecolor":"#2a3f5f","gridcolor":"white","linecolor":"white","minorgridcolor":"white","startlinecolor":"#2a3f5f"},"baxis":{"endlinecolor":"#2a3f5f","gridcolor":"white","linecolor":"white","minorgridcolor":"white","startlinecolor":"#2a3f5f"},"type":"carpet"}],"table":[{"cells":{"fill":{"color":"#EBF0F8"},"line":{"color":"white"}},"header":{"fill":{"color":"#C8D4E3"},"line":{"color":"white"}},"type":"table"}],"barpolar":[{"marker":{"line":{"color":"#E5ECF6","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"barpolar"}],"pie":[{"automargin":true,"type":"pie"}]},"layout":{"autotypenumbers":"strict","colorway":["#636efa","#EF553B","#00cc96","#ab63fa","#FFA15A","#19d3f3","#FF6692","#B6E880","#FF97FF","#FECB52"],"font":{"color":"#2a3f5f"},"hovermode":"closest","hoverlabel":{"align":"left"},"paper_bgcolor":"white","plot_bgcolor":"#E5ECF6","polar":{"bgcolor":"#E5ECF6","angularaxis":{"gridcolor":"white","linecolor":"white","ticks":""},"radialaxis":{"gridcolor":"white","linecolor":"white","ticks":""}},"ternary":{"bgcolor":"#E5ECF6","aaxis":{"gridcolor":"white","linecolor":"white","ticks":""},"baxis":{"gridcolor":"white","linecolor":"white","ticks":""},"caxis":{"gridcolor":"white","linecolor":"white","ticks":""}},"coloraxis":{"colorbar":{"outlinewidth":0,"ticks":""}},"colorscale":{"sequential":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"sequentialminus":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"diverging":[[0,"#8e0152"],[0.1,"#c51b7d"],[0.2,"#de77ae"],[0.3,"#f1b6da"],[0.4,"#fde0ef"],[0.5,"#f7f7f7"],[0.6,"#e6f5d0"],[0.7,"#b8e186"],[0.8,"#7fbc41"],[0.9,"#4d9221"],[1,"#276419"]]},"xaxis":{"gridcolor":"white","linecolor":"white","ticks":"","title":{"standoff":15},"zerolinecolor":"white","automargin":true,"zerolinewidth":2},"yaxis":{"gridcolor":"white","linecolor":"white","ticks":"","title":{"standoff":15},"zerolinecolor":"white","automargin":true,"zerolinewidth":2},"scene":{"xaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2},"yaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2},"zaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2}},"shapedefaults":{"line":{"color":"#2a3f5f"}},"annotationdefaults":{"arrowcolor":"#2a3f5f","arrowhead":0,"arrowwidth":1},"geo":{"bgcolor":"white","landcolor":"#E5ECF6","subunitcolor":"white","showland":true,"showlakes":true,"lakecolor":"white"},"title":{"x":0.05}}},"title":{"font":{"color":"#c9d1d9","size":15},"text":"Findings by Severity"},"font":{"family":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","color":"#c9d1d9"},"xaxis":{"title":{"text":"Findings Count"},"gridcolor":"#30363d","showgrid":true},"yaxis":{"autorange":"reversed"},"margin":{"l":60,"r":20,"t":40,"b":40},"paper_bgcolor":"rgba(0,0,0,0)","plot_bgcolor":"rgba(0,0,0,0)","height":240},                        {"displayModeBar": false, "responsive": true}                    )                };            </script>        </div>
+      </div>
+    </section>
+
+    <!-- Top Offending IPs Table -->
+    <section class="card-table-wrapper">
+      <div class="table-header-bar">
+        <h2 class="section-title">🚨 Top Threat Origin Sources & Geolocation</h2>
+        <span style="font-size: 13px; color: var(--text-muted);">Enriched via MaxMind GeoIP2 & rDNS</span>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Attacker IP</th>
+            <th>Location</th>
+            <th>rDNS Hostname / ASN</th>
+            <th>Threats Detected</th>
+            <th>Top Vector</th>
+            <th>Peak Severity</th>
+          </tr>
+        </thead>
+        <tbody>
+          
+          <tr>
+            <td class="mono"><strong>45.33.32.156</strong></td>
+            <td>
+              <span>🇺🇸 United States</span>
+              
+              <span style="color: var(--text-muted); font-size: 11px;">(Dallas)</span>
+              
+            </td>
+            <td class="mono" style="color: #8b949e;">
+              Linode, LLC
+            </td>
+            <td><strong>7</strong></td>
+            <td><span class="badge-soc">Path Traversal</span></td>
+            <td>
+              <span class="severity-pill sev-CRITICAL">CRITICAL</span>
+            </td>
+          </tr>
+          
+          <tr>
+            <td class="mono"><strong>194.26.29.112</strong></td>
+            <td>
+              <span>🇷🇺 Russia</span>
+              
+              <span style="color: var(--text-muted); font-size: 11px;">(Moscow)</span>
+              
+            </td>
+            <td class="mono" style="color: #8b949e;">
+              Hostkey B.V.
+            </td>
+            <td><strong>5</strong></td>
+            <td><span class="badge-soc">Scanner Reconnaissance</span></td>
+            <td>
+              <span class="severity-pill sev-HIGH">HIGH</span>
+            </td>
+          </tr>
+          
+          <tr>
+            <td class="mono"><strong>185.220.101.5</strong></td>
+            <td>
+              <span>🇳🇱 Netherlands</span>
+              
+              <span style="color: var(--text-muted); font-size: 11px;">(Amsterdam)</span>
+              
+            </td>
+            <td class="mono" style="color: #8b949e;">
+              Tor Exit Node
+            </td>
+            <td><strong>4</strong></td>
+            <td><span class="badge-soc">SQL Injection</span></td>
+            <td>
+              <span class="severity-pill sev-CRITICAL">CRITICAL</span>
+            </td>
+          </tr>
+          
+          <tr>
+            <td class="mono"><strong>91.240.118.80</strong></td>
+            <td>
+              <span>🇧🇬 Bulgaria</span>
+              
+              <span style="color: var(--text-muted); font-size: 11px;">(Sofia)</span>
+              
+            </td>
+            <td class="mono" style="color: #8b949e;">
+              Telepoint Ltd
+            </td>
+            <td><strong>1</strong></td>
+            <td><span class="badge-soc">Brute-Force Attack</span></td>
+            <td>
+              <span class="severity-pill sev-HIGH">HIGH</span>
+            </td>
+          </tr>
+          
+          <tr>
+            <td class="mono"><strong>103.203.57.18</strong></td>
+            <td>
+              <span>🇮🇳 India</span>
+              
+              <span style="color: var(--text-muted); font-size: 11px;">(Mumbai)</span>
+              
+            </td>
+            <td class="mono" style="color: #8b949e;">
+              Tata Communications
+            </td>
+            <td><strong>1</strong></td>
+            <td><span class="badge-soc">Status-Code Burst Anomaly</span></td>
+            <td>
+              <span class="severity-pill sev-MEDIUM">MEDIUM</span>
+            </td>
+          </tr>
+          
+          
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Detailed Security Findings Table -->
+    <section class="card-table-wrapper">
+      <div class="table-header-bar">
+        <h2 class="section-title">🔍 Detailed Security Findings Log (18)</h2>
+        <input type="text" id="findingSearch" class="search-input" placeholder="Filter by IP, rule, attack vector, payload...">
+      </div>
+      <table class="data-table" id="findingsTable">
+        <thead>
+          <tr>
+            <th style="width: 100px;">Severity</th>
+            <th style="width: 130px;">Rule ID</th>
+            <th style="width: 180px;">Attack Type</th>
+            <th style="width: 170px;">Source IP & Origin</th>
+            <th style="width: 160px;">Timestamp (UTC)</th>
+            <th>Description & Raw Evidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          
+          <tr class="finding-row" data-search="CRITICAL SQLI-001 SQL Injection 185.220.101.5 Netherlands Detected UNION SELECT attempt attempting unauthorized database extraction. UNION SELECT ">
+            <td>
+              <span class="severity-pill sev-CRITICAL">CRITICAL</span>
+            </td>
+            <td class="mono">
+              <strong>SQLI-001</strong>
+              
+              <div style="font-size: 10px; color: #58a6ff;">T1190</div>
+              
+            </td>
+            <td><strong>SQL Injection</strong></td>
+            <td>
+              <div class="mono"><strong>185.220.101.5</strong></div>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                Netherlands
+              </div>
+            </td>
+            <td class="mono" style="font-size: 11px;">
+              2026-09-24 10:02:08
+            </td>
+            <td>
+              <div>Detected UNION SELECT attempt attempting unauthorized database extraction.</div>
+              <details class="evidence-drawer">
+                <summary>Inspect Matched Evidence (Line 51)</summary>
+                <div class="evidence-block">UNION SELECT </div>
+              </details>
+            </td>
+          </tr>
+          
+          <tr class="finding-row" data-search="HIGH SQLI-002 SQL Injection 185.220.101.5 Netherlands Detected boolean SQL injection payload forcing truth condition (e.g., ' OR '1'='1). ' OR '1'='1">
+            <td>
+              <span class="severity-pill sev-HIGH">HIGH</span>
+            </td>
+            <td class="mono">
+              <strong>SQLI-002</strong>
+              
+              <div style="font-size: 10px; color: #58a6ff;">T1190</div>
+              
+            </td>
+            <td><strong>SQL Injection</strong></td>
+            <td>
+              <div class="mono"><strong>185.220.101.5</strong></div>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                Netherlands
+              </div>
+            </td>
+            <td class="mono" style="font-size: 11px;">
+              2026-09-24 10:02:10
+            </td>
+            <td>
+              <div>Detected boolean SQL injection payload forcing truth condition (e.g., ' OR '1'='1).</div>
+              <details class="evidence-drawer">
+                <summary>Inspect Matched Evidence (Line 52)</summary>
+                <div class="evidence-block">' OR '1'='1</div>
+              </details>
+            </td>
+          </tr>
+          
+          <tr class="finding-row" data-search="HIGH SQLI-003 SQL Injection 185.220.101.5 Netherlands Detected time-delay injection function targeting database execution delays. SLEEP(5">
+            <td>
+              <span class="severity-pill sev-HIGH">HIGH</span>
+            </td>
+            <td class="mono">
+              <strong>SQLI-003</strong>
+              
+              <div style="font-size: 10px; color: #58a6ff;">T1190</div>
+              
+            </td>
+            <td><strong>SQL Injection</strong></td>
+            <td>
+              <div class="mono"><strong>185.220.101.5</strong></div>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                Netherlands
+              </div>
+            </td>
+            <td class="mono" style="font-size: 11px;">
+              2026-09-24 10:02:12
+            </td>
+            <td>
+              <div>Detected time-delay injection function targeting database execution delays.</div>
+              <details class="evidence-drawer">
+                <summary>Inspect Matched Evidence (Line 53)</summary>
+                <div class="evidence-block">SLEEP(5</div>
+              </details>
+            </td>
+          </tr>
+          
+          <tr class="finding-row" data-search="HIGH SQLI-004 SQL Injection 185.220.101.5 Netherlands Detected SQL metadata enumeration targeting system schema tables. information_schema.tables">
+            <td>
+              <span class="severity-pill sev-HIGH">HIGH</span>
+            </td>
+            <td class="mono">
+              <strong>SQLI-004</strong>
+              
+              <div style="font-size: 10px; color: #58a6ff;">T1190</div>
+              
+            </td>
+            <td><strong>SQL Injection</strong></td>
+            <td>
+              <div class="mono"><strong>185.220.101.5</strong></div>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                Netherlands
+              </div>
+            </td>
+            <td class="mono" style="font-size: 11px;">
+              2026-09-24 10:02:14
+            </td>
+            <td>
+              <div>Detected SQL metadata enumeration targeting system schema tables.</div>
+              <details class="evidence-drawer">
+                <summary>Inspect Matched Evidence (Line 54)</summary>
+                <div class="evidence-block">information_schema.tables</div>
+              </details>
+            </td>
+          </tr>
+          
+          <tr class="finding-row" data-search="HIGH TRAV-001 Path Traversal 45.33.32.156 United States Detected directory climbing sequence (../, ..\, or encoded equivalents) attempting unauthorized filesystem traversal. ../">
+            <td>
+              <span class="severity-pill sev-HIGH">HIGH</span>
+            </td>
+            <td class="mono">
+              <strong>TRAV-001</strong>
+              
+              <div style="font-size: 10px; color: #58a6ff;">T1083</div>
+              
+            </td>
+            <td><strong>Path Traversal</strong></td>
+            <td>
+              <div class="mono"><strong>45.33.32.156</strong></div>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                United States
+              </div>
+            </td>
+            <td class="mono" style="font-size: 11px;">
+              2026-09-24 10:03:30
+            </td>
+            <td>
+              <div>Detected directory climbing sequence (../, ..\, or encoded equivalents) attempting unauthorized filesystem traversal.</div>
+              <details class="evidence-drawer">
+                <summary>Inspect Matched Evidence (Line 85)</summary>
+                <div class="evidence-block">../</div>
+              </details>
+            </td>
+          </tr>
+          
+          <tr class="finding-row" data-search="CRITICAL TRAV-002 Path Traversal 45.33.32.156 United States Detected direct or traversed access to sensitive Unix system configuration files. /etc/passwd">
+            <td>
+              <span class="severity-pill sev-CRITICAL">CRITICAL</span>
+            </td>
+            <td class="mono">
+              <strong>TRAV-002</strong>
+              
+              <div style="font-size: 10px; color: #58a6ff;">T1005</div>
+              
+            </td>
+            <td><strong>Path Traversal</strong></td>
+            <td>
+              <div class="mono"><strong>45.33.32.156</strong></div>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                United States
+              </div>
+            </td>
+            <td class="mono" style="font-size: 11px;">
+              2026-09-24 10:03:30
+            </td>
+            <td>
+              <div>Detected direct or traversed access to sensitive Unix system configuration files.</div>
+              <details class="evidence-drawer">
+                <summary>Inspect Matched Evidence (Line 85)</summary>
+                <div class="evidence-block">/etc/passwd</div>
+              </details>
+            </td>
+          </tr>
+          
+          <tr class="finding-row" data-search="HIGH TRAV-001 Path Traversal 45.33.32.156 United States Detected directory climbing sequence (../, ..\, or encoded equivalents) attempting unauthorized filesystem traversal. ../">
+            <td>
+              <span class="severity-pill sev-HIGH">HIGH</span>
+            </td>
+            <td class="mono">
+              <strong>TRAV-001</strong>
+              
+              <div style="font-size: 10px; color: #58a6ff;">T1083</div>
+              
+            </td>
+            <td><strong>Path Traversal</strong></td>
+            <td>
+              <div class="mono"><strong>45.33.32.156</strong></div>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                United States
+              </div>
+            </td>
+            <td class="mono" style="font-size: 11px;">
+              2026-09-24 10:03:32
+            </td>
+            <td>
+              <div>Detected directory climbing sequence (../, ..\, or encoded equivalents) attempting unauthorized filesystem traversal.</div>
+              <details class="evidence-drawer">
+                <summary>Inspect Matched Evidence (Line 86)</summary>
+                <div class="evidence-block">../</div>
+              </details>
+            </td>
+          </tr>
+          
+          <tr class="finding-row" data-search="CRITICAL TRAV-002 Path Traversal 45.33.32.156 United States Detected direct or traversed access to sensitive Unix system configuration files. /etc/shadow">
+            <td>
+              <span class="severity-pill sev-CRITICAL">CRITICAL</span>
+            </td>
+            <td class="mono">
+              <strong>TRAV-002</strong>
+              
+              <div style="font-size: 10px; color: #58a6ff;">T1005</div>
+              
+            </td>
+            <td><strong>Path Traversal</strong></td>
+            <td>
+              <div class="mono"><strong>45.33.32.156</strong></div>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                United States
+              </div>
+            </td>
+            <td class="mono" style="font-size: 11px;">
+              2026-09-24 10:03:32
+            </td>
+            <td>
+              <div>Detected direct or traversed access to sensitive Unix system configuration files.</div>
+              <details class="evidence-drawer">
+                <summary>Inspect Matched Evidence (Line 86)</summary>
+                <div class="evidence-block">/etc/shadow</div>
+              </details>
+            </td>
+          </tr>
+          
+          <tr class="finding-row" data-search="HIGH TRAV-001 Path Traversal 45.33.32.156 United States Detected directory climbing sequence (../, ..\, or encoded equivalents) attempting unauthorized filesystem traversal. %252e%252e%252f">
+            <td>
+              <span class="severity-pill sev-HIGH">HIGH</span>
+            </td>
+            <td class="mono">
+              <strong>TRAV-001</strong>
+              
+              <div style="font-size: 10px; color: #58a6ff;">T1083</div>
+              
+            </td>
+            <td><strong>Path Traversal</strong></td>
+            <td>
+              <div class="mono"><strong>45.33.32.156</strong></div>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                United States
+              </div>
+            </td>
+            <td class="mono" style="font-size: 11px;">
+              2026-09-24 10:03:34
+            </td>
+            <td>
+              <div>Detected directory climbing sequence (../, ..\, or encoded equivalents) attempting unauthorized filesystem traversal.</div>
+              <details class="evidence-drawer">
+                <summary>Inspect Matched Evidence (Line 87)</summary>
+                <div class="evidence-block">%252e%252e%252f</div>
+              </details>
+            </td>
+          </tr>
+          
+          <tr class="finding-row" data-search="CRITICAL TRAV-002 Path Traversal 45.33.32.156 United States Detected direct or traversed access to sensitive Unix system configuration files. /etc/passwd">
+            <td>
+              <span class="severity-pill sev-CRITICAL">CRITICAL</span>
+            </td>
+            <td class="mono">
+              <strong>TRAV-002</strong>
+              
+              <div style="font-size: 10px; color: #58a6ff;">T1005</div>
+              
+            </td>
+            <td><strong>Path Traversal</strong></td>
+            <td>
+              <div class="mono"><strong>45.33.32.156</strong></div>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                United States
+              </div>
+            </td>
+            <td class="mono" style="font-size: 11px;">
+              2026-09-24 10:03:34
+            </td>
+            <td>
+              <div>Detected direct or traversed access to sensitive Unix system configuration files.</div>
+              <details class="evidence-drawer">
+                <summary>Inspect Matched Evidence (Line 87)</summary>
+                <div class="evidence-block">/etc/passwd</div>
+              </details>
+            </td>
+          </tr>
+          
+          <tr class="finding-row" data-search="CRITICAL TRAV-003 Path Traversal 45.33.32.156 United States Detected target path probing sensitive Windows system configuration or credential files. C:\Windows\win.ini">
+            <td>
+              <span class="severity-pill sev-CRITICAL">CRITICAL</span>
+            </td>
+            <td class="mono">
+              <strong>TRAV-003</strong>
+              
+              <div style="font-size: 10px; color: #58a6ff;">T1005</div>
+              
+            </td>
+            <td><strong>Path Traversal</strong></td>
+            <td>
+              <div class="mono"><strong>45.33.32.156</strong></div>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                United States
+              </div>
+            </td>
+            <td class="mono" style="font-size: 11px;">
+              2026-09-24 10:03:36
+            </td>
+            <td>
+              <div>Detected target path probing sensitive Windows system configuration or credential files.</div>
+              <details class="evidence-drawer">
+                <summary>Inspect Matched Evidence (Line 88)</summary>
+                <div class="evidence-block">C:\Windows\win.ini</div>
+              </details>
+            </td>
+          </tr>
+          
+          <tr class="finding-row" data-search="HIGH SCAN-001 Scanner Reconnaissance 194.26.29.112 Russia Detected automated SQL injection scanner sqlmap in User-Agent header. sqlmap/1.7.2">
+            <td>
+              <span class="severity-pill sev-HIGH">HIGH</span>
+            </td>
+            <td class="mono">
+              <strong>SCAN-001</strong>
+              
+              <div style="font-size: 10px; color: #58a6ff;">T1595.002</div>
+              
+            </td>
+            <td><strong>Scanner Reconnaissance</strong></td>
+            <td>
+              <div class="mono"><strong>194.26.29.112</strong></div>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                Russia
+              </div>
+            </td>
+            <td class="mono" style="font-size: 11px;">
+              2026-09-24 10:05:05
+            </td>
+            <td>
+              <div>Detected automated SQL injection scanner sqlmap in User-Agent header.</div>
+              <details class="evidence-drawer">
+                <summary>Inspect Matched Evidence (Line 119)</summary>
+                <div class="evidence-block">sqlmap/1.7.2</div>
+              </details>
+            </td>
+          </tr>
+          
+          <tr class="finding-row" data-search="HIGH SCAN-002 Scanner Reconnaissance 194.26.29.112 Russia Detected automated vulnerability assessment and web application security scanner. Nikto">
+            <td>
+              <span class="severity-pill sev-HIGH">HIGH</span>
+            </td>
+            <td class="mono">
+              <strong>SCAN-002</strong>
+              
+              <div style="font-size: 10px; color: #58a6ff;">T1595.002</div>
+              
+            </td>
+            <td><strong>Scanner Reconnaissance</strong></td>
+            <td>
+              <div class="mono"><strong>194.26.29.112</strong></div>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                Russia
+              </div>
+            </td>
+            <td class="mono" style="font-size: 11px;">
+              2026-09-24 10:05:06
+            </td>
+            <td>
+              <div>Detected automated vulnerability assessment and web application security scanner.</div>
+              <details class="evidence-drawer">
+                <summary>Inspect Matched Evidence (Line 120)</summary>
+                <div class="evidence-block">Nikto</div>
+              </details>
+            </td>
+          </tr>
+          
+          <tr class="finding-row" data-search="MEDIUM SCAN-004 Scanner Reconnaissance 194.26.29.112 Russia Detected network port scanning or active reconnaissance tool fingerprint. Nuclei">
+            <td>
+              <span class="severity-pill sev-MEDIUM">MEDIUM</span>
+            </td>
+            <td class="mono">
+              <strong>SCAN-004</strong>
+              
+              <div style="font-size: 10px; color: #58a6ff;">T1595.001</div>
+              
+            </td>
+            <td><strong>Scanner Reconnaissance</strong></td>
+            <td>
+              <div class="mono"><strong>194.26.29.112</strong></div>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                Russia
+              </div>
+            </td>
+            <td class="mono" style="font-size: 11px;">
+              2026-09-24 10:05:07
+            </td>
+            <td>
+              <div>Detected network port scanning or active reconnaissance tool fingerprint.</div>
+              <details class="evidence-drawer">
+                <summary>Inspect Matched Evidence (Line 121)</summary>
+                <div class="evidence-block">Nuclei</div>
+              </details>
+            </td>
+          </tr>
+          
+          <tr class="finding-row" data-search="MEDIUM SCAN-004 Scanner Reconnaissance 194.26.29.112 Russia Detected network port scanning or active reconnaissance tool fingerprint. Nmap Scripting Engine">
+            <td>
+              <span class="severity-pill sev-MEDIUM">MEDIUM</span>
+            </td>
+            <td class="mono">
+              <strong>SCAN-004</strong>
+              
+              <div style="font-size: 10px; color: #58a6ff;">T1595.001</div>
+              
+            </td>
+            <td><strong>Scanner Reconnaissance</strong></td>
+            <td>
+              <div class="mono"><strong>194.26.29.112</strong></div>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                Russia
+              </div>
+            </td>
+            <td class="mono" style="font-size: 11px;">
+              2026-09-24 10:05:08
+            </td>
+            <td>
+              <div>Detected network port scanning or active reconnaissance tool fingerprint.</div>
+              <details class="evidence-drawer">
+                <summary>Inspect Matched Evidence (Line 122)</summary>
+                <div class="evidence-block">Nmap Scripting Engine</div>
+              </details>
+            </td>
+          </tr>
+          
+          <tr class="finding-row" data-search="LOW SCAN-000 Scanner Reconnaissance 194.26.29.112 Russia Request sent with missing or stripped User-Agent header. User-Agent: (empty/missing)">
+            <td>
+              <span class="severity-pill sev-LOW">LOW</span>
+            </td>
+            <td class="mono">
+              <strong>SCAN-000</strong>
+              
+              <div style="font-size: 10px; color: #58a6ff;">T1595</div>
+              
+            </td>
+            <td><strong>Scanner Reconnaissance</strong></td>
+            <td>
+              <div class="mono"><strong>194.26.29.112</strong></div>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                Russia
+              </div>
+            </td>
+            <td class="mono" style="font-size: 11px;">
+              2026-09-24 10:05:09
+            </td>
+            <td>
+              <div>Request sent with missing or stripped User-Agent header.</div>
+              <details class="evidence-drawer">
+                <summary>Inspect Matched Evidence (Line 123)</summary>
+                <div class="evidence-block">User-Agent: (empty/missing)</div>
+              </details>
+            </td>
+          </tr>
+          
+          <tr class="finding-row" data-search="HIGH BRUTE-001 Brute-Force Attack 91.240.118.80 Bulgaria Detected 10 failed requests to auth endpoint '/wp-login.php' within 60s from IP 91.240.118.80. 10 failed auth attempts in 60s window (latest: POST /wp-login.php -> 401)">
+            <td>
+              <span class="severity-pill sev-HIGH">HIGH</span>
+            </td>
+            <td class="mono">
+              <strong>BRUTE-001</strong>
+              
+              <div style="font-size: 10px; color: #58a6ff;">T1110</div>
+              
+            </td>
+            <td><strong>Brute-Force Attack</strong></td>
+            <td>
+              <div class="mono"><strong>91.240.118.80</strong></div>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                Bulgaria
+              </div>
+            </td>
+            <td class="mono" style="font-size: 11px;">
+              2026-09-24 10:06:54
+            </td>
+            <td>
+              <div>Detected 10 failed requests to auth endpoint '/wp-login.php' within 60s from IP 91.240.118.80.</div>
+              <details class="evidence-drawer">
+                <summary>Inspect Matched Evidence (Line 163)</summary>
+                <div class="evidence-block">10 failed auth attempts in 60s window (latest: POST /wp-login.php -> 401)</div>
+              </details>
+            </td>
+          </tr>
+          
+          <tr class="finding-row" data-search="MEDIUM BURST-001 Status-Code Burst Anomaly 103.203.57.18 India Detected burst of 20 anomalous HTTP 4xx/5xx responses within 30s from IP 103.203.57.18. 20 anomalous HTTP 404 errors in 30s window (latest path: /fuzz/path_19_8679)">
+            <td>
+              <span class="severity-pill sev-MEDIUM">MEDIUM</span>
+            </td>
+            <td class="mono">
+              <strong>BURST-001</strong>
+              
+              <div style="font-size: 10px; color: #58a6ff;">T1595.003</div>
+              
+            </td>
+            <td><strong>Status-Code Burst Anomaly</strong></td>
+            <td>
+              <div class="mono"><strong>103.203.57.18</strong></div>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                India
+              </div>
+            </td>
+            <td class="mono" style="font-size: 11px;">
+              2026-09-24 10:08:30
+            </td>
+            <td>
+              <div>Detected burst of 20 anomalous HTTP 4xx/5xx responses within 30s from IP 103.203.57.18.</div>
+              <details class="evidence-drawer">
+                <summary>Inspect Matched Evidence (Line 218)</summary>
+                <div class="evidence-block">20 anomalous HTTP 404 errors in 30s window (latest path: /fuzz/path_19_8679)</div>
+              </details>
+            </td>
+          </tr>
+          
+          
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+      <p>Automated Log Parser & Threat Report Generator | Security-Engineering-Portfolio | Aligns with Security+ / CEH / MITRE ATT&CK</p>
+    </footer>
+  </div>
+
+  <script>
+    // Live table search filtering
+    document.getElementById('findingSearch').addEventListener('input', function(e) {
+      const term = e.target.value.toLowerCase();
+      const rows = document.querySelectorAll('.finding-row');
+      rows.forEach(row => {
+        const text = row.getAttribute('data-search').toLowerCase();
+        row.style.display = text.includes(term) ? '' : 'none';
+      });
+    });
+  </script>
+</body>
+</html>

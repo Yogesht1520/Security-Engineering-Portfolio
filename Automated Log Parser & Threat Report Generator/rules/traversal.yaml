@@ -1,0 +1,25 @@
+name: "Path & Directory Traversal Detection Rules"
+version: "1.0.0"
+attack_type: "Path Traversal"
+description: "Detects path traversal sequences, directory climbing, and system file disclosure attempts."
+rules:
+  - id: "TRAV-001"
+    name: "Standard & Encoded Directory Climbing"
+    severity: "HIGH"
+    mitre_attack_id: "T1083"
+    pattern: '(?:\.{2,}[/\\]|%2e%2e[/\\]|%2e%2e%2f|%2e%2e%5c|\.%2e[/\\]|%252e%252e%252f)'
+    description: "Detected directory climbing sequence (../, ..\\, or encoded equivalents) attempting unauthorized filesystem traversal."
+
+  - id: "TRAV-002"
+    name: "Unix System File Disclosure"
+    severity: "CRITICAL"
+    mitre_attack_id: "T1005"
+    pattern: '(?i)(?:/etc/(?:passwd|shadow|group|hosts|issue|os-release)|/proc/(?:self|\d+)/(?:environ|cmdline|status)|/var/log/(?:auth|syslog|messages|nginx))'
+    description: "Detected direct or traversed access to sensitive Unix system configuration files."
+
+  - id: "TRAV-003"
+    name: "Windows System File Disclosure"
+    severity: "CRITICAL"
+    mitre_attack_id: "T1005"
+    pattern: '(?i)(?:[a-z]:[/\\](?:windows|winnt)[/\\](?:win\.ini|system\.ini|repair[/\\]sam)|boot\.ini|web\.config)'
+    description: "Detected target path probing sensitive Windows system configuration or credential files."
