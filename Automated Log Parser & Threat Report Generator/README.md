@@ -28,19 +28,19 @@ The **Automated Log Parser & Threat Report Generator** is a production-grade cyb
 
 ```mermaid
 flowchart LR
-    A[Raw Log File\nNginx / Apache / .gz] --> B[Streaming Reader\nO(1) Generator]
-    B --> C[LogParser\nRegex -> LogEntry]
-    C --> D{Detection Engine}
-    D -->|SQLi YAML Signatures| E[Findings Store]
-    D -->|Path Traversal Rules| E
-    D -->|Scanner User-Agents| E
-    D -->|Sliding Auth Window| E
-    D -->|Status Code Burst| E
-    E --> F[IP Threat Enrichment\nGeoIP2 + rDNS + SQLite Cache]
-    F --> G[Report Builder Engine]
-    G --> H[Interactive HTML Report\nPlotly + Jinja2 Dark Theme]
-    G --> I[Markdown Summary\nGitHub / PR Export]
-    G --> J[JSON Export\nSIEM / CI/CD Ingestion]
+    A["Raw Log File<br/>Nginx / Apache / .gz"] --> B["Streaming Reader<br/>O(1) Generator"]
+    B --> C["LogParser<br/>Regex to LogEntry"]
+    C --> D{"Detection Engine"}
+    D -->|"SQLi YAML Signatures"| E["Findings Store"]
+    D -->|"Path Traversal Rules"| E
+    D -->|"Scanner User-Agents"| E
+    D -->|"Sliding Auth Window"| E
+    D -->|"Status Code Burst"| E
+    E --> F["IP Threat Enrichment<br/>GeoIP2 + rDNS + SQLite Cache"]
+    F --> G["Report Builder Engine"]
+    G --> H["Interactive HTML Report<br/>Plotly + Jinja2 Dark Theme"]
+    G --> I["Markdown Summary<br/>GitHub / PR Export"]
+    G --> J["JSON Export<br/>SIEM / CI/CD Ingestion"]
 ```
 
 ---
