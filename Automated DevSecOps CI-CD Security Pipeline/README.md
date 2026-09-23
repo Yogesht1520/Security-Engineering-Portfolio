@@ -12,6 +12,24 @@ The pipeline implements a comprehensive Defense-in-Depth strategy across 5 disti
 Code Push → [ Secrets | SAST | SCA | IaC | Container ] → Security Gate → SBOM Generation → GHCR Deploy
 ```
 
+## 📸 Security Pipeline in Action
+
+*(Create an `images` folder in this directory, save your screenshots there, and link them below!)*
+
+### 1. The Blocked Pull Request
+![Blocked PR](images/evidence1.png)
+*The pipeline successfully blocks vulnerable code from merging into main.*
+
+### 2. The Security Dashboard
+![Job Summary Dashboard](images/evidence2.png)
+*A consolidated markdown report showing exactly which scanners failed.*
+
+### 3. Inline Code Annotations
+![Inline Annotations](images/evidence3.png)
+![Inline Annotations](images/evidence4.png)
+![Inline Annotations](images/evidence5.png)
+*Security flaws are flagged directly on the affected lines of code inside the PR.*
+
 ## 🛠️ Tech Stack & Tool Selection
 
 | Layer | Tool | Justification |

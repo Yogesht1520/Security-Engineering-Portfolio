@@ -1,0 +1,41 @@
+name: "Automated Scanner & Recon Fingerprint Rules"
+version: "1.0.0"
+attack_type: "Scanner Reconnaissance"
+description: "Identifies automated security scanners, exploit tools, crawlers, and anomalous User-Agent headers."
+flag_empty_user_agent: true
+empty_ua_severity: "LOW"
+rules:
+  - id: "SCAN-001"
+    name: "SQL Injection Tools (sqlmap)"
+    severity: "HIGH"
+    mitre_attack_id: "T1595.002"
+    pattern: '(?i)(?:sqlmap(?:/[\w.-]+)?)'
+    description: "Detected automated SQL injection scanner sqlmap in User-Agent header."
+
+  - id: "SCAN-002"
+    name: "Vulnerability Scanners (Nikto, OpenVAS, Nessus, Acunetix)"
+    severity: "HIGH"
+    mitre_attack_id: "T1595.002"
+    pattern: '(?i)(?:nikto|openvas|nessus|acunetix|qualys|arachni|w3af|appscan)'
+    description: "Detected automated vulnerability assessment and web application security scanner."
+
+  - id: "SCAN-003"
+    name: "Web Fuzzers & Content Discovery (DirBuster, Gobuster, ffuf, wfuzz)"
+    severity: "MEDIUM"
+    mitre_attack_id: "T1595.003"
+    pattern: '(?i)(?:dirbuster|gobuster|ffuf|wfuzz|feroxbuster|dirb)'
+    description: "Detected automated path brute-forcing and directory discovery fuzzer."
+
+  - id: "SCAN-004"
+    name: "Network & Service Probers (Nmap, Masscan, Zgrab, Nuclei)"
+    severity: "MEDIUM"
+    mitre_attack_id: "T1595.001"
+    pattern: '(?i)(?:nmap(?:\s+scripting\s+engine)?|masscan|zgrab|nuclei|censys|shodan)'
+    description: "Detected network port scanning or active reconnaissance tool fingerprint."
+
+  - id: "SCAN-005"
+    name: "CMS Scanners & Exploit Kits (WPScan, Joomscan, Metasploit)"
+    severity: "HIGH"
+    mitre_attack_id: "T1595.002"
+    pattern: '(?i)(?:wpscan|joomscan|droopescan|metasploit)'
+    description: "Detected specialized CMS vulnerability scanner or exploitation framework."

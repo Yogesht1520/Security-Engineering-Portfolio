@@ -1,0 +1,39 @@
+name: "SQL Injection Detection Rules"
+version: "1.0.0"
+attack_type: "SQL Injection"
+description: "Detects SQL injection signatures, boolean logic, stacked queries, time delays, and union extractions in URLs and parameters."
+rules:
+  - id: "SQLI-001"
+    name: "Union-Based SQL Injection"
+    severity: "CRITICAL"
+    mitre_attack_id: "T1190"
+    pattern: '(?i)(?:union\s+(?:all\s+)?select\s+)'
+    description: "Detected UNION SELECT attempt attempting unauthorized database extraction."
+
+  - id: "SQLI-002"
+    name: "Boolean-Based SQL Injection"
+    severity: "HIGH"
+    mitre_attack_id: "T1190"
+    pattern: '(?i)(?:[''"]\s*(?:or|and)\s*[''"]?\w+[''"]?\s*=\s*[''"]?\w+[''"]?|\b(?:or|and)\s+\d+=\d+|\b(?:or|and)\s+[''"][^''"]+[''"]\s*=\s*[''"][^''"]+[''"])'
+    description: "Detected boolean SQL injection payload forcing truth condition (e.g., ' OR '1'='1)."
+
+  - id: "SQLI-003"
+    name: "Time-Based Blind SQL Injection"
+    severity: "HIGH"
+    mitre_attack_id: "T1190"
+    pattern: '(?i)(?:(?:sleep|benchmark|waitfor\s+delay|pg_sleep)\s*\(\s*\d+)'
+    description: "Detected time-delay injection function targeting database execution delays."
+
+  - id: "SQLI-004"
+    name: "Database Schema Enumeration"
+    severity: "HIGH"
+    mitre_attack_id: "T1190"
+    pattern: '(?i)(?:information_schema\.(?:tables|columns|schemata)|sys\.tables|all_tab_columns)'
+    description: "Detected SQL metadata enumeration targeting system schema tables."
+
+  - id: "SQLI-005"
+    name: "SQL Comment & Stacked Commands"
+    severity: "MEDIUM"
+    mitre_attack_id: "T1190"
+    pattern: '(?i)(?:(?:--|#|/\*).*?(?:drop|alter|truncate|insert|update|delete|exec|xp_cmdshell))'
+    description: "Detected SQL comment trick preceding destructive command or procedure call."

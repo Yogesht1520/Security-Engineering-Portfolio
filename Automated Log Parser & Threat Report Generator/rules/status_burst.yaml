@@ -1,0 +1,20 @@
+name: "HTTP Status Code Anomaly & Fuzzing Burst Rules"
+version: "1.0.0"
+attack_type: "Status-Code Burst Anomaly"
+description: "Detects anomalous bursts of HTTP 4xx client errors or 5xx server errors within a short sliding window, indicative of directory discovery, API fuzzing, or vulnerability probing."
+rule_id: "BURST-001"
+severity: "MEDIUM"
+mitre_attack_id: "T1595.003"
+description_template: "Detected burst of {count} anomalous HTTP {status_types} responses within {window_seconds}s from IP {ip}."
+
+window_seconds: 30
+threshold_count: 20
+
+monitored_status_codes:
+  - 400
+  - 401
+  - 403
+  - 404
+  - 500
+  - 502
+  - 503

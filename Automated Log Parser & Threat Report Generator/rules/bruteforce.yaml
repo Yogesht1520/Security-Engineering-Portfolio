@@ -1,0 +1,30 @@
+name: "Authentication Brute-Force & Credential Stuffing Rules"
+version: "1.0.0"
+attack_type: "Brute-Force Attack"
+description: "Detects rapid failed authentication bursts and credential stuffing attempts targeting authentication endpoints within a sliding time window."
+rule_id: "BRUTE-001"
+severity: "HIGH"
+mitre_attack_id: "T1110"
+description_template: "Detected {count} failed requests to auth endpoint '{endpoint}' within {window_seconds}s from IP {ip}."
+
+window_seconds: 60
+threshold_count: 10
+
+target_endpoints:
+  - "/login"
+  - "/signin"
+  - "/wp-login.php"
+  - "/xmlrpc.php"
+  - "/api/v1/auth"
+  - "/api/v1/login"
+  - "/api/auth/token"
+  - "/admin/login"
+  - "/administrator"
+  - "/user/login"
+  - "/oauth/token"
+
+target_status_codes:
+  - 401
+  - 403
+  - 429
+  - 200 # For APIs returning 200 with failed attempts when combined with endpoint matching

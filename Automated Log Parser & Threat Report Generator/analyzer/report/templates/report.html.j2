@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ title }} - Security Threat Analysis Report</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    {{ inline_css }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header Banner -->
+    <header class="header-banner">
+      <div class="header-title-group">
+        <h1>
+          <span>🛡️ Automated Log Threat Analysis Report</span>
+          <span class="badge-soc">SOC / SIEM Grade</span>
+        </h1>
+        <p>Source Log: <strong class="mono" style="color:#f0f6fc;">{{ summary.log_source }}</strong> | Generated: {{ summary.generated_at }}</p>
+      </div>
+      <div class="header-meta">
+        <div class="meta-item">
+          <span>Events Analyzed</span>
+          <strong>{{ "{:,}".format(summary.total_lines) }}</strong>
+        </div>
+        <div class="meta-item">
+          <span>Parsing Throughput</span>
+          <strong>{{ "{:,.0f}".format(summary.lines_per_second) }} lines/s</strong>
+        </div>
+        <div class="meta-item">
+          <span>Total Findings</span>
+          <strong style="color: #f85149;">{{ summary.total_findings }}</strong>
+        </div>
+      </div>
+    </header>
+
+    <!-- KPI Summary Row -->
+    <section class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">Total Security Threats</div>
+        <div class="kpi-value" style="color: #f85149;">{{ summary.total_findings }}</div>
+        <div class="kpi-sub">Across {{ summary.total_attack_types }} distinct vectors</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Unique Attacker IPs</div>
+        <div class="kpi-value" style="color: #d29922;">{{ summary.unique_attacker_ips }}</div>
+        <div class="kpi-sub">From {{ summary.unique_countries }} countries</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Top Threat Category</div>
+        <div class="kpi-value" style="font-size: 20px; color: #58a6ff;">{{ summary.top_attack_type or 'None' }}</div>
+        <div class="kpi-sub">{{ summary.top_attack_count }} events detected</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Highest Threat Severity</div>
+        <div class="kpi-value">
+          <span class="severity-pill sev-{{ summary.highest_severity }}">{{ summary.highest_severity }}</span>
+        </div>
+        <div class="kpi-sub">{{ summary.critical_high_count }} Critical / High priority</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Log Ingestion Health</div>
+        <div class="kpi-value" style="color: #3fb950;">{{ "{:.1f}%".format(summary.parse_health_pct) }}</div>
+        <div class="kpi-sub">{{ summary.malformed_lines }} malformed lines skipped</div>
+      </div>
+    </section>
+
+    <!-- Primary Charts Grid -->
+    <section class="charts-grid">
+      <div class="chart-card">
+        {{ timeline_chart | safe }}
+      </div>
+      <div class="chart-card">
+        {{ attack_breakdown_chart | safe }}
+      </div>
+    </section>
+
+    <!-- Secondary Charts Row -->
+    <section class="charts-row-secondary">
+      <div class="chart-card">
+        {{ top_ips_chart | safe }}
+      </div>
+      <div class="chart-card">
+        {{ severity_chart | safe }}
+      </div>
+    </section>
+
+    <!-- Top Offending IPs Table -->
+    <section class="card-table-wrapper">
+      <div class="table-header-bar">
+        <h2 class="section-title">🚨 Top Threat Origin Sources & Geolocation</h2>
+        <span style="font-size: 13px; color: var(--text-muted);">Enriched via MaxMind GeoIP2 & rDNS</span>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Attacker IP</th>
+            <th>Location</th>
+            <th>rDNS Hostname / ASN</th>
+            <th>Threats Detected</th>
+            <th>Top Vector</th>
+            <th>Peak Severity</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in top_offenders %}
+          <tr>
+            <td class="mono"><strong>{{ item.ip }}</strong></td>
+            <td>
+              <span>{{ item.flag_emoji }} {{ item.country_name }}</span>
+              {% if item.city and item.city != 'Unknown' %}
+              <span style="color: var(--text-muted); font-size: 11px;">({{ item.city }})</span>
+              {% endif %}
+            </td>
+            <td class="mono" style="color: #8b949e;">
+              {{ item.rdns_hostname or item.asn_org or '--' }}
+            </td>
+            <td><strong>{{ item.count }}</strong></td>
+            <td><span class="badge-soc">{{ item.top_attack_type }}</span></td>
+            <td>
+              <span class="severity-pill sev-{{ item.highest_severity }}">{{ item.highest_severity }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+          {% if not top_offenders %}
+          <tr>
+            <td colspan="6" style="text-align:center; padding: 20px; color: var(--text-muted);">No offending IPs identified.</td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Detailed Security Findings Table -->
+    <section class="card-table-wrapper">
+      <div class="table-header-bar">
+        <h2 class="section-title">🔍 Detailed Security Findings Log ({{ findings|length }})</h2>
+        <input type="text" id="findingSearch" class="search-input" placeholder="Filter by IP, rule, attack vector, payload...">
+      </div>
+      <table class="data-table" id="findingsTable">
+        <thead>
+          <tr>
+            <th style="width: 100px;">Severity</th>
+            <th style="width: 130px;">Rule ID</th>
+            <th style="width: 180px;">Attack Type</th>
+            <th style="width: 170px;">Source IP & Origin</th>
+            <th style="width: 160px;">Timestamp (UTC)</th>
+            <th>Description & Raw Evidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in findings %}
+          <tr class="finding-row" data-search="{{ f.severity }} {{ f.rule_id }} {{ f.attack_type }} {{ f.ip }} {{ f.geo_country }} {{ f.description }} {{ f.evidence }}">
+            <td>
+              <span class="severity-pill sev-{{ f.severity }}">{{ f.severity }}</span>
+            </td>
+            <td class="mono">
+              <strong>{{ f.rule_id }}</strong>
+              {% if f.metadata.mitre_attack_id %}
+              <div style="font-size: 10px; color: #58a6ff;">{{ f.metadata.mitre_attack_id }}</div>
+              {% endif %}
+            </td>
+            <td><strong>{{ f.attack_type }}</strong></td>
+            <td>
+              <div class="mono"><strong>{{ f.ip }}</strong></div>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                {{ f.geo_country or 'Unknown' }}
+              </div>
+            </td>
+            <td class="mono" style="font-size: 11px;">
+              {{ f.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
+            </td>
+            <td>
+              <div>{{ f.description }}</div>
+              <details class="evidence-drawer">
+                <summary>Inspect Matched Evidence (Line {{ f.metadata.get('line_number', '-') }})</summary>
+                <div class="evidence-block">{{ f.evidence }}</div>
+              </details>
+            </td>
+          </tr>
+          {% endfor %}
+          {% if not findings %}
+          <tr>
+            <td colspan="6" style="text-align: center; padding: 24px; color: #3fb950;">
+              ✨ Zero threats detected in this log file.
+            </td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+      <p>Automated Log Parser & Threat Report Generator | Security-Engineering-Portfolio | Aligns with Security+ / CEH / MITRE ATT&CK</p>
+    </footer>
+  </div>
+
+  <script>
+    // Live table search filtering
+    document.getElementById('findingSearch').addEventListener('input', function(e) {
+      const term = e.target.value.toLowerCase();
+      const rows = document.querySelectorAll('.finding-row');
+      rows.forEach(row => {
+        const text = row.getAttribute('data-search').toLowerCase();
+        row.style.display = text.includes(term) ? '' : 'none';
+      });
+    });
+  </script>
+</body>
+</html>

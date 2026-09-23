@@ -1,0 +1,476 @@
+{
+  "title": "SOC Web Threat Analysis Report",
+  "summary": {
+    "log_source": "attack_demo.log",
+    "generated_at": "2026-09-23 20:30:24 UTC",
+    "total_lines": 273,
+    "parsed_lines": 273,
+    "malformed_lines": 0,
+    "duration_seconds": 0.059167,
+    "lines_per_second": 4614.05851234641,
+    "total_findings": 18,
+    "unique_attacker_ips": 5,
+    "unique_countries": 5,
+    "total_attack_types": 5,
+    "top_attack_type": "Path Traversal",
+    "top_attack_count": 7,
+    "highest_severity": "CRITICAL",
+    "critical_high_count": 14,
+    "parse_health_pct": 100.0,
+    "severity_counts": {
+      "CRITICAL": 5,
+      "HIGH": 9,
+      "MEDIUM": 3,
+      "LOW": 1
+    },
+    "attack_type_counts": {
+      "SQL Injection": 4,
+      "Path Traversal": 7,
+      "Scanner Reconnaissance": 5,
+      "Brute-Force Attack": 1,
+      "Status-Code Burst Anomaly": 1
+    }
+  },
+  "top_offenders": [
+    {
+      "ip": "45.33.32.156",
+      "country_name": "United States",
+      "country_code": "US",
+      "flag_emoji": "\ud83c\uddfa\ud83c\uddf8",
+      "city": "Dallas",
+      "rdns_hostname": null,
+      "asn_org": "Linode, LLC",
+      "count": 7,
+      "top_attack_type": "Path Traversal",
+      "highest_severity": "CRITICAL"
+    },
+    {
+      "ip": "194.26.29.112",
+      "country_name": "Russia",
+      "country_code": "RU",
+      "flag_emoji": "\ud83c\uddf7\ud83c\uddfa",
+      "city": "Moscow",
+      "rdns_hostname": null,
+      "asn_org": "Hostkey B.V.",
+      "count": 5,
+      "top_attack_type": "Scanner Reconnaissance",
+      "highest_severity": "HIGH"
+    },
+    {
+      "ip": "185.220.101.5",
+      "country_name": "Netherlands",
+      "country_code": "NL",
+      "flag_emoji": "\ud83c\uddf3\ud83c\uddf1",
+      "city": "Amsterdam",
+      "rdns_hostname": null,
+      "asn_org": "Tor Exit Node",
+      "count": 4,
+      "top_attack_type": "SQL Injection",
+      "highest_severity": "CRITICAL"
+    },
+    {
+      "ip": "91.240.118.80",
+      "country_name": "Bulgaria",
+      "country_code": "BG",
+      "flag_emoji": "\ud83c\udde7\ud83c\uddec",
+      "city": "Sofia",
+      "rdns_hostname": null,
+      "asn_org": "Telepoint Ltd",
+      "count": 1,
+      "top_attack_type": "Brute-Force Attack",
+      "highest_severity": "HIGH"
+    },
+    {
+      "ip": "103.203.57.18",
+      "country_name": "India",
+      "country_code": "IN",
+      "flag_emoji": "\ud83c\uddee\ud83c\uddf3",
+      "city": "Mumbai",
+      "rdns_hostname": null,
+      "asn_org": "Tata Communications",
+      "count": 1,
+      "top_attack_type": "Status-Code Burst Anomaly",
+      "highest_severity": "MEDIUM"
+    }
+  ],
+  "findings": [
+    {
+      "rule_id": "SQLI-001",
+      "severity": "CRITICAL",
+      "attack_type": "SQL Injection",
+      "ip": "185.220.101.5",
+      "timestamp": "2026-09-24T10:02:08+00:00",
+      "location": "Decoded URI Path",
+      "description": "Detected UNION SELECT attempt attempting unauthorized database extraction.",
+      "evidence": "UNION SELECT ",
+      "geo_country": "Netherlands",
+      "geo_country_code": "NL",
+      "geo_city": "Amsterdam",
+      "rdns_hostname": null,
+      "metadata": {
+        "mitre_attack_id": "T1190",
+        "rule_name": "Union-Based SQL Injection",
+        "line_number": 51,
+        "matched_payload": "/products?category=books' UNION SELECT null,username,password FROM users--",
+        "asn_org": "Tor Exit Node"
+      }
+    },
+    {
+      "rule_id": "SQLI-002",
+      "severity": "HIGH",
+      "attack_type": "SQL Injection",
+      "ip": "185.220.101.5",
+      "timestamp": "2026-09-24T10:02:10+00:00",
+      "location": "Decoded URI Path",
+      "description": "Detected boolean SQL injection payload forcing truth condition (e.g., ' OR '1'='1).",
+      "evidence": "' OR '1'='1",
+      "geo_country": "Netherlands",
+      "geo_country_code": "NL",
+      "geo_city": "Amsterdam",
+      "rdns_hostname": null,
+      "metadata": {
+        "mitre_attack_id": "T1190",
+        "rule_name": "Boolean-Based SQL Injection",
+        "line_number": 52,
+        "matched_payload": "/search?q=test' OR '1'='1",
+        "asn_org": "Tor Exit Node"
+      }
+    },
+    {
+      "rule_id": "SQLI-003",
+      "severity": "HIGH",
+      "attack_type": "SQL Injection",
+      "ip": "185.220.101.5",
+      "timestamp": "2026-09-24T10:02:12+00:00",
+      "location": "URI Path",
+      "description": "Detected time-delay injection function targeting database execution delays.",
+      "evidence": "SLEEP(5",
+      "geo_country": "Netherlands",
+      "geo_country_code": "NL",
+      "geo_city": "Amsterdam",
+      "rdns_hostname": null,
+      "metadata": {
+        "mitre_attack_id": "T1190",
+        "rule_name": "Time-Based Blind SQL Injection",
+        "line_number": 53,
+        "matched_payload": "/api/items?id=1%20AND%20SLEEP(5)",
+        "asn_org": "Tor Exit Node"
+      }
+    },
+    {
+      "rule_id": "SQLI-004",
+      "severity": "HIGH",
+      "attack_type": "SQL Injection",
+      "ip": "185.220.101.5",
+      "timestamp": "2026-09-24T10:02:14+00:00",
+      "location": "URI Path",
+      "description": "Detected SQL metadata enumeration targeting system schema tables.",
+      "evidence": "information_schema.tables",
+      "geo_country": "Netherlands",
+      "geo_country_code": "NL",
+      "geo_city": "Amsterdam",
+      "rdns_hostname": null,
+      "metadata": {
+        "mitre_attack_id": "T1190",
+        "rule_name": "Database Schema Enumeration",
+        "line_number": 54,
+        "matched_payload": "/catalog?filter=electronics'%20AND%20(SELECT%20COUNT(*)%20FROM%20information_schema.tables)--",
+        "asn_org": "Tor Exit Node"
+      }
+    },
+    {
+      "rule_id": "TRAV-001",
+      "severity": "HIGH",
+      "attack_type": "Path Traversal",
+      "ip": "45.33.32.156",
+      "timestamp": "2026-09-24T10:03:30+00:00",
+      "location": "URI Path",
+      "description": "Detected directory climbing sequence (../, ..\\, or encoded equivalents) attempting unauthorized filesystem traversal.",
+      "evidence": "../",
+      "geo_country": "United States",
+      "geo_country_code": "US",
+      "geo_city": "Dallas",
+      "rdns_hostname": null,
+      "metadata": {
+        "mitre_attack_id": "T1083",
+        "rule_name": "Standard & Encoded Directory Climbing",
+        "line_number": 85,
+        "matched_payload": "/view?file=../../../../etc/passwd",
+        "asn_org": "Linode, LLC"
+      }
+    },
+    {
+      "rule_id": "TRAV-002",
+      "severity": "CRITICAL",
+      "attack_type": "Path Traversal",
+      "ip": "45.33.32.156",
+      "timestamp": "2026-09-24T10:03:30+00:00",
+      "location": "URI Path",
+      "description": "Detected direct or traversed access to sensitive Unix system configuration files.",
+      "evidence": "/etc/passwd",
+      "geo_country": "United States",
+      "geo_country_code": "US",
+      "geo_city": "Dallas",
+      "rdns_hostname": null,
+      "metadata": {
+        "mitre_attack_id": "T1005",
+        "rule_name": "Unix System File Disclosure",
+        "line_number": 85,
+        "matched_payload": "/view?file=../../../../etc/passwd",
+        "asn_org": "Linode, LLC"
+      }
+    },
+    {
+      "rule_id": "TRAV-001",
+      "severity": "HIGH",
+      "attack_type": "Path Traversal",
+      "ip": "45.33.32.156",
+      "timestamp": "2026-09-24T10:03:32+00:00",
+      "location": "Decoded URI Path",
+      "description": "Detected directory climbing sequence (../, ..\\, or encoded equivalents) attempting unauthorized filesystem traversal.",
+      "evidence": "../",
+      "geo_country": "United States",
+      "geo_country_code": "US",
+      "geo_city": "Dallas",
+      "rdns_hostname": null,
+      "metadata": {
+        "mitre_attack_id": "T1083",
+        "rule_name": "Standard & Encoded Directory Climbing",
+        "line_number": 86,
+        "matched_payload": "/download?path=../../../etc/shadow",
+        "asn_org": "Linode, LLC"
+      }
+    },
+    {
+      "rule_id": "TRAV-002",
+      "severity": "CRITICAL",
+      "attack_type": "Path Traversal",
+      "ip": "45.33.32.156",
+      "timestamp": "2026-09-24T10:03:32+00:00",
+      "location": "Decoded URI Path",
+      "description": "Detected direct or traversed access to sensitive Unix system configuration files.",
+      "evidence": "/etc/shadow",
+      "geo_country": "United States",
+      "geo_country_code": "US",
+      "geo_city": "Dallas",
+      "rdns_hostname": null,
+      "metadata": {
+        "mitre_attack_id": "T1005",
+        "rule_name": "Unix System File Disclosure",
+        "line_number": 86,
+        "matched_payload": "/download?path=../../../etc/shadow",
+        "asn_org": "Linode, LLC"
+      }
+    },
+    {
+      "rule_id": "TRAV-001",
+      "severity": "HIGH",
+      "attack_type": "Path Traversal",
+      "ip": "45.33.32.156",
+      "timestamp": "2026-09-24T10:03:34+00:00",
+      "location": "URI Path",
+      "description": "Detected directory climbing sequence (../, ..\\, or encoded equivalents) attempting unauthorized filesystem traversal.",
+      "evidence": "%252e%252e%252f",
+      "geo_country": "United States",
+      "geo_country_code": "US",
+      "geo_city": "Dallas",
+      "rdns_hostname": null,
+      "metadata": {
+        "mitre_attack_id": "T1083",
+        "rule_name": "Standard & Encoded Directory Climbing",
+        "line_number": 87,
+        "matched_payload": "/static/img?doc=..%252e%252e%252f..%252e%252e%252fetc%2fpasswd",
+        "asn_org": "Linode, LLC"
+      }
+    },
+    {
+      "rule_id": "TRAV-002",
+      "severity": "CRITICAL",
+      "attack_type": "Path Traversal",
+      "ip": "45.33.32.156",
+      "timestamp": "2026-09-24T10:03:34+00:00",
+      "location": "Decoded URI Path",
+      "description": "Detected direct or traversed access to sensitive Unix system configuration files.",
+      "evidence": "/etc/passwd",
+      "geo_country": "United States",
+      "geo_country_code": "US",
+      "geo_city": "Dallas",
+      "rdns_hostname": null,
+      "metadata": {
+        "mitre_attack_id": "T1005",
+        "rule_name": "Unix System File Disclosure",
+        "line_number": 87,
+        "matched_payload": "/static/img?doc=..../..../etc/passwd",
+        "asn_org": "Linode, LLC"
+      }
+    },
+    {
+      "rule_id": "TRAV-003",
+      "severity": "CRITICAL",
+      "attack_type": "Path Traversal",
+      "ip": "45.33.32.156",
+      "timestamp": "2026-09-24T10:03:36+00:00",
+      "location": "URI Path",
+      "description": "Detected target path probing sensitive Windows system configuration or credential files.",
+      "evidence": "C:\\Windows\\win.ini",
+      "geo_country": "United States",
+      "geo_country_code": "US",
+      "geo_city": "Dallas",
+      "rdns_hostname": null,
+      "metadata": {
+        "mitre_attack_id": "T1005",
+        "rule_name": "Windows System File Disclosure",
+        "line_number": 88,
+        "matched_payload": "/read?file=C:\\Windows\\win.ini",
+        "asn_org": "Linode, LLC"
+      }
+    },
+    {
+      "rule_id": "SCAN-001",
+      "severity": "HIGH",
+      "attack_type": "Scanner Reconnaissance",
+      "ip": "194.26.29.112",
+      "timestamp": "2026-09-24T10:05:05+00:00",
+      "location": "User-Agent Header",
+      "description": "Detected automated SQL injection scanner sqlmap in User-Agent header.",
+      "evidence": "sqlmap/1.7.2",
+      "geo_country": "Russia",
+      "geo_country_code": "RU",
+      "geo_city": "Moscow",
+      "rdns_hostname": null,
+      "metadata": {
+        "mitre_attack_id": "T1595.002",
+        "rule_name": "SQL Injection Tools (sqlmap)",
+        "line_number": 119,
+        "user_agent_full": "sqlmap/1.7.2#stable",
+        "asn_org": "Hostkey B.V."
+      }
+    },
+    {
+      "rule_id": "SCAN-002",
+      "severity": "HIGH",
+      "attack_type": "Scanner Reconnaissance",
+      "ip": "194.26.29.112",
+      "timestamp": "2026-09-24T10:05:06+00:00",
+      "location": "User-Agent Header",
+      "description": "Detected automated vulnerability assessment and web application security scanner.",
+      "evidence": "Nikto",
+      "geo_country": "Russia",
+      "geo_country_code": "RU",
+      "geo_city": "Moscow",
+      "rdns_hostname": null,
+      "metadata": {
+        "mitre_attack_id": "T1595.002",
+        "rule_name": "Vulnerability Scanners (Nikto, OpenVAS, Nessus, Acunetix)",
+        "line_number": 120,
+        "user_agent_full": "Mozilla/5.00 (Nikto/2.1.6) (Evasions:None) (Test:Port Check)",
+        "asn_org": "Hostkey B.V."
+      }
+    },
+    {
+      "rule_id": "SCAN-004",
+      "severity": "MEDIUM",
+      "attack_type": "Scanner Reconnaissance",
+      "ip": "194.26.29.112",
+      "timestamp": "2026-09-24T10:05:07+00:00",
+      "location": "User-Agent Header",
+      "description": "Detected network port scanning or active reconnaissance tool fingerprint.",
+      "evidence": "Nuclei",
+      "geo_country": "Russia",
+      "geo_country_code": "RU",
+      "geo_city": "Moscow",
+      "rdns_hostname": null,
+      "metadata": {
+        "mitre_attack_id": "T1595.001",
+        "rule_name": "Network & Service Probers (Nmap, Masscan, Zgrab, Nuclei)",
+        "line_number": 121,
+        "user_agent_full": "Nuclei - Open-source project (github.com/projectdiscovery/nuclei)",
+        "asn_org": "Hostkey B.V."
+      }
+    },
+    {
+      "rule_id": "SCAN-004",
+      "severity": "MEDIUM",
+      "attack_type": "Scanner Reconnaissance",
+      "ip": "194.26.29.112",
+      "timestamp": "2026-09-24T10:05:08+00:00",
+      "location": "User-Agent Header",
+      "description": "Detected network port scanning or active reconnaissance tool fingerprint.",
+      "evidence": "Nmap Scripting Engine",
+      "geo_country": "Russia",
+      "geo_country_code": "RU",
+      "geo_city": "Moscow",
+      "rdns_hostname": null,
+      "metadata": {
+        "mitre_attack_id": "T1595.001",
+        "rule_name": "Network & Service Probers (Nmap, Masscan, Zgrab, Nuclei)",
+        "line_number": 122,
+        "user_agent_full": "Nmap Scripting Engine",
+        "asn_org": "Hostkey B.V."
+      }
+    },
+    {
+      "rule_id": "SCAN-000",
+      "severity": "LOW",
+      "attack_type": "Scanner Reconnaissance",
+      "ip": "194.26.29.112",
+      "timestamp": "2026-09-24T10:05:09+00:00",
+      "location": "User-Agent Header",
+      "description": "Request sent with missing or stripped User-Agent header.",
+      "evidence": "User-Agent: (empty/missing)",
+      "geo_country": "Russia",
+      "geo_country_code": "RU",
+      "geo_city": "Moscow",
+      "rdns_hostname": null,
+      "metadata": {
+        "mitre_attack_id": "T1595",
+        "rule_name": "Missing User-Agent Header",
+        "line_number": 123,
+        "asn_org": "Hostkey B.V."
+      }
+    },
+    {
+      "rule_id": "BRUTE-001",
+      "severity": "HIGH",
+      "attack_type": "Brute-Force Attack",
+      "ip": "91.240.118.80",
+      "timestamp": "2026-09-24T10:06:54+00:00",
+      "location": "Authentication Endpoint",
+      "description": "Detected 10 failed requests to auth endpoint '/wp-login.php' within 60s from IP 91.240.118.80.",
+      "evidence": "10 failed auth attempts in 60s window (latest: POST /wp-login.php -> 401)",
+      "geo_country": "Bulgaria",
+      "geo_country_code": "BG",
+      "geo_city": "Sofia",
+      "rdns_hostname": null,
+      "metadata": {
+        "mitre_attack_id": "T1110",
+        "failed_attempts": 10,
+        "window_seconds": 60,
+        "line_number": 163,
+        "target_endpoint": "/wp-login.php",
+        "asn_org": "Telepoint Ltd"
+      }
+    },
+    {
+      "rule_id": "BURST-001",
+      "severity": "MEDIUM",
+      "attack_type": "Status-Code Burst Anomaly",
+      "ip": "103.203.57.18",
+      "timestamp": "2026-09-24T10:08:30+00:00",
+      "location": "HTTP Status Monitor",
+      "description": "Detected burst of 20 anomalous HTTP 4xx/5xx responses within 30s from IP 103.203.57.18.",
+      "evidence": "20 anomalous HTTP 404 errors in 30s window (latest path: /fuzz/path_19_8679)",
+      "geo_country": "India",
+      "geo_country_code": "IN",
+      "geo_city": "Mumbai",
+      "rdns_hostname": null,
+      "metadata": {
+        "mitre_attack_id": "T1595.003",
+        "error_count": 20,
+        "window_seconds": 30,
+        "line_number": 218,
+        "asn_org": "Tata Communications"
+      }
+    }
+  ]
+}

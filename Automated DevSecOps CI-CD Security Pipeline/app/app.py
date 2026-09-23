@@ -29,7 +29,7 @@ def search():
     # DELIBERATELY INSECURE SQL PATTERN - DO NOT USE IN PRODUCTION
     # We are string-concatenating user input directly into the SQL query
     # This is here for Semgrep (SAST) to detect in Phase 3
-    sql= c.execute("SELECT username, email FROM users WHERE username = ?", (query,))
+    sql = "SELECT username, email FROM users WHERE username = '" + query + "'"
     
     try:
         c = db_conn.cursor()
