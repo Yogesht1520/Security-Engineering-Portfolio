@@ -49,7 +49,7 @@ Incident Response
 
 ---
 
-### 2. [Automated Log Parser & Threat Report Generator](https://github.com/Yogesht1520/sec-portfolio-02-log-analyzer)
+### 2. [Automated Log Parser & Threat Report Generator](./Automated%20Log%20Parser%20&%20Threat%20Report%20Generator)
 **The Problem:** Raw server logs contain evidence of attacks, but nobody reads thousands of lines by hand.
 **Architecture / Tools:** Python (streaming parsers) · Jinja2 · Plotly · MaxMind GeoLite2
 **Implementation:** A pluggable detection engine (SQLi, brute-force, path traversal, scanner fingerprints) that processes multi-GB logs without loading them into memory, and outputs a dark-themed, SOC-style HTML report.
