@@ -42,10 +42,14 @@ coverage.xml
 htmlcov/
 .hypothesis/
 
-# Local cache databases
+# Local cache databases and checkpoints
 .ip_cache.sqlite
 *.sqlite
 *.db
+.scan_checkpoint.json
+*.checkpoint.json
+*.telemetry.json
+*.telemetry.jsonl
 
 # Temporary & benchmark logs
 benchmark_temp.log
@@ -62,3 +66,23 @@ desktop.ini
 .idea/
 *.swp
 *.swo
+
+# --- Generated report outputs (never commit scan results) ---
+output/
+report.html
+report.md
+report.json
+*.ndjson
+
+# --- MaxMind GeoIP database files (binary, large, requires license) ---
+data/
+*.mmdb
+
+# --- Secrets & credentials (never commit tokens or keys) ---
+.env.local
+.env.production
+secrets.yaml
+secrets.json
+*.key
+*.pem
+*.token

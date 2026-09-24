@@ -267,17 +267,30 @@ class IPEnricher:
         self.memory_cache[ip] = result
         return result
 
-    def enrich_findings(self, findings: Iterable[Finding]) -> List[Finding]:
+    def enrich_findings(self, findings: Iterable[Finding], max_workers: int = 20) -> List[Finding]:
         """
-        Batch-enrich a collection of findings with deduplicated IP lookups.
+        Batch-enrich a collection of findings with deduplicated concurrent IP lookups.
         Modifies and returns the findings list.
         """
-        findings_list = list(findings)
-        unique_ips = {f.ip for f in findings_list if f.ip}
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        ip_map: Dict[str, IPEnrichmentResult] = {}
-        for ip in unique_ips:
-            ip_map[ip] = self.lookup(ip)
+        findings_list = list(findings)
+        unique_ips = [ip for ip in set(f.ip for f in findings_list if f.ip)]
+
+        # Identify unique IPs not yet in fast memory cache
+        uncached_ips = [ip for ip in unique_ips if ip not in self.memory_cache]
+
+        if uncached_ips:
+            worker_count = min(len(uncached_ips), max_workers)
+            with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                futures = [executor.submit(self.lookup, ip) for ip in uncached_ips]
+                for f in as_completed(futures):
+                    try:
+                        f.result()
+                    except Exception as e:
+                        logger.debug("Async lookup error: %s", e)
+
+        ip_map: Dict[str, IPEnrichmentResult] = {ip: self.lookup(ip) for ip in unique_ips}
 
         for finding in findings_list:
             if finding.ip in ip_map:

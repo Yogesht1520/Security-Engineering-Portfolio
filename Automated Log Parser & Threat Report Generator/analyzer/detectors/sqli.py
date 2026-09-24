@@ -5,7 +5,8 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
 from ..models import Finding, LogEntry
-from .base import BaseDetector
+from .base import BaseDetector, RuleValidationError
+from .schema import validate_pattern_rules
 
 
 def multi_url_decode(value: str, max_rounds: int = 3) -> str:
@@ -25,25 +26,34 @@ def multi_url_decode(value: str, max_rounds: int = 3) -> str:
 class SQLiDetector(BaseDetector):
     """Detects SQL Injection payloads in requests and referrers."""
 
-    def __init__(self, config_path: Optional[Union[str, Path]] = None):
+    def __init__(self, config_path: Optional[Union[str, Path]] = None, strict: bool = True):
         if config_path is None:
             # Default to bundled rules
             config_path = Path(__file__).resolve().parent.parent.parent / "rules" / "sqli.yaml"
-        super().__init__(config_path=config_path)
+        super().__init__(config_path=config_path, strict=strict)
         self.compiled_rules: List[Tuple[dict, re.Pattern]] = []
         self._compile_rules()
 
     def _compile_rules(self) -> None:
         self.compiled_rules.clear()
+        if self.strict and self.config:
+            validate_pattern_rules(self.config, self.config_path, detector_label="SQLi")
         rules = self.config.get("rules", [])
         for rule in rules:
+            rule_id = rule.get("id", "UNKNOWN-SQLI")
             pattern = rule.get("pattern")
-            if pattern:
-                try:
-                    compiled = re.compile(pattern, re.IGNORECASE)
-                    self.compiled_rules.append((rule, compiled))
-                except re.error as e:
-                    continue
+            if not pattern:
+                msg = f"SQLi rule {rule_id} is missing required 'pattern' field."
+                if self.strict:
+                    raise RuleValidationError(msg)
+                continue
+            try:
+                compiled = re.compile(pattern, re.IGNORECASE)
+                self.compiled_rules.append((rule, compiled))
+            except re.error as e:
+                msg = f"Failed to compile regex for SQLi rule {rule_id} ('{pattern}'): {e}"
+                if self.strict:
+                    raise RuleValidationError(msg) from e
 
     def process(self, entry: LogEntry) -> List[Finding]:
         if not self.enabled:

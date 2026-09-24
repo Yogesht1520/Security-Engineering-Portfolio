@@ -38,8 +38,14 @@ COMMON_LOG_REGEX = re.compile(
 )
 
 
-def parse_datetime(ts_str: str) -> datetime:
-    """Parse web server timestamp string (e.g. '24/Sep/2026:01:21:29 +0530') into datetime."""
+def parse_datetime(ts_str: str) -> Optional[datetime]:
+    """
+    Parse web server timestamp string (e.g. '24/Sep/2026:01:21:29 +0530') into datetime.
+    Returns None if timestamp cannot be reliably parsed.
+    """
+    if not ts_str:
+        return None
+
     try:
         # Standard Apache/Nginx format
         return datetime.strptime(ts_str, "%d/%b/%Y:%H:%M:%S %z")
@@ -62,8 +68,8 @@ def parse_datetime(ts_str: str) -> datetime:
         except ValueError:
             continue
 
-    # Fallback to current UTC if completely unparseable
-    return datetime.now(timezone.utc)
+    # Return None so unparseable or corrupt dates are treated as malformed lines
+    return None
 
 
 def parse_request_line(request: str) -> Tuple[str, str, str]:
@@ -116,6 +122,10 @@ class LogParser:
         referrer = data.get("referrer") or "-"
         user_agent = data.get("user_agent") or "-"
 
+        timestamp = parse_datetime(raw_ts)
+        if timestamp is None:
+            return None
+
         # Clean escaped quotes in request/referrer/user_agent if present
         raw_req = raw_req.replace('\\"', '"')
         referrer = referrer.replace('\\"', '"')
@@ -132,8 +142,6 @@ class LogParser:
             bytes_sent = int(raw_bytes) if raw_bytes != "-" else 0
         except ValueError:
             bytes_sent = 0
-
-        timestamp = parse_datetime(raw_ts)
 
         return LogEntry(
             ip=ip,
@@ -153,6 +161,7 @@ class LogParser:
         self,
         source: Union[str, Path, Iterable[Tuple[int, str]]],
         stats: Optional[ParserStats] = None,
+        start_offset: int = 0,
     ) -> Generator[LogEntry, None, None]:
         """
         Generator yielding LogEntry objects from a file path or an iterable of (line_num, line).
@@ -166,7 +175,7 @@ class LogParser:
 
         line_stream: Iterable[Tuple[int, str]]
         if isinstance(source, (str, Path)):
-            line_stream = stream_lines(source)
+            line_stream = stream_lines(source, start_offset=start_offset)
         else:
             line_stream = source
 

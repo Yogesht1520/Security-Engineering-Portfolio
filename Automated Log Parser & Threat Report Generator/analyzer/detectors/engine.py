@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Union
 
 from ..models import Finding, LogEntry
-from .base import BaseDetector
+from .base import BaseDetector, RuleValidationError
 from .bruteforce import BruteForceDetector
 from .scanner_ua import ScannerUADetector
 from .sqli import SQLiDetector
@@ -14,19 +14,24 @@ from .traversal import TraversalDetector
 class DetectionEngine:
     """Central engine managing detector execution and findings aggregation."""
 
-    def __init__(self, rules_dir: Optional[Union[str, Path]] = None):
+    def __init__(
+        self,
+        rules_dir: Optional[Union[str, Path]] = None,
+        strict: bool = True,
+    ):
         self.rules_dir = Path(rules_dir) if rules_dir else Path(__file__).resolve().parent.parent.parent / "rules"
+        self.strict = strict
         self.detectors: List[BaseDetector] = []
         self._initialize_default_detectors()
 
     def _initialize_default_detectors(self) -> None:
         """Initialize all standard detectors with their respective YAML configurations."""
         self.detectors = [
-            SQLiDetector(config_path=self.rules_dir / "sqli.yaml"),
-            TraversalDetector(config_path=self.rules_dir / "traversal.yaml"),
-            ScannerUADetector(config_path=self.rules_dir / "scanner_ua.yaml"),
-            BruteForceDetector(config_path=self.rules_dir / "bruteforce.yaml"),
-            StatusBurstDetector(config_path=self.rules_dir / "status_burst.yaml"),
+            SQLiDetector(config_path=self.rules_dir / "sqli.yaml", strict=self.strict),
+            TraversalDetector(config_path=self.rules_dir / "traversal.yaml", strict=self.strict),
+            ScannerUADetector(config_path=self.rules_dir / "scanner_ua.yaml", strict=self.strict),
+            BruteForceDetector(config_path=self.rules_dir / "bruteforce.yaml", strict=self.strict),
+            StatusBurstDetector(config_path=self.rules_dir / "status_burst.yaml", strict=self.strict),
         ]
 
     def register_detector(self, detector: BaseDetector) -> None:

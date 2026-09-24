@@ -1,0 +1,52 @@
+name: Automated Log Parser & Threat Analyzer CI
+
+on:
+  push:
+    paths:
+      - 'Automated Log Parser & Threat Report Generator/**'
+      - '.github/workflows/security-log-analyzer-ci.yml'
+  pull_request:
+    paths:
+      - 'Automated Log Parser & Threat Report Generator/**'
+      - '.github/workflows/security-log-analyzer-ci.yml'
+
+jobs:
+  test:
+    name: Test on Python ${{ matrix.python-version }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ['3.11', '3.12', '3.13']
+
+    defaults:
+      run:
+        working-directory: './Automated Log Parser & Threat Report Generator'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Pytest Test Suite
+        run: |
+          python -m pytest -v
+
+      - name: Run Accuracy Benchmark
+        run: |
+          python benchmark_accuracy.py
+
+      - name: Run End-to-End Scan Pipeline
+        run: |
+          python scan.py sample_logs/attack_demo.log --out output/ci_report --format all --no-rdns

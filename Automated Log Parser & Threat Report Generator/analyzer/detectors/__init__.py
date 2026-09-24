@@ -1,5 +1,5 @@
 """Detector registry and public exports."""
-from .base import BaseDetector
+from .base import BaseDetector, RuleValidationError
 from .sqli import SQLiDetector
 from .traversal import TraversalDetector
 from .scanner_ua import ScannerUADetector
@@ -9,6 +9,7 @@ from .engine import DetectionEngine
 
 __all__ = [
     "BaseDetector",
+    "RuleValidationError",
     "SQLiDetector",
     "TraversalDetector",
     "ScannerUADetector",
