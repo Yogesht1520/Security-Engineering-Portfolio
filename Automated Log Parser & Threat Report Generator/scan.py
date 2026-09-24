@@ -21,6 +21,7 @@ from analyzer.parser import LogParser
 from analyzer.readers import stream_lines_with_offsets
 from analyzer.report import ReportBuilder
 from analyzer.service import create_service
+from analyzer.storage import SQLiteFindingStore
 from analyzer.telemetry import TelemetryEmitter
 
 
@@ -111,8 +112,8 @@ from analyzer.telemetry import TelemetryEmitter
 @click.option(
     "--host",
     type=str,
-    default="0.0.0.0",
-    help="Host address for HTTP REST API service mode (default: 0.0.0.0).",
+    default="127.0.0.1",
+    help="Host address for HTTP REST API service mode (default: 127.0.0.1).",
 )
 @click.option(
     "--forward-hec",
@@ -146,6 +147,13 @@ from analyzer.telemetry import TelemetryEmitter
     type=str,
     default=None,
     help="Webhook URL (Slack, MS Teams, SOC Alert) for real-time notifications.",
+)
+@click.option(
+    "--store-db",
+    "store_db",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Persist enriched findings to a SQLite database at the given path.",
 )
 @click.option(
     "--open",
@@ -182,6 +190,7 @@ def main(
     es_url: Optional[str],
     es_index: str,
     webhook_url: Optional[str],
+    store_db: Optional[Path],
     open_browser: bool,
     quiet: bool,
 ):
@@ -298,6 +307,13 @@ def main(
 
     enriched_findings = enricher.enrich_findings(raw_findings)
     enricher.close()
+
+    # 3b. Persist to SQLite finding store (optional)
+    if store_db:
+        db_store = SQLiteFindingStore(db_path=store_db)
+        db_store.add_findings(enriched_findings)
+        if not quiet and not json_logs:
+            click.echo(f"[*] Persisted {len(enriched_findings)} findings to SQLite store: {store_db}")
 
     # 4. Determine Output Format
     if report_format is None:
