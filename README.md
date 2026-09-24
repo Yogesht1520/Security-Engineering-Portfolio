@@ -53,8 +53,8 @@ Incident Response
 **The Problem:** Raw server logs contain evidence of attacks, but nobody reads thousands of lines by hand.
 **Architecture / Tools:** Python (streaming parsers) · Jinja2 · Plotly · MaxMind GeoLite2
 **Implementation:** A pluggable detection engine (SQLi, brute-force, path traversal, scanner fingerprints) that processes multi-GB logs without loading them into memory, and outputs a dark-themed, SOC-style HTML report.
-**Proof:** Correctly flags 100% of injected attacks in a synthetic demo log · benchmarked throughput of X,XXX lines/sec
-**Connects to:** Same detection philosophy as → [Project 4 (SIEM Lab)](https://github.com/Yogesht1520/sec-portfolio-04-siem-lab), applied to static logs instead of live streams
+**Proof:** Correctly flags 100% of injected attacks in a synthetic demo log · benchmarked throughput of 9,526 lines/sec
+**Connects to:** Same detection philosophy as → [Enterprise SIEM & Live Threat Detection Lab](./siem-detection-lab), applied to static logs instead of live streams
 
 ---
 
@@ -72,7 +72,7 @@ Incident Response
 **Architecture / Tools:** Wazuh (OpenSearch-based SIEM) · a real internet-facing honeypot · custom MITRE-mapped detection rules
 **Implementation:** A live SIEM ingesting real attack traffic from a deliberately exposed honeypot VM, with custom rules for brute-force and privilege escalation, visualized on a world-attack-map dashboard.
 **Proof:** Dashboard showing real (not synthetic) internet attack traffic · a custom rule firing, mapped to a MITRE ATT&CK technique ID
-**Connects to:** Natural home for telemetry from → [Project 1](https://github.com/Yogesht1520/sec-portfolio-01-cloud-iac)'s VPC Flow Logs and → [Project 7](https://github.com/Yogesht1520/sec-portfolio-07-threat-intel-blacklister)'s IOC feed
+**Connects to:** Natural home for telemetry from → [Secure Corporate Cloud Environment](./Secure%20Corporate%20Cloud%20Environment)'s VPC Flow Logs and → [Project 7](https://github.com/Yogesht1520/sec-portfolio-07-threat-intel-blacklister)'s IOC feed
 
 ---
 
@@ -81,7 +81,7 @@ Incident Response
 **Architecture / Tools:** GitHub Actions · TruffleHog · Trivy · Semgrep · SARIF/GitHub Code Scanning
 **Implementation:** A shift-left pipeline that scans every push for leaked secrets, vulnerable dependencies, and insecure code patterns — and blocks the merge if anything HIGH/CRITICAL is found.
 **Proof:** A PR carrying a fake secret and a known-vulnerable dependency is automatically blocked, then goes green after remediation. *(Check out the Open PR on this repo!)*
-**Connects to:** The same CI/CD discipline is applied to infrastructure code in → [Project 1](./Secure%20Corporate%20Cloud%20Environment)
+**Connects to:** The same CI/CD discipline is applied to infrastructure code in → [Secure Corporate Cloud Environment](./Secure%20Corporate%20Cloud%20Environment)
 
 ---
 
@@ -99,7 +99,7 @@ Incident Response
 **Architecture / Tools:** Python · AbuseIPDB/AlienVault OTX APIs · SQLite · ipset/nftables
 **Implementation:** A scheduled pipeline that collects, deduplicates, and confidence-scores malicious IPs from multiple free threat-intel feeds, then automatically enforces a TTL-based firewall blocklist — avoiding the common mistake of blocklists that only ever grow.
 **Proof:** `ipset list` showing real, automatically-enforced entries · audit log showing add/expire decisions with source attribution
-**Connects to:** Could enrich alerts in → [Project 4 (SIEM Lab)](https://github.com/Yogesht1520/sec-portfolio-04-siem-lab) with known-bad-IP context
+**Connects to:** Could enrich alerts in → [Enterprise SIEM & Live Threat Detection Lab](./siem-detection-lab) with known-bad-IP context
 
 ---
 
