@@ -31,7 +31,7 @@ The **Automated Log Parser & Threat Report Generator** is a production-grade cyb
 | Property | Value |
 |---|---|
 | 🚀 **Throughput (live proof)** | **~9,700 lines/sec on a single CPU core** (50,000 lines in 5.16s) |
-| 🎯 **Detection Accuracy** | **100% Precision, Recall, F1-Score** — zero false positives, zero false negatives |
+| 🎯 **Synthetic Benchmark** | **100% Precision, Recall, F1** on the defined signature corpus — see caveat in benchmark output |
 | 🧠 **Memory Model** | Generator pipeline for input: O(1) streaming for the reader and parser; O(findings) for in-memory accumulation |
 | 🛡️ **ReDoS Safety** | Verified — 100KB+ pathological payloads evaluated in <200ms per test |
 | ✅ **Test Coverage** | **57 tests across 15 suites** — all passing on Python 3.11, 3.12, 3.13 / Ubuntu & Windows |
@@ -361,7 +361,7 @@ tests/test_telemetry.py::test_telemetry_emitter_to_file PASSED           [100%]
 
 ---
 
-## 📊 Detection Accuracy Benchmark
+## 📊 Detection Benchmark (Synthetic Corpus)
 
 ```bash
 python benchmark_accuracy.py
@@ -369,8 +369,12 @@ python benchmark_accuracy.py
 
 ```text
 =================================================================
-🎯 Statistical Detection Accuracy & Precision/Recall Benchmark
+🎯 Synthetic Corpus Detection Benchmark — Precision / Recall / F1
 =================================================================
+Note: Corpus is generated to match the defined rule signatures.
+This measures classification performance on the synthetic baseline
+corpus — NOT real-world detection rate against novel or evaded input.
+
 [*] Generating labeled ground-truth corpus (1,000 total events)...
 [*] Processed 1,000 labeled lines in 0.142s (7,024 lines/sec)
 
@@ -382,13 +386,15 @@ python benchmark_accuracy.py
 │ Actual BENIGN (500)      │ FP = 0             │ TN = 500           │
 └──────────────────────────┴────────────────────┴────────────────────┘
 
-📈 STATISTICAL EVALUATION SCORES:
-  • Accuracy    : 100.00%  (Correct classification rate)
-  • Precision   : 100.00%  (Reliability of triggered alerts)
-  • Recall      : 100.00%  (Threat capture rate / Sensitivity)
-  • Specificity : 100.00%  (Benign noise suppression)
+📈 CLASSIFICATION SCORES (synthetic baseline corpus):
+  • Accuracy    : 100.00%  (Correct classifications / total events)
+  • Precision   : 100.00%  (Alerts that are true positives)
+  • Recall      : 100.00%  (Known attacks correctly detected)
+  • Specificity : 100.00%  (Benign traffic correctly ignored)
   • F1-Score    : 100.00%  (Harmonic mean of precision & recall)
 =================================================================
+⚠  Caveat: malicious samples are constructed to match rule signatures.
+   Evasion, encoding variants, and novel payloads are not measured here.
 ```
 
 ---

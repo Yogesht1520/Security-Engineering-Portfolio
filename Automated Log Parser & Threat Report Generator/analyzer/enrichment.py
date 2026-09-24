@@ -181,18 +181,19 @@ class IPEnricher:
             return False
 
     def _resolve_rdns(self, ip: str) -> Optional[str]:
-        """Perform reverse DNS resolution with timeout."""
+        """Perform reverse DNS resolution with a scoped timeout that is always restored."""
         if not self.enable_rdns:
             return None
+        orig_timeout = socket.getdefaulttimeout()
         try:
-            # Set default timeout for socket operations
-            orig_timeout = socket.getdefaulttimeout()
             socket.setdefaulttimeout(self.rdns_timeout)
             hostname, _, _ = socket.gethostbyaddr(ip)
-            socket.setdefaulttimeout(orig_timeout)
             return hostname
         except (socket.herror, socket.gaierror, socket.timeout, OSError):
             return None
+        finally:
+            # Guaranteed restore regardless of success or exception
+            socket.setdefaulttimeout(orig_timeout)
 
     def lookup(self, ip: str) -> IPEnrichmentResult:
         """Perform two-tier cached lookup for a single IP address."""

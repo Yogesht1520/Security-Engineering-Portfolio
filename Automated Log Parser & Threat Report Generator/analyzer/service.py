@@ -6,6 +6,10 @@ from pathlib import Path
 from typing import Optional, Union
 from urllib.parse import parse_qs, urlparse
 
+# Hard cap on inbound request body size to prevent memory exhaustion from oversized payloads.
+# Attacker-controlled input must be bounded before reading into process memory.
+MAX_REQUEST_BODY = 10 * 1024 * 1024  # 10 MB
+
 from .detectors import DetectionEngine
 from .enrichment import IPEnricher
 from .models import ParserStats
@@ -78,6 +82,11 @@ class ThreatAnalyzerAPIHandler(BaseHTTPRequestHandler):
         path = parsed_url.path.rstrip("/")
 
         content_length = int(self.headers.get("Content-Length", 0))
+        if content_length > MAX_REQUEST_BODY:
+            self._send_json(413, {
+                "error": f"Request body too large ({content_length:,} bytes). Maximum allowed: {MAX_REQUEST_BODY:,} bytes."
+            })
+            return
         body_bytes = self.rfile.read(content_length)
 
         if path == "/api/v1/scan":
@@ -164,10 +173,15 @@ def create_service(
     rules_dir: Optional[Union[str, Path]] = None,
     geoip_path: Optional[Union[str, Path]] = None,
     enable_rdns: bool = True,
-    host: str = "0.0.0.0",
+    host: str = "127.0.0.1",
     port: int = 8080,
 ) -> HTTPServer:
-    """Instantiate and configure HTTPServer with initialized detection engine and enricher."""
+    """Instantiate and configure HTTPServer with initialized detection engine and enricher.
+
+    Note: Default bind address is 127.0.0.1 (localhost only). Pass host='0.0.0.0' explicitly
+    to expose on all network interfaces. This service has no authentication — do not expose
+    to untrusted networks without an authenticating reverse proxy in front of it.
+    """
     engine = DetectionEngine(rules_dir=rules_dir)
     enricher = IPEnricher(geoip_db_path=geoip_path, enable_rdns=enable_rdns)
     parser = LogParser()

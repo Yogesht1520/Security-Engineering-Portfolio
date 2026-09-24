@@ -93,8 +93,12 @@ def generate_accuracy_corpus() -> List[Tuple[str, bool]]:
 
 def run_benchmark():
     print("=" * 65)
-    print("🎯 Statistical Detection Accuracy & Precision/Recall Benchmark")
+    print("🎯 Synthetic Corpus Detection Benchmark — Precision / Recall / F1")
     print("=" * 65)
+    print("Note: Corpus is generated to match the defined rule signatures.")
+    print("This measures classification performance on the synthetic baseline")
+    print("corpus — NOT real-world detection rate against novel or evaded input.")
+    print()
     print("[*] Generating labeled ground-truth corpus (1,000 total events)...")
 
     corpus = generate_accuracy_corpus()
@@ -144,13 +148,15 @@ def run_benchmark():
     print(f"│ Actual BENIGN (500)      │ FP = {fp:<13} │ TN = {tn:<13} │")
     print("└──────────────────────────┴────────────────────┴────────────────────┘\n")
 
-    print("📈 STATISTICAL EVALUATION SCORES:")
-    print(f"  • Accuracy    : {accuracy * 100:.2f}%  (Correct classification rate)")
-    print(f"  • Precision   : {precision * 100:.2f}%  (Reliability of triggered alerts)")
-    print(f"  • Recall      : {recall * 100:.2f}%  (Threat capture rate / Sensitivity)")
-    print(f"  • Specificity : {specificity * 100:.2f}%  (Benign noise suppression)")
+    print("📈 CLASSIFICATION SCORES (synthetic baseline corpus):")
+    print(f"  • Accuracy    : {accuracy * 100:.2f}%  (Correct classifications / total events)")
+    print(f"  • Precision   : {precision * 100:.2f}%  (Alerts that are true positives)")
+    print(f"  • Recall      : {recall * 100:.2f}%  (Known attacks correctly detected)")
+    print(f"  • Specificity : {specificity * 100:.2f}%  (Benign traffic correctly ignored)")
     print(f"  • F1-Score    : {f1 * 100:.2f}%  (Harmonic mean of precision & recall)")
     print("=" * 65)
+    print("⚠  Caveat: malicious samples are constructed to match rule signatures.")
+    print("   Evasion, encoding variants, and novel payloads are not measured here.")
 
     assert recall == 1.0, f"Expected 100% recall on known signatures, got {recall}"
     assert precision == 1.0, f"Expected 100% precision on benign traffic, got {precision}"
