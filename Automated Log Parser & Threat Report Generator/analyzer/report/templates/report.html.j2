@@ -91,6 +91,59 @@
       </div>
     </section>
 
+    <!-- Correlated Security Incidents Section -->
+    <section class="card-table-wrapper" style="border-left: 4px solid #f85149;">
+      <div class="table-header-bar">
+        <h2 class="section-title">⚡ Correlated Security Incidents ({{ incidents|length }})</h2>
+        <span style="font-size: 13px; color: var(--text-muted);">Multi-stage campaign correlation & Kill-Chain clustering</span>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th style="width: 110px;">Incident ID</th>
+            <th style="width: 100px;">Severity</th>
+            <th>Threat Campaign Title</th>
+            <th>Attacker IP & Origin</th>
+            <th>Attack Vectors</th>
+            <th>Findings</th>
+            <th>Confidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for inc in incidents %}
+          <tr>
+            <td class="mono"><strong>{{ inc.incident_id }}</strong></td>
+            <td><span class="severity-pill sev-{{ inc.severity }}">{{ inc.severity }}</span></td>
+            <td>
+              <strong>{{ inc.title }}</strong>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                Duration: {{ "{:.0f}s".format(inc.duration_seconds) }} | {{ inc.start_time.strftime('%H:%M:%S') }} - {{ inc.end_time.strftime('%H:%M:%S UTC') }}
+              </div>
+            </td>
+            <td>
+              <div class="mono"><strong>{{ inc.ip }}</strong></div>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                {{ country_code_to_emoji(inc.geo_country_code) }} {{ inc.geo_country or 'Unknown' }}
+              </div>
+            </td>
+            <td>
+              {% for v in inc.attack_vectors %}
+              <span class="badge-soc" style="font-size: 10px; margin-right: 4px; display: inline-block; margin-bottom: 2px;">{{ v }}</span>
+              {% endfor %}
+            </td>
+            <td><strong>{{ inc.finding_count }}</strong></td>
+            <td><strong style="color: #3fb950;">{{ "{:.0f}%".format(inc.confidence_score * 100) }}</strong></td>
+          </tr>
+          {% endfor %}
+          {% if not incidents %}
+          <tr>
+            <td colspan="7" style="text-align: center; padding: 20px; color: var(--text-muted);">No correlated security incidents identified.</td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </section>
+
     <!-- Top Offending IPs Table -->
     <section class="card-table-wrapper">
       <div class="table-header-bar">

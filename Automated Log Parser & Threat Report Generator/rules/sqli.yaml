@@ -35,5 +35,5 @@ rules:
     name: "SQL Comment & Stacked Commands"
     severity: "MEDIUM"
     mitre_attack_id: "T1190"
-    pattern: '(?i)(?:(?:--|#|/\*).*?(?:drop|alter|truncate|insert|update|delete|exec|xp_cmdshell))'
+    pattern: '(?i)(?:(?:--|#|/\*).*?(?:drop|alter|truncate|insert|update|delete|exec|xp_cmdshell)|;\s*(?:drop|alter|truncate|insert|update|delete|exec|xp_cmdshell|shutdown)\b|;\s*select\b)'
     description: "Detected SQL comment trick preceding destructive command or procedure call."

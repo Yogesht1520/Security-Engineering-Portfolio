@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import jinja2
 
+from ..correlation import CorrelationEngine, Incident
 from ..models import Finding, ParserStats
 from .charts import (
     build_attack_breakdown_chart,
@@ -48,11 +49,16 @@ class ReportBuilder:
         stats: ParserStats,
         log_source: str = "web_access.log",
         title: str = "SOC Web Threat Analysis",
+        correlation_window_seconds: int = 1800,
     ):
         self.findings = findings
         self.stats = stats
         self.log_source = log_source
         self.title = title
+
+        # Run correlation engine
+        self.correlation_engine = CorrelationEngine(window_seconds=correlation_window_seconds)
+        self.incidents: List[Incident] = self.correlation_engine.correlate(self.findings)
 
         self.templates_dir = Path(__file__).resolve().parent / "templates"
         self._jinja_env = jinja2.Environment(
@@ -93,6 +99,7 @@ class ReportBuilder:
             "duration_seconds": self.stats.duration_seconds,
             "lines_per_second": self.stats.lines_per_second,
             "total_findings": total_findings,
+            "total_incidents": len(self.incidents),
             "unique_attacker_ips": len(unique_ips),
             "unique_countries": len(unique_countries),
             "total_attack_types": len(attack_type_counts),
@@ -153,6 +160,7 @@ class ReportBuilder:
         return template.render(
             title=self.title,
             summary=summary,
+            incidents=self.incidents,
             findings=self.findings,
             top_offenders=top_offenders,
             inline_css=inline_css,
@@ -160,6 +168,7 @@ class ReportBuilder:
             attack_breakdown_chart=attack_donut_html,
             severity_chart=severity_bar_html,
             top_ips_chart=top_ips_bar_html,
+            country_code_to_emoji=country_code_to_emoji,
         )
 
     def render_markdown(self) -> str:
@@ -173,15 +182,29 @@ class ReportBuilder:
             "",
             "## 🛡️ Executive Summary",
             f"- **Total Events Analyzed:** {summary['total_lines']:,} ({summary['lines_per_second']:,.0f} lines/sec)",
-            f"- **Total Security Threats Identified:** {summary['total_findings']}",
+            f"- **Total Correlated Security Incidents:** {summary['total_incidents']}",
+            f"- **Total Threat Events Detected:** {summary['total_findings']}",
             f"- **Unique Malicious IPs:** {summary['unique_attacker_ips']} across {summary['unique_countries']} countries",
             f"- **Peak Severity:** `{summary['highest_severity']}` ({summary['critical_high_count']} Critical/High)",
             f"- **Primary Threat Vector:** {summary['top_attack_type']} ({summary['top_attack_count']} detections)",
             "",
+            "## 🚨 Correlated High-Priority Incidents",
+            "| Incident ID | Attacker IP | Title | Severity | Vectors | Findings | Confidence |",
+            "|---|---|---|---|---|---|---|",
+        ]
+
+        for inc in self.incidents:
+            vectors_str = ", ".join(inc.attack_vectors)
+            lines.append(
+                f"| `{inc.incident_id}` | `{inc.ip}` | {inc.title} | `{inc.severity}` | {vectors_str} | {inc.finding_count} | {inc.confidence_score*100:.0f}% |"
+            )
+
+        lines.extend([
+            "",
             "### Threat Category Breakdown",
             "| Attack Type | Detections | Proportion |",
             "|---|---|---|",
-        ]
+        ])
 
         total = max(summary["total_findings"], 1)
         for atype, count in summary["attack_type_counts"].items():
@@ -202,18 +225,33 @@ class ReportBuilder:
                 f"| `{off['ip']}` | {origin} | {rdns} | {off['count']} | {off['top_attack_type']} | `{off['highest_severity']}` |"
             )
 
-        lines.extend([
-            "",
-            "## 🔍 Findings Summary",
-            f"Total findings: {len(self.findings)}. Full details available in exported JSON/HTML reports.",
-        ])
-
         return "\n".join(lines)
 
     def render_json(self) -> str:
         """Render structured JSON report for SIEM and CI/CD pipelines."""
         summary = self._compute_summary()
         top_offenders = self._compute_top_offenders()
+
+        incidents_data = []
+        for inc in self.incidents:
+            incidents_data.append({
+                "incident_id": inc.incident_id,
+                "ip": inc.ip,
+                "title": inc.title,
+                "severity": inc.severity,
+                "finding_count": inc.finding_count,
+                "attack_vectors": inc.attack_vectors,
+                "mitre_tactics": inc.mitre_tactics,
+                "start_time": inc.start_time.isoformat(),
+                "end_time": inc.end_time.isoformat(),
+                "duration_seconds": inc.duration_seconds,
+                "confidence_score": inc.confidence_score,
+                "geo_country": inc.geo_country,
+                "geo_country_code": inc.geo_country_code,
+                "geo_city": inc.geo_city,
+                "rdns_hostname": inc.rdns_hostname,
+                "asn_org": inc.asn_org,
+            })
 
         findings_data = []
         for f in self.findings:
@@ -234,8 +272,11 @@ class ReportBuilder:
             })
 
         report_dict = {
+            "$schema": "https://raw.githubusercontent.com/Yogesht1520/Security-Engineering-Portfolio/main/docs/schemas/threat_report_schema.json",
+            "schema_version": "1.0.0",
             "title": self.title,
             "summary": summary,
+            "incidents": incidents_data,
             "top_offenders": top_offenders,
             "findings": findings_data,
         }

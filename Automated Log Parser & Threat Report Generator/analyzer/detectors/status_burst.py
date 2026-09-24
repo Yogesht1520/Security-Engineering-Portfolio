@@ -5,16 +5,20 @@ from pathlib import Path
 from typing import Deque, Dict, List, Optional, Tuple, Union
 
 from ..models import Finding, LogEntry
-from .base import BaseDetector
+from .base import BaseDetector, RuleValidationError
+from .schema import validate_threshold_rules
 
 
 class StatusBurstDetector(BaseDetector):
     """Detects rapid bursts of anomalous HTTP status codes (e.g., 404/403 fuzzing bursts)."""
 
-    def __init__(self, config_path: Optional[Union[str, Path]] = None):
+    def __init__(self, config_path: Optional[Union[str, Path]] = None, strict: bool = True):
         if config_path is None:
             config_path = Path(__file__).resolve().parent.parent.parent / "rules" / "status_burst.yaml"
-        super().__init__(config_path=config_path)
+        super().__init__(config_path=config_path, strict=strict)
+
+        if self.strict and self.config:
+            validate_threshold_rules(self.config, self.config_path)
 
         self.window_seconds = int(self.config.get("window_seconds", 30))
         self.threshold = int(self.config.get("threshold_count", 20))
