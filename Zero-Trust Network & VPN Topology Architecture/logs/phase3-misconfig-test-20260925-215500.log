@@ -1,0 +1,71 @@
+[ 5881.279542] ZT-DENY-CONTRACTOR-PROD: IN=wg0 OUT=veth-ns-prod MAC= SRC=10.0.0.4 DST=10.10.2.2 LEN=60 TOS=0x00 PREC=0x00 TTL=63 ID=3727 DF PROTO=TCP SPT=43796 DPT=8080 SEQ=2116758933 ACK=0 WINDOW=64860 RES=0x00 SYN URGP=0 OPT (020405640402080A5DBCB755000000000103030A) 
+[ 5882.400513] ZT-DENY-CONTRACTOR-PROD: IN=wg0 OUT=veth-ns-prod MAC= SRC=10.0.0.4 DST=10.10.2.2 LEN=60 TOS=0x00 PREC=0x00 TTL=63 ID=3728 DF PROTO=TCP SPT=43796 DPT=8080 SEQ=2116758933 ACK=0 WINDOW=64860 RES=0x00 SYN URGP=0 OPT (020405640402080A5DBCBB59000000000103030A) 
+[ 5883.384909] ZT-DENY-CONTRACTOR-HR: IN=wg0 OUT=veth-ns-hr MAC= SRC=10.0.0.4 DST=10.10.3.2 LEN=60 TOS=0x00 PREC=0x00 TTL=63 ID=52016 DF PROTO=TCP SPT=45862 DPT=8080 SEQ=1989348628 ACK=0 WINDOW=64860 RES=0x00 SYN URGP=0 OPT (020405640402080A9DEB228A000000000103030A) 
+[ 5884.495348] ZT-DENY-CONTRACTOR-HR: IN=wg0 OUT=veth-ns-hr MAC= SRC=10.0.0.4 DST=10.10.3.2 LEN=60 TOS=0x00 PREC=0x00 TTL=63 ID=52017 DF PROTO=TCP SPT=45862 DPT=8080 SEQ=1989348628 ACK=0 WINDOW=64860 RES=0x00 SYN URGP=0 OPT (020405640402080A9DEB2684000000000103030A) 
+[ 5972.697862] ZT-DENY-CONTRACTOR-PROD: IN=wg0 OUT=veth-ns-prod MAC= SRC=10.0.0.4 DST=10.10.2.2 LEN=60 TOS=0x00 PREC=0x00 TTL=63 ID=16292 DF PROTO=TCP SPT=39778 DPT=8080 SEQ=1135863260 ACK=0 WINDOW=64860 RES=0x00 SYN URGP=0 OPT (020405640402080AD10F7793000000000103030A) 
+[ 5973.821861] ZT-DENY-CONTRACTOR-PROD: IN=wg0 OUT=veth-ns-prod MAC= SRC=10.0.0.4 DST=10.10.2.2 LEN=60 TOS=0x00 PREC=0x00 TTL=63 ID=16293 DF PROTO=TCP SPT=39778 DPT=8080 SEQ=1135863260 ACK=0 WINDOW=64860 RES=0x00 SYN URGP=0 OPT (020405640402080AD10F7B98000000000103030A) 
+[ 5974.822051] ZT-DENY-CONTRACTOR-HR: IN=wg0 OUT=veth-ns-hr MAC= SRC=10.0.0.4 DST=10.10.3.2 LEN=60 TOS=0x00 PREC=0x00 TTL=63 ID=20544 DF PROTO=TCP SPT=57098 DPT=8080 SEQ=831161430 ACK=0 WINDOW=64860 RES=0x00 SYN URGP=0 OPT (020405640402080ABB5FA35B000000000103030A) 
+[ 5975.914381] ZT-DENY-CONTRACTOR-HR: IN=wg0 OUT=veth-ns-hr MAC= SRC=10.0.0.4 DST=10.10.3.2 LEN=60 TOS=0x00 PREC=0x00 TTL=63 ID=20545 DF PROTO=TCP SPT=57098 DPT=8080 SEQ=831161430 ACK=0 WINDOW=64860 RES=0x00 SYN URGP=0 OPT (020405640402080ABB5FA746000000000103030A) 
+
+==============================================================
+  RESULT SUMMARY
+==============================================================
+  RESULT: ✅ PASS — Firewall caught misconfigured AllowedIPs
+  DENY ENTRIES: 8
+
+--- Full nftables zt_filter table dump ---
+table inet zt_filter {
+	set dev_segment {
+		type ipv4_addr
+		flags interval
+		elements = { 10.10.1.0/24 }
+	}
+
+	set prod_segment {
+		type ipv4_addr
+		flags interval
+		elements = { 10.10.2.0/24 }
+	}
+
+	set hr_segment {
+		type ipv4_addr
+		flags interval
+		elements = { 10.10.3.0/24 }
+	}
+
+	set all_segments {
+		type ipv4_addr
+		flags interval
+		elements = { 10.10.1.0/24, 10.10.2.0/24,
+			     10.10.3.0/24 }
+	}
+
+	chain forward {
+		type filter hook forward priority filter; policy drop;
+		ct state established,related accept comment "allow established sessions"
+		ip saddr 10.0.0.2 ip daddr @all_segments accept comment "admin peer — authorized full segment access"
+		ip saddr 10.0.0.2 ip daddr 10.0.0.1 accept comment "admin peer — gateway management"
+		ip saddr 10.0.0.3 ip daddr @dev_segment accept comment "developer peer — Dev segment authorized"
+		ip saddr 10.0.0.3 ip daddr @prod_segment log prefix "ZT-DENY-DEV-TO-PROD: " flags all drop comment "developer peer — Prod access DENIED (zero-trust boundary)"
+		ip saddr 10.0.0.3 ip daddr @hr_segment log prefix "ZT-DENY-DEV-TO-HR: " flags all drop comment "developer peer — Corp-HR access DENIED (zero-trust boundary)"
+		ip saddr 10.0.0.4 ip daddr @dev_segment accept comment "contractor peer — Dev segment authorized"
+		ip saddr 10.0.0.4 ip daddr @prod_segment log prefix "ZT-DENY-CONTRACTOR-PROD: " flags all drop comment "contractor → Prod DENIED + LOGGED — proves firewall layer is independent"
+		ip saddr 10.0.0.4 ip daddr @hr_segment log prefix "ZT-DENY-CONTRACTOR-HR: " flags all drop comment "contractor → HR DENIED + LOGGED — proves firewall layer is independent"
+		log prefix "ZT-DENY-UNMATCHED: " flags all drop comment "default deny — log unexpected forwarded traffic"
+	}
+
+	chain input {
+		type filter hook input priority filter; policy drop;
+		iif "lo" accept
+		ct state established,related accept
+		udp dport 51820 accept comment "WireGuard inbound"
+		tcp dport 22 accept comment "SSH management (restrict to admin IP in production)"
+		icmp type echo-request accept
+		ip6 nexthdr ipv6-icmp accept
+		log prefix "ZT-INPUT-DENY: " drop comment "default input deny"
+	}
+
+	chain output {
+		type filter hook output priority filter; policy accept;
+	}
+}

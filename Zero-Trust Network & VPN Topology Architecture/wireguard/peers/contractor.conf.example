@@ -1,0 +1,25 @@
+# =============================================================================
+# Contractor Peer — contractor.conf.example
+# =============================================================================
+# ROLE: Most restricted peer. Dev segment ONLY.
+# This is the peer that stars in the Phase 3 defense-in-depth test.
+#
+# PHASE 3 TEST PROCEDURE:
+#   1. Use this config (correct) → Contractor can reach Dev, NOT Prod/HR.
+#   2. Switch to contractor-MISCONFIGURED.conf (AllowedIPs widened to 10.0.0.0/8).
+#   3. Expected: even with wide AllowedIPs, nftables DENIES Prod/HR access.
+#   4. Evidence: "ZT-DENY-CONTRACTOR-PROD:" and "ZT-DENY-CONTRACTOR-HR:" in logs.
+# =============================================================================
+
+[Interface]
+PrivateKey = <CONTRACTOR-PRIVATE-KEY-REGENERATE>
+Address    = 10.0.0.4/32
+
+[Peer]
+PublicKey           = <SERVER-PUBLIC-KEY>
+Endpoint            = <GATEWAY-PUBLIC-IP-OR-FQDN>:51820
+# ── LAYER 1: AllowedIPs scoping ──────────────────────────────────────────────
+# Dev segment ONLY. Widening this to 10.0.0.0/8 simulates the misconfig test.
+# The firewall (LAYER 2) independently blocks Prod/HR regardless of this value.
+AllowedIPs          = 10.0.0.0/24, 10.10.1.0/24
+PersistentKeepalive = 25

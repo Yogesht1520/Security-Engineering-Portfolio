@@ -1,0 +1,30 @@
+# =============================================================================
+# Admin Peer — admin.conf.example
+# =============================================================================
+# ROLE: Full access to all three segments (Dev, Prod, Corp-HR).
+# SECURITY: Admin key compromise = full lateral movement. Mitigate by:
+#   - Store private key in hardware token (YubiKey) or secrets manager
+#   - Rotate keypair quarterly
+#   - Restrict admin peer connection to known egress IPs (cloud SG)
+#
+# AllowedIPs explanation:
+#   On the CLIENT side, AllowedIPs controls which DESTINATION CIDRs are
+#   routed through the tunnel. 10.0.0.0/8 covers:
+#     - 10.0.0.0/24 (WireGuard VPN subnet)
+#     - 10.10.1.0/24 (Dev segment)
+#     - 10.10.2.0/24 (Prod segment)
+#     - 10.10.3.0/24 (Corp-HR segment)
+# =============================================================================
+
+[Interface]
+PrivateKey = <ADMIN-PRIVATE-KEY-REGENERATE>
+Address    = 10.0.0.2/32
+# Optional: DNS server reachable via the VPN
+# DNS = 10.0.0.1
+
+[Peer]
+PublicKey           = <SERVER-PUBLIC-KEY>
+Endpoint            = <GATEWAY-PUBLIC-IP-OR-FQDN>:51820
+# Admin gets access to all segments — nftables confirms this on the server side
+AllowedIPs          = 10.0.0.0/8
+PersistentKeepalive = 25

@@ -1,0 +1,62 @@
+# =============================================================================
+# WireGuard Gateway — wg0.conf.example
+# =============================================================================
+# WHAT THIS IS: Example server config for the ZTNA gateway.
+# Keys here are placeholders — regenerate with:
+#   wg genkey > server.key && wg pubkey < server.key > server.pub
+#   (or use: sudo bash scripts/phase1_wireguard.sh setup)
+#
+# ZERO-TRUST LAYERING:
+#   This file implements LAYER 1 of 2 for zero-trust enforcement.
+#   LAYER 1: AllowedIPs — WireGuard kernel module enforces which source IPs
+#            are acceptable from each peer's public key. Any packet arriving
+#            through the tunnel from a peer that doesn't match its AllowedIPs
+#            entry is dropped before userspace even sees it.
+#   LAYER 2: nftables (firewall/nftables.conf) — server-side enforcement that
+#            catches AllowedIPs misconfigurations or compromised endpoints.
+# =============================================================================
+
+[Interface]
+# Gateway's VPN tunnel address
+Address    = 10.0.0.1/24
+
+# UDP port — open inbound in your cloud security group / host firewall
+ListenPort = 51820
+
+# Replace with output of: wg genkey
+PrivateKey = <SERVER-PRIVATE-KEY-REGENERATE-DO-NOT-USE>
+
+# Apply the WireGuard NAT rules and zero-trust firewall when wg0 comes up
+PostUp   = nft -f /etc/wireguard/nftables-wg-hooks.nft
+PostDown = nft delete table inet wg_nat 2>/dev/null; true
+
+# =============================================================================
+# Peer: Admin  (VPN IP: 10.0.0.2)
+# Full access to all three segments (Dev, Prod, Corp-HR).
+# AllowedIPs here = what SOURCE IPs the server will accept from this peer's key.
+# Destination enforcement (allow all segments) happens in nftables.
+# =============================================================================
+[Peer]
+# identity = the admin's Ed25519 public key, not a username
+PublicKey  = <ADMIN-PUBLIC-KEY>
+# Server-side: only accept packets sourced from 10.0.0.2 over this peer's key
+AllowedIPs = 10.0.0.2/32
+
+# =============================================================================
+# Peer: Developer  (VPN IP: 10.0.0.3)
+# Restricted to Dev segment only (10.10.1.0/24).
+# nftables DENIES + LOGS any attempt to reach Prod or Corp-HR.
+# =============================================================================
+[Peer]
+PublicKey  = <DEVELOPER-PUBLIC-KEY>
+AllowedIPs = 10.0.0.3/32
+
+# =============================================================================
+# Peer: Contractor  (VPN IP: 10.0.0.4)
+# Most restricted. Dev segment ONLY (10.10.1.0/24).
+# This is the peer tested in Phase 3 — widening AllowedIPs on the CLIENT side
+# to 10.0.0.0/8 should still be BLOCKED by the gateway nftables rules.
+# =============================================================================
+[Peer]
+PublicKey  = <CONTRACTOR-PUBLIC-KEY>
+AllowedIPs = 10.0.0.4/32

@@ -1,0 +1,24 @@
+# =============================================================================
+# Developer Peer — developer.conf.example
+# =============================================================================
+# ROLE: Dev segment ONLY (10.10.1.0/24).
+# LAYER 1 (AllowedIPs): Only 10.10.1.0/24 + 10.0.0.0/24 routed through tunnel.
+#   Prod and Corp-HR CIDRs are absent → WireGuard won't route traffic there.
+# LAYER 2 (nftables): Server-side rules confirm: src 10.0.0.3 → Dev only.
+#   Any packet toward Prod/HR from 10.0.0.3 is DENIED + LOGGED.
+# =============================================================================
+
+[Interface]
+PrivateKey = <DEVELOPER-PRIVATE-KEY-REGENERATE>
+Address    = 10.0.0.3/32
+
+[Peer]
+PublicKey           = <SERVER-PUBLIC-KEY>
+Endpoint            = <GATEWAY-PUBLIC-IP-OR-FQDN>:51820
+# ── LAYER 1: AllowedIPs scoping ──────────────────────────────────────────────
+# Only Dev segment traffic routed through tunnel.
+# 10.0.0.0/24 = VPN subnet (needed to reach gateway itself).
+# 10.10.1.0/24 = Dev segment (authorized destination).
+# Prod (10.10.2.0/24) and Corp-HR (10.10.3.0/24) intentionally ABSENT.
+AllowedIPs          = 10.0.0.0/24, 10.10.1.0/24
+PersistentKeepalive = 25
