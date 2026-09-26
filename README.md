@@ -58,7 +58,7 @@ Incident Response
 
 ---
 
-### 3. [Hybrid Enterprise Identity & Conditional Access Lab](https://github.com/Yogesht1520/sec-portfolio-03-identity-lab)
+### 3. [Hybrid Enterprise Identity & Conditional Access Lab](./Hybrid%20Enterprise%20Identity%20&%20Conditional%20Access%20Lab)
 **The Problem:** Identity, not the network, is the perimeter that actually gets attacked first.
 **Architecture / Tools:** Microsoft Entra ID · Conditional Access · Microsoft Graph PowerShell
 **Implementation:** A modeled enterprise identity tenant enforcing MFA for admin roles, geo-based access blocking, legacy-auth blocking, and risk-based sign-in policies — configured as code via Graph PowerShell, not clicked manually.
@@ -85,12 +85,12 @@ Incident Response
 
 ---
 
-### 6. [Zero-Trust Network & VPN Topology Architecture](https://github.com/Yogesht1520/sec-portfolio-06-zero-trust-vpn)
+### 6. [Zero-Trust Network & VPN Topology Architecture](./Zero-Trust%20Network%20&%20VPN%20Topology%20Architecture)
 **The Problem:** "Connected to the VPN" is too often treated as equivalent to "trusted" — that's the opposite of zero trust.
 **Architecture / Tools:** WireGuard · nftables · per-peer network segmentation
 **Implementation:** A real WireGuard gateway enforcing per-user access to isolated Dev/Prod/Corp-HR network segments, with defense-in-depth enforced at both the tunnel-routing layer and the firewall layer independently.
 **Proof:** A contractor peer can reach Dev but is explicitly denied (and logged) trying to reach Prod or HR, even after deliberately weakening one enforcement layer
-**Connects to:** Network-layer counterpart to → [Project 3 (Identity Lab)](https://github.com/Yogesht1520/sec-portfolio-03-identity-lab)'s identity-layer trust boundaries
+**Connects to:** Network-layer counterpart to → [Hybrid Enterprise Identity & Conditional Access Lab](./Hybrid%20Enterprise%20Identity%20&%20Conditional%20Access%20Lab)'s identity-layer trust boundaries
 
 ---
 
