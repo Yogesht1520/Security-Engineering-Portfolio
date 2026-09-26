@@ -69,6 +69,8 @@ bash scripts/test_peer.sh /etc/wireguard/peer-configs/contractor.conf
 1. Dev Segment (10.10.1.2:8080): Hello from segment: ns-dev
 ```
 
+![Contractor Can Reach Dev](../screenshots/contractor-can-reach-dev.png)
+
 ---
 
 ## T3 & T4 — Contractor Denied Prod & HR (Layer 1 — AllowedIPs)
@@ -88,6 +90,8 @@ bash scripts/test_peer.sh /etc/wireguard/peer-configs/contractor.conf
 3. Corp-HR Segment (10.10.3.2:8080): BLOCKED / TIMEOUT
 ```
 *Note: Traffic for 10.10.2.0/24 and 10.10.3.0/24 was dropped locally by the client kernel because no matching route existed in the WireGuard interface table.*
+
+![Contractor Denied Prod](../screenshots/contractor-denied-prod.png)
 
 ---
 
@@ -146,6 +150,8 @@ dmesg | grep "ZT-DENY" | tail -10
 [ 5884.495348] ZT-DENY-CONTRACTOR-HR: IN=wg0 OUT=veth-ns-hr MAC= SRC=10.0.0.4 DST=10.10.3.2 LEN=60 TOS=0x00 PREC=0x00 TTL=63 ID=52017 DF PROTO=TCP SPT=45862 DPT=8080 SEQ=1989348628 ACK=0 WINDOW=64860 RES=0x00 SYN URGP=0
 ```
 
+![Firewall Deny Log & Test Results](../screenshots/firewall-deny-log.png)
+
 ---
 
 ## T7 — Developer Denied Corp-HR
@@ -172,8 +178,5 @@ bash scripts/test_peer.sh /etc/wireguard/peer-configs/developer.conf
 > 2. At least one `ZT-DENY-CONTRACTOR-PROD:` OR `ZT-DENY-CONTRACTOR-HR:` line appears in kernel log  
 > 3. nftables DENY rule packet counter > 0
 
-> **CONCLUSION:** *(fill in after running the test)*  
-> *Example: "Phase 3 test PASSED. Even with contractor AllowedIPs widened to 10.0.0.0/8,  
-> nftables blocked and logged 4 TCP SYN packets destined for Prod (10.10.2.2:8080).  
-> Log entry: ZT-DENY-CONTRACTOR-PROD: SRC=10.0.0.4 DST=10.10.2.2 — proves dual-layer  
-> enforcement is fully independent."*
+> **CONCLUSION:**  
+> **Phase 3 test PASSED.** Even when the contractor peer's `AllowedIPs` was deliberately widened to `10.0.0.0/8` (bypassing Layer 1 route-filtering), the gateway's `nftables` firewall (Layer 2) intercepted the traffic at the `forward` hook, dropping unauthorized access attempts to both Prod (`10.10.2.2:8080`) and HR (`10.10.3.2:8080`) while generating **4 logged `ZT-DENY-CONTRACTOR` events** in the kernel ring buffer. This provides definitive empirical evidence that dual-layer Zero-Trust enforcement operates independently and protects network segments even under configuration compromise.
