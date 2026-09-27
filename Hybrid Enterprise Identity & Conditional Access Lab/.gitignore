@@ -1,0 +1,19 @@
+# Lab instruction / prompt file
+03-hybrid-identity-lab-entra-id.md
+
+# Windows & OS artifacts
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+.DS_Store
+
+# IDE & Editor settings
+.vscode/
+.idea/
+
+# Local logs & temp files
+*.log
+*.tmp
