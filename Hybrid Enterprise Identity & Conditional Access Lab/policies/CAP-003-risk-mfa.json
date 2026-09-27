@@ -1,0 +1,29 @@
+{
+  "displayName": "CAP-003: Risk-Based Step-Up MFA",
+  "state": "enabledForReportingButNotEnforced",
+  "conditions": {
+    "users": {
+      "includeUsers": [
+        "All"
+      ],
+      "excludeUsers": [
+        "emergency-admin-id"
+      ]
+    },
+    "applications": {
+      "includeApplications": [
+        "All"
+      ]
+    },
+    "signInRiskLevels": [
+      "medium",
+      "high"
+    ]
+  },
+  "grantControls": {
+    "operator": "OR",
+    "builtInControls": [
+      "mfa"
+    ]
+  }
+}

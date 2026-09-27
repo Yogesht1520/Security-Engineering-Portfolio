@@ -14,8 +14,19 @@
 
 param (
     [string]$Domain = "quickheal327.onmicrosoft.com",
-    [string]$DefaultPassword = "LabSecurePassword2026!"
+    [System.Security.SecureString]$InitialPassword
 )
+
+# If no password is provided, securely prompt the operator
+if (-not $InitialPassword) {
+    Write-Host "`n[Security Requirement] Please provide an initial temporary password for synthetic users:" -ForegroundColor Yellow
+    $InitialPassword = Read-Host -AsSecureString
+}
+
+# Convert SecureString for Graph PasswordProfile API securely
+$bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($InitialPassword)
+$plainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+[System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
 
 # 1. Verify and Install Microsoft Graph SDK if missing
 Write-Host "`n[1/5] Checking Microsoft.Graph PowerShell SDK..." -ForegroundColor Cyan
@@ -30,12 +41,10 @@ foreach ($module in $requiredModules) {
     }
 }
 
-# 2. Connect to Microsoft Graph
-Write-Host "`n[2/5] Connecting to Microsoft Graph..." -ForegroundColor Cyan
-Write-Host "Please sign in with your Lab Admin account: YogeshThakur@$Domain" -ForegroundColor Yellow
-Write-Host "IMPORTANT: Do NOT select your corporate @quickheal.com account!" -ForegroundColor Magenta
-Write-Host "Check 'Consent on behalf of your organization' if prompted." -ForegroundColor Magenta
-Connect-MgGraph -TenantId "464a788a-fba5-4e94-9b06-a6359091ad74" -Scopes "User.ReadWrite.All", "Group.ReadWrite.All", "Directory.ReadWrite.All" -NoWelcome
+# 2. Connect to Microsoft Graph with Least-Privilege Scopes
+Write-Host "`n[2/5] Connecting to Microsoft Graph (Least Privilege: User & Group ReadWrite)..." -ForegroundColor Cyan
+Write-Host "Please sign in with your Lab Admin account ($Domain)." -ForegroundColor Yellow
+Connect-MgGraph -TenantId $Domain -Scopes "User.ReadWrite.All", "Group.ReadWrite.All" -NoWelcome
 
 # 3. Create Security Groups
 Write-Host "`n[3/5] Provisioning Security Groups..." -ForegroundColor Cyan
@@ -79,7 +88,7 @@ foreach ($grp in $groupsToCreate) {
 Write-Host "`n[4/5] Provisioning Synthetic Users..." -ForegroundColor Cyan
 
 $passwordProfile = @{
-    Password                      = $DefaultPassword
+    Password                      = $plainPassword
     ForceChangePasswordNextSignIn = $false
 }
 
@@ -206,8 +215,12 @@ foreach ($u in $usersToCreate) {
     }
 }
 
+# Clear sensitive plaintext variable from memory
+$plainPassword = $null
+[System.GC]::Collect()
+
 Write-Host "`n[5/5] Seeding Complete!" -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host "Default password for all test accounts: $DefaultPassword" -ForegroundColor Yellow
-Write-Host "Groups created: SEC-Admins, SEC-StandardUsers, SEC-Contractors" -ForegroundColor White
+Write-Host "Security Groups: SEC-Admins, SEC-StandardUsers, SEC-Contractors" -ForegroundColor White
+Write-Host "Test user population seeded successfully with provided temporary credential." -ForegroundColor Yellow
 Write-Host "==========================================================" -ForegroundColor Cyan

@@ -1,0 +1,36 @@
+{
+  "displayName": "CAP-001: Block Sign-in Outside Allowed Regions",
+  "state": "enabledForReportingButNotEnforced",
+  "conditions": {
+    "users": {
+      "includeUsers": [
+        "All"
+      ],
+      "excludeUsers": [
+        "GuestsOrExternalUsers"
+      ],
+      "excludeGroups": [
+        "SEC-BreakGlass-Exclusion"
+      ]
+    },
+    "applications": {
+      "includeApplications": [
+        "All"
+      ]
+    },
+    "locations": {
+      "includeLocations": [
+        "All"
+      ],
+      "excludeLocations": [
+        "Allowed-Home-Country-Id"
+      ]
+    }
+  },
+  "grantControls": {
+    "operator": "OR",
+    "builtInControls": [
+      "block"
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "displayName": "CAP-006: Require Compliant or Hybrid Joined Device",
+  "state": "enabledForReportingButNotEnforced",
+  "conditions": {
+    "users": {
+      "includeGroups": [
+        "SEC-Admins",
+        "SEC-StandardUsers"
+      ],
+      "excludeUsers": [
+        "emergency-admin-id"
+      ]
+    },
+    "applications": {
+      "includeApplications": [
+        "All"
+      ]
+    },
+    "platforms": {
+      "includePlatforms": [
+        "windows",
+        "macOS"
+      ]
+    }
+  },
+  "grantControls": {
+    "operator": "OR",
+    "builtInControls": [
+      "compliantDevice",
+      "domainJoinedDevice"
+    ]
+  }
+}

@@ -2,59 +2,78 @@
 
 ```mermaid
 flowchart TB
-    subgraph OnPrem["On-Premises Infrastructure (Conceptual Architecture)"]
-        AD[("Windows Server AD DS\n(corp.local)")]
-        Connect["Microsoft Entra Connect Sync\n(Password Hash Sync / PTA)"]
-        AD -->|Hybrid Directory Sync| Connect
+    %% SECTION 1: CONCEPTUAL ON-PREMISES (Reference Architecture)
+    subgraph OnPrem["[CONCEPTUAL ARCHITECTURE] On-Premises Infrastructure"]
+        AD[("Windows Server AD DS\n(corp.local)\n[Conceptual Domain]")]
+        Connect["Microsoft Entra Connect Sync\n(Password Hash Sync / PTA)\n[Conceptual Agent]"]
+        AD -.->|Hybrid Directory Sync| Connect
     end
 
-    subgraph EntraCloud["Microsoft Entra ID Tenant (quickheal327.onmicrosoft.com)"]
+    %% SECTION 2: IMPLEMENTED CLOUD ENVIRONMENT
+    subgraph EntraCloud["[IMPLEMENTED ENVIRONMENT] Microsoft Entra ID Cloud Tenant"]
         direction TB
         subgraph Directory["Identity Directory & Governance"]
-            Users["Identities / Cloud Accounts"]
-            Groups["Security Groups\n- SEC-Admins\n- SEC-StandardUsers\n- SEC-Contractors"]
-            PIM["Privileged Identity Management (PIM)\n& Entra Roles"]
+            Users["Cloud Identities\n(8 Synthetic Personas)"]
+            Groups["Role-Based Security Groups\n- SEC-Admins\n- SEC-StandardUsers\n- SEC-Contractors"]
+            BreakGlass["Emergency Break-Glass Admin\n[Strict Policy Exemption]"]
         end
 
-        subgraph Signals["Signal Assessment Engine"]
-            UserRisk["User & Sign-in Risk\n(Entra ID Protection)"]
-            DeviceSignal["Device Platform & Compliance\n(Intune / Hybrid Joined)"]
-            LocSignal["Named Locations / Geo-IP\n(Trusted vs Untrusted Countries)"]
-            ClientApp["Client App Type\n(Modern Auth vs Legacy Protocols)"]
+        subgraph Signals["Zero Trust Real-Time Signals"]
+            UserRisk["Identity Protection Engine\n(Sign-in Risk & User Risk ML)"]
+            LocSignal["Named Locations / Geo-IP\n(Allowed-Home-Country vs Foreign)"]
+            ClientApp["Client App Protocol\n(Modern vs Legacy POP/IMAP)"]
+            DeviceCompliance["Device Trust State\n(Intune Compliant / Hybrid Joined)"]
         end
 
-        subgraph PolicyEngine["Conditional Access Engine (Zero Trust Decision Point)"]
+        subgraph PolicyEngine["Declarative Conditional Access Engine (Identity-as-Code)"]
             CAP1["CAP-001: Block Foreign Geo-Locations"]
             CAP2["CAP-002: Require MFA for Admin Roles"]
             CAP3["CAP-003: Require MFA for Risky Sign-ins"]
             CAP4["CAP-004: Block Legacy Authentication"]
-            CAP5["CAP-005: 8-Hour Session Lifetime for Privileged Roles"]
+            CAP5["CAP-005: 8-Hour Session Lifetime (Admins/Vendors)"]
+            CAP6["CAP-006: Require Compliant / Hybrid Device"]
         end
 
         subgraph Controls["Enforcement & Grant Controls"]
-            GrantMFA{"Enforce MFA\n(MS Authenticator / FIDO2)"}
-            GrantBlock{"Block Access\n(Immediate Deny)"}
-            SessionControl{"Session Control\n(Sign-in Frequency)"}
+            GrantMFA{"Grant Control:\nRequire MFA"}
+            GrantBlock{"Grant Control:\nBlock Access"}
+            SessionControl{"Session Control:\nSign-in Frequency (8h)"}
         end
     end
 
-    subgraph TargetApps["Protected Enterprise Applications & Cloud Resources"]
-        M365["Microsoft 365 Services\n(Exchange, Teams, SharePoint)"]
-        AzurePortal["Azure Management & Entra Portal"]
-        SaaS["Enterprise SaaS & Custom Apps"]
+    %% SECTION 3: AUDITING & SIEM INTEGRATION
+    subgraph Telemetry["[SIEM & GOVERNANCE] Detection & Auditing Pipeline"]
+        SignInLogs[("Entra Sign-in Logs\n(Interactive & Non-Interactive)")]
+        AuditLogs[("Entra Audit Logs\n(Directory Changes)")]
+        Sentinel[("Microsoft Sentinel / SIEM\n(Break-Glass & Brute-Force Alerts)")]
     end
 
-    %% Connections
+    %% SECTION 4: PROTECTED CLOUD APPLICATIONS
+    subgraph TargetApps["Protected Corporate Cloud Assets"]
+        M365["Microsoft 365 Apps\n(Exchange, Teams, SharePoint)"]
+        AzurePortal["Azure Management & Entra Admin Center"]
+    end
+
+    %% Conceptual link
     Connect -.->|Password Hash Sync (PHS)| Users
+
+    %% Signal evaluation flow
     Users --> Groups
     Groups --> Signals
     Signals --> PolicyEngine
 
-    PolicyEngine -->|Deny foreign / legacy| GrantBlock
-    PolicyEngine -->|Admin / Risky sign-in| GrantMFA
-    PolicyEngine -->|Session limits| SessionControl
+    %% Policy Decisions
+    PolicyEngine -->|Foreign IP / Legacy Protocol| GrantBlock
+    PolicyEngine -->|Privileged Role / High Risk| GrantMFA
+    PolicyEngine -->|Privileged User Session| SessionControl
 
-    GrantBlock -->|Deny| Denied[("Access Denied Logged")]
-    GrantMFA -->|Satisfied| TargetApps
+    %% Outcomes
+    GrantBlock -->|Pre-Auth Termination| SignInLogs
+    GrantMFA -->|Challenge Satisfied| TargetApps
     SessionControl --> TargetApps
+
+    %% Telemetry Stream
+    SignInLogs --> Sentinel
+    AuditLogs --> Sentinel
+    BreakGlass -.->|Any Sign-in Trigger| Sentinel
 ```
