@@ -2,8 +2,7 @@
 
 > **Project:** Zero-Trust Network & VPN Topology Architecture  
 > **Purpose:** Capture evidence that dual-layer enforcement works as designed  
-> **Status:** Template — fill in with actual command output and screenshots during lab execution
-
+> **Status:** Executed — evidence captured
 ---
 
 ## Test Summary
