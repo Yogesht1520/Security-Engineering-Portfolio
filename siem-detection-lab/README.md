@@ -1,7 +1,7 @@
 # Enterprise SIEM & Live Threat Detection Lab
 
 > Blue Team / SOC Analytics portfolio project.  
-> **Status:** Phase 0 — Infrastructure provisioning
+> **Status:** Complete (Phases 0–5 Deployed & Validated)
 
 ---
 
@@ -52,13 +52,11 @@ flowchart TD
 
 Over a 24-hour period, the internet-facing honeypot captured real-world attack traffic, primarily automated SSH brute-forcing botnets. The custom dashboard below was built to visualize this telemetry.
 
-*(Note to user: Save your screenshots into the `screenshots/` folder with these exact names so they render here)*
-
 ![Dashboard Overview](screenshots/dashboard_top.png)
 ![Dashboard Details](screenshots/dashboard_bottom.png)
 ![MITRE ATT&CK Coverage](screenshots/mitre_coverage.png)
 
-See the full [24-Hour Observation Report](24HR_OBSERVATION_REPORT.md) for detailed metrics, top attacker IPs, and mitigation strategies.
+See the full [24-Hour Observation Report](docs/24HR_OBSERVATION_REPORT.md) for detailed metrics, top attacker IPs, and detection efficacy findings.
 ## Repository Layout
 
 ```
@@ -68,20 +66,23 @@ siem-detection-lab/
 │   ├── terraform/          # GCP Terraform (multi-provider ready)
 │   └── setup_honeypot.sh   # Honeypot bootstrap script
 ├── wazuh/
-│   ├── custom_rules/       # Custom Wazuh detection rules (XML)
+│   ├── custom_rules/       # Multi-tiered custom Wazuh rules (Burst, Slow, Spray, Correlations)
 │   └── decoders/
 ├── tests/
-│   └── validate_detections.sh  # Synthetic event generator for testing
+│   └── validate_detections.sh  # Automated pass/fail detection test harness
 ├── dashboards/             # OpenSearch dashboard exports (.ndjson)
 ├── docs/
 │   ├── playbooks/          # SOC Incident Playbooks
 │   │   └── SSH_BRUTE_FORCE.md
-│   ├── DETECTION_RULES.md
+│   ├── investigations/     # End-to-end SOC investigation case studies
+│   │   └── CASE-2026-001_SSH_BRUTE_FORCE.md
+│   ├── DETECTION_RULES.md  # Multi-tiered rule specs & MITRE mappings
+│   ├── HONEYPOT_ISOLATION_AND_SAFETY.md # Network boundary verification
 │   └── 24HR_OBSERVATION_REPORT.md
 └── screenshots/
 ```
 
-## Security Posture
+## Security Posture & Isolation
 
 | VM | Port | Exposed To | Reason |
 |----|------|------------|--------|
@@ -91,9 +92,7 @@ siem-detection-lab/
 | SIEM | TCP 1514 | Honeypot IP only | Agent log forwarding |
 | SIEM | TCP 1515 | Honeypot IP only | Agent registration |
 
-> ⚠️ **Disposable Infrastructure:** The honeypot box is **fully burnable**. No credentials, secrets, or reusable data should ever be placed on it.
-> 
-> **What happens if the honeypot is compromised?** Nothing important. By design, it has no lateral access to the SIEM or your internal network. If compromised, it serves its purpose: capture the evidence, destroy the VM, and rebuild it using Terraform.
+> ⚠️ **Verifiable Honeypot Isolation:** By architecture, the honeypot has zero access to SIEM management planes (TCP 22/443) and no lateral access into internal subnets. Outbound access and cloud metadata tokens are restricted, and the VM is fully disposable via Terraform in < 120 seconds. (See [docs/HONEYPOT_ISOLATION_AND_SAFETY.md](docs/HONEYPOT_ISOLATION_AND_SAFETY.md) for network verification proof).
 
 ## MITRE ATT&CK Coverage
 
@@ -102,7 +101,7 @@ siem-detection-lab/
 | SSH Brute Force | T1110 | ✅ |
 | Privilege Escalation | T1078, T1548.003 | ✅ |
 | Suspicious Command Execution | T1059 | ✅ |
-| Account Creation | T1078 | ✅ |
+| Account Creation | T1136.001 | ✅ |
 | Successful Login After Brute Force | T1110, T1078 | ✅ |
 
 *(See [docs/DETECTION_RULES.md](docs/DETECTION_RULES.md) for full rule documentation.)*

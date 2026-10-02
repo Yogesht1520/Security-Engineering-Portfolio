@@ -1,69 +1,102 @@
-# SOC Playbook: SSH Brute Force
+# SOC Playbook: SSH Brute Force & Credential Access
 
-**Triggered by:** Rule `100010` (SSH Brute Force) or Rule `100040` (Login After Brute Force)
-**Associated MITRE ATT&CK:** T1110 (Brute Force), T1078 (Valid Accounts)
+**Document ID:** PB-SOC-001  
+**Version:** 2.0  
+**Trigger Rules:** `100010` (Burst Brute Force), `100012` (Low & Slow Brute Force), `100014` (Password Spray), `100040`/`100041` (Success After Brute Force)  
+**MITRE ATT&CK:** [T1110.001](https://attack.mitre.org/techniques/T1110/001/) (Password Guessing), [T1110.003](https://attack.mitre.org/techniques/T1110/003/) (Password Spraying), [T1078](https://attack.mitre.org/techniques/T1078/) (Valid Accounts)  
 
 ---
 
-## 1. Initial Triage
+## 1. Triage Decision Workflow
 
-1. **Identify the triggering rule:**
-   - Did Rule `100040` (Login After Brute Force) fire? 
-     - **YES:** Jump immediately to **Severity: CRITICAL**. This is an active compromise.
-     - **NO:** Only `100010` fired. Proceed to step 2.
-2. **Review the alert payload in Wazuh Dashboard:**
-   - What is the Source IP (`data.srcip`)?
-   - What usernames were targeted (`data.dstuser`)?
-   - Over what time window did the attacks occur?
+```mermaid
+flowchart TD
+    Alert([Alert: SSH Brute Force Fired]) --> CheckType{Trigger Type}
+    
+    CheckType -->|100010 / 100012 / 100014| ScanOnly[Failed Attempts Only]
+    CheckType -->|100040 / 100041| SuccessCheck[Successful Authentication Detected]
+    
+    ScanOnly --> CheckVol{Persistent or Distributed?}
+    CheckVol -->|High Volume / Repetitive| HostBlock[Deploy Active Response / Firewall Block]
+    CheckVol -->|Background Scanner Noise| CloseNoise[Log & Close as Benign Noise]
+    
+    SuccessCheck --> CheckAuth{Source IP & Auth Method}
+    CheckAuth -->|Authorized Admin IP + Public Key| VerifyAdmin[Verify against Admin Session Log]
+    VerifyAdmin -->|Confirmed Admin Session| CloseAdmin[Disposition: Benign Administrative Session]
+    
+    CheckAuth -->|Attacker IP OR Password Auth| AuditActivity{Post-Auth Audit Activity}
+    AuditActivity -->|Suspicious Commands / Persistence| ConfirmedCompromise[Severity: P1 CRITICAL Active Compromise]
+    AuditActivity -->|No Commands / Session Closed| SuspiciousUnresolved[Severity: P2 HIGH Suspicious Access]
+    
+    ConfirmedCompromise --> Containment[Execute Isolation & Teardown]
+    SuspiciousUnresolved --> RevokeCredentials[Revoke Keys / Force Reset / Investigate]
+```
 
-## 2. Validation & Enrichment
+---
 
-1. **Validate the Source IP:**
-   - Query VirusTotal or AbuseIPDB with the Source IP. Is it a known scanner/malicious node?
-   - Check the GeoIP data. Is the source country expected to access this system?
-2. **Validate the Target Usernames:**
-   - Are the targeted usernames valid accounts on the system? (e.g., `root`, `admin` vs. `company_employee`)
-   - If valid accounts are targeted, the risk increases.
-3. **Check for Success (Manual Verification):**
-   - Query Wazuh for rule `5715` (sshd: authentication success) originating from the same IP or targeting the same user within the last hour, just in case the correlation rule missed it.
+## 2. Step-by-Step Triage & Validation
 
-## 3. Scoping
+### Step 1: Alert Classification & Extraction
+Extract key fields from the Wazuh alert payload:
+- **Source IP (`data.srcip`):** The remote host initiating authentication.
+- **Target User (`data.dstuser`):** The account targeted (`root`, `ubuntu`, service accounts).
+- **Authentication Method:** Check whether authentication failed via `password` or `publickey`.
 
-Determine the extent of the activity:
-- Has this IP attacked other hosts in the environment?
-- Are other IPs participating in a coordinated brute-force attack (distributed brute force)?
+### Step 2: Correlate Authentication Success vs. Known Admin Baseline
+> [!IMPORTANT]
+> A successful authentication (`5715`) immediately following brute-force attempts is a high-priority correlation, but **not conclusive proof of compromise**. (e.g., An administrator logging in during an ongoing automated botnet scan).
 
-## 4. Severity Assessment
+1. **Verify Source IP Alignment:**
+   - Did the successful authentication originate from the **exact same IP** that generated the failures?
+   - Or did the success originate from the authorized administrative IP (e.g., the analyst's workstation)?
+2. **Examine Authentication Mechanism:**
+   - `Accepted password`: High probability of brute-force success if password auth was targeted.
+   - `Accepted publickey`: Typical of authorized administrative access unless private key exfiltration occurred.
+3. **Check Change / Administrative Baseline:**
+   - Cross-reference against scheduled maintenance or authorized administrative logins (e.g., the 13 authorized sessions logged in the 24-hour observation report).
 
-| Criteria | Severity | Action |
-|----------|----------|--------|
-| Targeted invalid users, all failed | **Low** | Log and close. Internet background noise. |
-| Targeted valid users, all failed | **Medium** | Consider blocking IP if persistent. |
-| **Successful login observed** | **Critical** | Immediate containment required. |
+---
 
-## 5. Investigation (If Successful Login)
+## 3. Post-Authentication Behavioral Analysis
 
-If a successful login occurred (`100040`):
-1. **Identify actions taken post-compromise:**
-   - Filter Wazuh events for the compromised host within the timeframe of the successful login.
-   - Look for suspicious commands (Rule `100030`), user creation (Rule `100020`), or privilege escalation (Rule `100021`).
-2. **Determine data exposure:**
-   - What access does the compromised user have?
-   - Was sensitive data accessed or exfiltrated?
+If authentication succeeded from an unverified or external IP, query Wazuh for subsequent telemetry within a **30-minute window**:
 
-## 6. Containment & Remediation
+| Detection Rule | Check | Evidence of Compromise |
+|:---|:---|:---|
+| **Rule `100030`** | Living-off-the-land commands | Execution of `wget`, `curl`, `nc`, `ncat`, or base64 decoding |
+| **Rule `100020`** | Account creation | Execution of `/usr/sbin/useradd` or `/usr/sbin/adduser` |
+| **Rule `100021`** | Sudoers modification | Modification of `/etc/sudoers` or `/etc/sudoers.d/*` |
+| **auditd execve** | Interactive shell activity | Execution of `bash -i`, python reverse shells, reconnaissance commands (`uname -a`, `id`, `whoami`, `cat /etc/shadow`) |
 
-**Medium Severity (Persistent scanning):**
-1. Add the Source IP to the external firewall blocklist or implement `fail2ban` on the host.
+---
 
-**Critical Severity (Successful Compromise):**
-1. **Isolate:** Disconnect the affected host from the network immediately.
-2. **Disable Account:** Disable the compromised user account across the environment.
-3. **Reset Credentials:** Force password resets for the compromised user and revoke associated SSH keys.
-4. **Rebuild (Honeypot specific):** Because the honeypot is disposable by design, destroy the VM and rebuild from the Terraform state.
+## 4. Incident Disposition & Classification
 
-## 7. Lessons Learned
+| Disposition | Criteria | Action & SLA |
+|:---|:---|:---|
+| **P1 — Confirmed Malicious (Active Compromise)** | External attacker IP successfully authenticated via password or stolen key, followed by interactive commands or persistence. | Immediate host isolation. Eradicate and destroy instance via Terraform. Re-issue credentials. (SLA: < 15 mins) |
+| **P2 — Suspicious / Unresolved** | External or unexpected IP successfully authenticated, but session dropped before post-exploitation activity was logged. | Lock targeted user account, invalidate active sessions, inspect bash history, monitor perimeter. (SLA: < 1 hour) |
+| **P3 — Persistent Adversary Scanning** | Aggressive brute-force scanner (e.g. `34.106.64.73` with 250+ attempts) targeting valid system accounts without success. | Add source IP to host firewall / Wazuh Active Response blocklist. (SLA: < 4 hours) |
+| **P4 — Benign / Background Noise** | Opportunistic scanners targeting invalid users (`by`, `admin`, `guest`) with low frequency. | Retain in SIEM index; no manual analyst intervention required. |
+| **P4 — Benign Administrative Activity** | Authorized administrator authenticated via public key from known management IP coincident with automated scanner activity. | Close alert as False Positive / Authorized Activity; record in change tracking log. |
 
-- Did the alerts fire in a timely manner?
-- Could the brute force have been prevented? (e.g., changing SSH port, using certificate-based auth, applying stricter firewall rules)
-- Was the playbook effective in containing the incident?
+---
+
+## 5. Containment, Eradication & Recovery
+
+### For P1 (Confirmed Compromise on Honeypot VM):
+1. **Network Isolation:** Update cloud firewall to isolate the honeypot instance, preventing any outbound egress:
+   ```bash
+   gcloud compute instances remove-tags siem-lab-honeypot --tags=honeypot
+   ```
+2. **Forensic Evidence Capture:**
+   - Preserve Wazuh Indexer alerts for the incident timeline.
+   - Capture memory dump and disk snapshot if deep forensics is required.
+3. **Disposable Teardown (Immutable Infrastructure):**
+   - Because the honeypot VM is disposable by design, destroy and re-provision using Terraform:
+     ```bash
+     cd infra/terraform
+     terraform destroy -target=google_compute_instance.honeypot -auto-approve
+     terraform apply -target=google_compute_instance.honeypot -auto-approve
+     ```
+4. **Credential Rotation:** Rotate SSH key pairs associated with any accounts present on the image.

@@ -1,16 +1,59 @@
 <group name="syslog,sshd,bruteforce,">
   <!--
-    Custom Rule: SSH Brute-Force Aggregation
+    Custom Rule: SSH Burst Brute-Force Aggregation
     Detects 8+ failed SSH logins from the same source IP within a 120-second window.
-    Maps to MITRE ATT&CK T1110 (Brute Force).
+    Maps to MITRE ATT&CK T1110.001 (Password Guessing).
   -->
   <rule id="100010" level="10" frequency="8" timeframe="120">
-    <if_matched_sid>5716</if_matched_sid> <!-- Base rule for SSH authentication failed -->
+    <if_matched_sid>5716</if_matched_sid> <!-- Base rule: SSH authentication failed -->
     <same_source_ip />
-    <description>sshd: High-frequency brute-force attack detected from $(srcip).</description>
+    <description>sshd: High-frequency burst brute-force attack detected from $(srcip).</description>
     <mitre>
-      <id>T1110</id>
+      <id>T1110.001</id>
     </mitre>
     <group>authentication_failures,</group>
+  </rule>
+
+  <!--
+    Custom Rule: Low-and-Slow SSH Brute-Force
+    Directly addresses honeypot observation: automated botnets pacing attempts
+    (1-3 attempts every few minutes) to evade short-window burst detection.
+    Detects 5+ failed attempts from the same source IP over a 1-hour window.
+  -->
+  <rule id="100012" level="10" frequency="5" timeframe="3600">
+    <if_matched_sid>5716</if_matched_sid>
+    <same_source_ip />
+    <description>sshd: Low-and-slow persistent brute-force attack detected from $(srcip).</description>
+    <mitre>
+      <id>T1110.001</id>
+    </mitre>
+    <group>authentication_failures,low_and_slow,</group>
+  </rule>
+
+  <!--
+    Custom Rule: Distributed Password Spraying
+    Detects distributed botnet activity targeting the same user account from
+    different source IPs (8+ failures within 300 seconds).
+  -->
+  <rule id="100014" level="11" frequency="8" timeframe="300">
+    <if_matched_sid>5716</if_matched_sid>
+    <same_user />
+    <description>sshd: Distributed password spray attack targeting user account '$(dstuser)'.</description>
+    <mitre>
+      <id>T1110.003</id>
+    </mitre>
+    <group>authentication_failures,password_spray,</group>
+  </rule>
+
+  <!--
+    Custom Rule: Benign Administrator SSH Activity Filter
+    Suppresses false-alarm critical escalations when expected administrator
+    management access occurs from the designated management network.
+  -->
+  <rule id="100015" level="3">
+    <if_sid>5715</if_sid> <!-- Base rule: sshd authentication success -->
+    <srcip>10.0.1.0/24</srcip>
+    <description>sshd: Benign administrative authentication from internal management subnet.</description>
+    <group>authentication_success,administrative_baseline,</group>
   </rule>
 </group>

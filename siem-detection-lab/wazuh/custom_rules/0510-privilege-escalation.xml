@@ -8,8 +8,7 @@
     <if_sid>5902</if_sid> <!-- Base rule: useradd command executed -->
     <description>System administration: New user account created.</description>
     <mitre>
-      <id>T1078</id>
-      <id>T1548</id>
+      <id>T1136.001</id>
     </mitre>
     <group>account_creation,</group>
   </rule>
