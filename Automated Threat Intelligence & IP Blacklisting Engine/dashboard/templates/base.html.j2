@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Threat Intelligence & IP Blacklisting Console{% endblock %}</title>
+  
+  <!-- Modern SOC Typography: Inter and JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="navbar">
+    <div class="brand">
+      <div class="brand-icon">⚡</div>
+      <div>
+        <h1 class="brand-title">Threat Intel Engine</h1>
+      </div>
+      <span class="brand-badge">SOC Console</span>
+    </div>
+    
+    <div class="status-indicator">
+      <div class="pulse-dot"></div>
+      <span>Active IPSet Sync</span>
+      <span class="text-dim" style="margin-left: 12px;">UTC: {{ now_utc }}</span>
+    </div>
+  </header>
+
+  <!-- Main Content View -->
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+  {% block script_extra %}{% endblock %}
+</body>
+</html>

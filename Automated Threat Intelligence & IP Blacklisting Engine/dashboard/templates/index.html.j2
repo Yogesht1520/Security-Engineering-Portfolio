@@ -1,0 +1,178 @@
+{% extends "base.html.j2" %}
+
+{% block content %}
+<!-- ── Top KPI Summary Metrics ────────────────────────────────────── -->
+<section class="metrics-grid">
+  <!-- Card 1: Total Blocked IPs -->
+  <div class="metric-card">
+    <div class="metric-label">
+      <span>Total Blocked IPs</span>
+      <span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10B981;">KERNEL SYNC</span>
+    </div>
+    <div class="metric-value">{{ stats.total_blocked }}</div>
+    <div class="metric-sub">Active in local ipset hash:net</div>
+  </div>
+
+  <!-- Card 2: Added Today -->
+  <div class="metric-card">
+    <div class="metric-label">
+      <span>Added Today</span>
+      <span class="badge-pill" style="background: rgba(0, 242, 254, 0.12); color: #00F2FE;">LAST 24H</span>
+    </div>
+    <div class="metric-value">{{ stats.added_today }}</div>
+    <div class="metric-sub">Newly flagged threat indicators</div>
+  </div>
+
+  <!-- Card 3: Expiring Soon -->
+  <div class="metric-card">
+    <div class="metric-label">
+      <span>Expiring Soon</span>
+      <span class="badge-pill" style="background: rgba(245, 158, 11, 0.15); color: #F59E0B;">TTL &lt; 48H</span>
+    </div>
+    <div class="metric-value">{{ stats.expiring_soon }}</div>
+    <div class="metric-sub">Scheduled for automated purge</div>
+  </div>
+
+  <!-- Card 4: Sources Active -->
+  <div class="metric-card">
+    <div class="metric-label">
+      <span>Active Intel Feeds</span>
+      <span class="badge-pill" style="background: rgba(168, 85, 247, 0.15); color: #C084FC;">ONLINE</span>
+    </div>
+    <div class="metric-value">{{ stats.active_sources | length }} / {{ stats.total_sources_configured }}</div>
+    <div class="metric-sub">
+      {% for src in stats.active_sources %}
+        <span class="badge-source source-{{ src }}">{{ src }}</span>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- ── Analytics & History Row ────────────────────────────────────── -->
+<section class="analytics-section">
+  <!-- 30-Day Trend Chart -->
+  <div class="panel">
+    <div class="panel-header">
+      <h2 class="panel-title">📈 Blocklist Size Trajectory (Recent Runs)</h2>
+      <span class="badge-pill" style="background: rgba(255, 255, 255, 0.05); color: #94A3B8;">30-Day Window</span>
+    </div>
+    <div class="chart-container">
+      {{ chart_html | safe }}
+    </div>
+  </div>
+
+  <!-- Recent Run History -->
+  <div class="panel">
+    <div class="panel-header">
+      <h2 class="panel-title">⏱️ Pipeline Executions</h2>
+      <span class="badge-pill" style="background: rgba(255, 255, 255, 0.05); color: #94A3B8;">Audit Trail</span>
+    </div>
+    <div>
+      {% if recent_runs %}
+        {% for run in recent_runs %}
+          <div class="run-item">
+            <div class="run-item-header">
+              <span>{{ run.timestamp[:16].replace('T', ' ') if run.timestamp else 'Recent Run' }}</span>
+              <span style="color: #10B981;">{{ run.duration_seconds | round(2) }}s</span>
+            </div>
+            <div class="run-item-stat">
+              <span>Blocked: +{{ run.summary.blocked if run.summary else 0 }}</span>
+              <span>Expired: -{{ run.summary.expired_count if run.summary else 0 }}</span>
+              <span>Active: {{ run.summary.total_active_in_db if run.summary else '-' }}</span>
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="text-dim" style="font-size: 12px; font-family: var(--font-mono); padding: 12px;">
+          No audit runs recorded yet. Run `python main.py` to trigger a cycle.
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<!-- ── Active Threat Indicators Table ─────────────────────────────── -->
+<section class="panel">
+  <div class="panel-header">
+    <h2 class="panel-title">🛡️ Active Enforced Indicators</h2>
+    <span class="badge-pill" style="background: rgba(0, 242, 254, 0.1); color: #00F2FE;">{{ indicators | length }} ENTRIES</span>
+  </div>
+
+  <!-- Filter & Search Bar -->
+  <div class="filter-bar">
+    <input
+      type="text"
+      id="search-input"
+      class="search-input"
+      placeholder="Filter by IP, CIDR prefix, source, or category (e.g. 192.168, spam, abuseipdb)..."
+      autocomplete="off"
+    />
+  </div>
+
+  <!-- Table -->
+  <div class="table-wrapper">
+    <table class="indicators-table">
+      <thead>
+        <tr>
+          <th class="sortable">Target IP / CIDR</th>
+          <th class="sortable">Score</th>
+          <th>Corroborating Sources</th>
+          <th class="sortable">Threat Category</th>
+          <th class="sortable">First Seen</th>
+          <th class="sortable">Expires At</th>
+          <th>Enforcement</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if indicators %}
+          {% for row in indicators %}
+            <tr>
+              <td>
+                <div class="ip-cell">
+                  <span>{{ row.ip }}</span>
+                  <button class="copy-btn" data-ip="{{ row.ip }}" title="Copy IP">📋</button>
+                </div>
+              </td>
+              <td>
+                {% set score = row.combined_score | round(1) %}
+                {% if score >= 80 %}
+                  <span class="badge-score badge-critical">{{ score }}</span>
+                {% elif score >= 50 %}
+                  <span class="badge-score badge-medium">{{ score }}</span>
+                {% else %}
+                  <span class="badge-score badge-low">{{ score }}</span>
+                {% endif %}
+              </td>
+              <td>
+                {% for s in row.sources %}
+                  <span class="badge-source source-{{ s }}">{{ s }}</span>
+                {% endfor %}
+              </td>
+              <td>
+                <span class="badge-cat">{{ row.category }}</span>
+              </td>
+              <td class="timestamp">{{ row.first_seen[:10] if row.first_seen else '-' }}</td>
+              <td class="timestamp">{{ row.expires_at[:10] if row.expires_at else '-' }}</td>
+              <td>
+                {% if row.enforced %}
+                  <span class="enforce-dot enforce-active"></span>
+                  <span style="font-size: 11px; color: #10B981; font-family: var(--font-mono);">Active</span>
+                {% else %}
+                  <span class="enforce-dot enforce-pending"></span>
+                  <span style="font-size: 11px; color: #F59E0B; font-family: var(--font-mono);">Pending</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="7" style="text-align: center; padding: 24px; color: var(--text-dim); font-family: var(--font-mono);">
+              No active indicators found in database. Run pipeline to populate blocklist.
+            </td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

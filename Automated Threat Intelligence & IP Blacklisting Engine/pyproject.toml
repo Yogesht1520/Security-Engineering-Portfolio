@@ -1,0 +1,6 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]          # makes project root importable without install
+addopts = "-v --tb=short"
+log_cli = true
+log_cli_level = "WARNING"

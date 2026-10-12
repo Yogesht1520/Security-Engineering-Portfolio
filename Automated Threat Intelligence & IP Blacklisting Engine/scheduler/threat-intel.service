@@ -1,0 +1,17 @@
+[Unit]
+Description=Automated Threat Intelligence & IP Blacklisting Engine Run
+Documentation=https://github.com/Yogesht1520/Security-Engineering-Portfolio
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/threat-intel-blacklister
+ExecStart=/opt/threat-intel-blacklister/venv/bin/python main.py
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target

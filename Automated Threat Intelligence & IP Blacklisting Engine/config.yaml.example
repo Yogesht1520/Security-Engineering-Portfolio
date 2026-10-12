@@ -1,0 +1,77 @@
+# ============================================================
+# Threat Intelligence IP Blacklisting Engine — Config Example
+# ============================================================
+# Copy this file to config.yaml and fill in your real values.
+# NEVER commit config.yaml to version control.
+# All values here can also be overridden by environment variables
+# (see docs in README.md for the ENV var name mapping).
+
+# --------------- API Keys -----------------------------------
+api_keys:
+  abuseipdb: "YOUR_ABUSEIPDB_API_KEY_HERE"   # free at https://www.abuseipdb.com/account/api
+  otx: "YOUR_OTX_API_KEY_HERE"               # free at https://otx.alienvault.com/api
+
+# --------------- Source toggles ----------------------------
+sources:
+  abuseipdb:
+    enabled: true
+    # Free tier: 1,000 checks/day. max_age_days controls how old a report can be.
+    max_age_days: 30
+    min_confidence: 50          # AbuseIPDB's own reported confidence (0–100)
+    limit: 500                  # IPs to pull per run
+    weight: 1.0                 # scoring weight (see scoring.py)
+
+  otx:
+    enabled: true
+    # OTX is generous; no strict daily cap on public pulses.
+    pulse_limit: 20             # max recent threat pulses to scan
+    weight: 0.8
+
+  spamhaus:
+    enabled: true
+    # No API key needed — fetches the DROP/EDROP text files directly.
+    weight: 0.6
+
+# --------------- Decision engine ----------------------------
+policy:
+  confidence_threshold: 60     # 0–100; IPs below this score are logged but NOT blocked
+  ttl_days: 30                 # days before an unre-flagged entry auto-expires
+  multi_source_bonus: 10       # added to combined_score when 2+ sources agree
+
+# --------------- Enforcement --------------------------------
+enforcement:
+  # PRIMARY — local ipset/nftables (Linux only, fully free)
+  local_firewall:
+    enabled: true
+    ipset_name: "threat-intel-blocklist"
+    ipset_type: "hash:net"      # supports CIDR blocks
+    dry_run: false              # set true to log actions without touching the kernel
+
+  # OPTIONAL — AWS WAF (small monthly cost; disabled by default)
+  # ⚠️  COST NOTICE: AWS WAF IP sets cost ~$1/month per set + $0.60/million requests.
+  #     Enable ONLY if you understand and accept this cost.
+  aws_waf:
+    enabled: false              # ← keep false unless you explicitly accept AWS costs
+    region: "us-east-1"
+    ip_set_name: "threat-intel-blocklist"
+    ip_set_id: "YOUR_AWS_WAF_IP_SET_ID_HERE"
+    scope: "REGIONAL"           # REGIONAL or CLOUDFRONT
+
+# --------------- Storage ------------------------------------
+storage:
+  db_path: "data/threat_intel.db"
+
+# --------------- Audit log ----------------------------------
+audit:
+  log_path: "data/run_history.jsonl"
+
+# --------------- Dashboard ----------------------------------
+dashboard:
+  host: "127.0.0.1"
+  port: 5000
+  chart_days: 30               # days of trend data shown in the chart
+
+# --------------- Logging ------------------------------------
+logging:
+  level: "INFO"                # DEBUG | INFO | WARNING | ERROR
+  format: "%(asctime)s [%(levelname)s] %(name)s — %(message)s"

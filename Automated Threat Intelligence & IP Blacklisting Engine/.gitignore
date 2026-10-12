@@ -1,0 +1,81 @@
+# ==============================================================================
+# 1. Credentials, Secrets & Sensitive Configuration
+# ==============================================================================
+config.yaml
+secrets.yaml
+secrets.json
+.env
+.env.*
+*.env
+*.pem
+*.key
+*.cert
+*.crt
+
+# Project prompt & internal spec documents
+07-threat-intel-ip-blacklister.md
+
+# ==============================================================================
+# 2. Runtime Data & Storage (SQLite, Audit Logs, Application Output)
+# ==============================================================================
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.jsonl
+*.log
+logs/
+
+# Generated export media & charts
+*.png
+*.jpg
+*.jpeg
+*.svg
+
+# Generated static HTML reports (preserve templates)
+*.html
+!dashboard/templates/**/*.html
+
+# ==============================================================================
+# 3. Python Artifacts & Bytecode
+# ==============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ==============================================================================
+# 4. Virtual Environments
+# ==============================================================================
+.venv/
+venv/
+env/
+ENV/
+
+# ==============================================================================
+# 5. Testing & Code Quality Tools
+# ==============================================================================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ==============================================================================
+# 6. IDE, Editors & OS System Files
+# ==============================================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini

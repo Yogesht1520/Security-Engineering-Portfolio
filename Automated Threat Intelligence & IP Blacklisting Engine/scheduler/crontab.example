@@ -1,0 +1,10 @@
+# ==============================================================================
+# Threat Intelligence & IP Blacklisting Engine — Crontab Schedule Reference
+# ==============================================================================
+# To install, run: sudo crontab -e
+#
+# Runs every 6 hours (at minute 0 of hour 0, 6, 12, 18).
+# Output is logged to /var/log/threat-intel.log with timestamps.
+# ==============================================================================
+
+0 */6 * * * root cd /opt/threat-intel-blacklister && /opt/threat-intel-blacklister/venv/bin/python main.py >> /var/log/threat-intel.log 2>&1
