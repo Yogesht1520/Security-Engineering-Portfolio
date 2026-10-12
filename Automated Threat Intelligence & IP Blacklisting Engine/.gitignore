@@ -26,11 +26,15 @@ data/
 *.log
 logs/
 
-# Generated export media & charts
+# Generated export media & charts (preserve documentation assets)
 *.png
 *.jpg
 *.jpeg
 *.svg
+!assets/*.png
+!assets/*.jpg
+!assets/*.jpeg
+!docs/images/*
 
 # Generated static HTML reports (preserve templates)
 *.html

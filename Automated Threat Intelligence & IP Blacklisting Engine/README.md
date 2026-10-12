@@ -9,6 +9,10 @@
 > **Security Engineering Portfolio — Project 7**  
 > An automated, production-grade Cyber Threat Intelligence (CTI) pipeline that aggregates malicious indicators from free-tier threat feeds, deduplicates and corroborates scores, applies threshold policies, synchronizes an active Linux firewall blocklist (`ipset`) or AWS WAF IP set, auto-expires stale indicators using dynamic TTL, and maintains a complete JSONL audit trail with an interactive SOC dashboard.
 
+<p align="center">
+  <img src="assets/dashboard_hero.png" alt="Automated Threat Intelligence & IP Blacklisting SOC Console" width="950" style="border-radius: 8px; border: 1px solid #1E293B; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);" />
+</p>
+
 ---
 
 ## 1. High-Level Architecture
