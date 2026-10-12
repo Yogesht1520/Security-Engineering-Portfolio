@@ -103,7 +103,7 @@ Incident Response
 
 ---
 
-### 8. [Controlled Ransomware Simulation & Digital Forensics](./Controlled Ransomware%20Simulation%20&%20Digital%20Forensics)
+### 8. [Controlled Ransomware Simulation & Digital Forensics](./Controlled%20Ransomware%20Simulation%20&%20Digital%20Forensics)
 **The Problem:** Understanding an attack after it's already happened — using only forensic evidence — is a fundamentally different skill from preventing one.
 **Architecture / Tools:** Air-gapped VirtualBox VM · Atomic Red Team · Volatility 3 · Autopsy
 **Implementation:** A safe, non-destructive, MITRE-mapped attack simulation run inside a fully isolated VM, investigated blind using memory and disk forensics, and written up as a consulting-grade Incident Response report.
