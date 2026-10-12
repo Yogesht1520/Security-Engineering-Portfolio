@@ -94,7 +94,7 @@ Incident Response
 
 ---
 
-### 7. [Automated Threat Intelligence & IP Blacklisting Engine](https://github.com/Yogesht1520/sec-portfolio-07-threat-intel-blacklister)
+### 7. [Automated Threat Intelligence & IP Blacklisting Engine](./Automated%20Threat%20Intelligence%20&%20IP%20Blacklisting%20Engine)
 **The Problem:** Reacting to attacks after they happen is slower than defending against IPs already known to be malicious.
 **Architecture / Tools:** Python · AbuseIPDB/AlienVault OTX APIs · SQLite · ipset/nftables
 **Implementation:** A scheduled pipeline that collects, deduplicates, and confidence-scores malicious IPs from multiple free threat-intel feeds, then automatically enforces a TTL-based firewall blocklist — avoiding the common mistake of blocklists that only ever grow.
@@ -103,7 +103,7 @@ Incident Response
 
 ---
 
-### 8. [Controlled Ransomware Simulation & Digital Forensics](https://github.com/Yogesht1520/sec-portfolio-08-dfir-ransomware-sim)
+### 8. [Controlled Ransomware Simulation & Digital Forensics](Controlled Ransomware%20Simulation%20&%20Digital%20Forensics)
 **The Problem:** Understanding an attack after it's already happened — using only forensic evidence — is a fundamentally different skill from preventing one.
 **Architecture / Tools:** Air-gapped VirtualBox VM · Atomic Red Team · Volatility 3 · Autopsy
 **Implementation:** A safe, non-destructive, MITRE-mapped attack simulation run inside a fully isolated VM, investigated blind using memory and disk forensics, and written up as a consulting-grade Incident Response report.
