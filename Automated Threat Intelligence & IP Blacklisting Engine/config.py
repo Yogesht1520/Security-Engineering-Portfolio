@@ -59,6 +59,12 @@ _DEFAULTS: dict[str, Any] = {
         "syslog_host": "127.0.0.1",
         "syslog_port": 514,
     },
+    "reporting": {
+        "enabled": True,
+        "reports_dir": "data/reports",
+        "webhook_url": None,
+        "notify_on_alert_only": False,
+    },
     "dashboard": {"host": "127.0.0.1", "port": 5000, "chart_days": 30},
     "logging": {"level": "INFO", "format": "%(asctime)s [%(levelname)s] %(name)s — %(message)s"},
 }

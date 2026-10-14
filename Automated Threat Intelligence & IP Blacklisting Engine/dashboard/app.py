@@ -25,9 +25,19 @@ from flask import Flask, jsonify, render_template, request
 
 from audit.logger import AuditLogger
 from config import get_config
+from enforcement.local_firewall import LocalFirewallAdapter
+from siem.forwarder import SiemForwarder
 from storage.db import ThreatIntelDB
 
 logger = logging.getLogger(__name__)
+
+
+def _get_adapter(cfg: dict) -> LocalFirewallAdapter | None:
+    enf_cfg = cfg.get("enforcement", {})
+    local_cfg = enf_cfg.get("local_firewall", {})
+    if local_cfg.get("enabled", True):
+        return LocalFirewallAdapter(local_cfg)
+    return None
 
 
 def _parse_iso(dt_val: Any) -> datetime | None:
@@ -263,6 +273,80 @@ def create_app(
             active_count = len(db.get_active())
         chart_html = generate_trend_chart_html(app.config["AUDIT_PATH"], total_active=active_count)
         return jsonify({"chart_html": chart_html})
+
+    @app.route("/api/indicators/<path:ip>/whitelist", methods=["POST"])
+    def api_whitelist_indicator(ip: str):
+        data = request.get_json(silent=True) or {}
+        reason = data.get("reason", "Analyst classified as false positive")
+        analyst = data.get("analyst", "SOC Analyst")
+
+        cfg = app.config["THREAT_INTEL_CFG"]
+        with ThreatIntelDB(app.config["DB_PATH"]) as db:
+            db.init_schema()
+            record = db.get_by_ip(ip)
+            if not record:
+                return jsonify({"success": False, "error": f"Indicator '{ip}' not found"}), 404
+
+            db.update_status(
+                ip=ip,
+                status="whitelisted",
+                reason=f"WHITELISTED by {analyst}: {reason}",
+                enforced=False,
+            )
+
+        adapter = _get_adapter(cfg)
+        if adapter:
+            try:
+                adapter.remove([ip])
+            except Exception as exc:
+                logger.warning("Failed to remove %s from firewall adapter: %s", ip, exc)
+
+        siem = SiemForwarder(cfg.get("siem", {}))
+        siem.emit_analyst_action(ip=ip, action="whitelist", reason=reason, analyst=analyst)
+
+        return jsonify({
+            "success": True,
+            "message": f"Indicator '{ip}' successfully whitelisted and unblocked.",
+            "ip": ip,
+            "status": "whitelisted",
+        })
+
+    @app.route("/api/indicators/<path:ip>/unblock", methods=["POST"])
+    def api_unblock_indicator(ip: str):
+        data = request.get_json(silent=True) or {}
+        reason = data.get("reason", "Manual early expiration by analyst")
+        analyst = data.get("analyst", "SOC Analyst")
+
+        cfg = app.config["THREAT_INTEL_CFG"]
+        with ThreatIntelDB(app.config["DB_PATH"]) as db:
+            db.init_schema()
+            record = db.get_by_ip(ip)
+            if not record:
+                return jsonify({"success": False, "error": f"Indicator '{ip}' not found"}), 404
+
+            db.update_status(
+                ip=ip,
+                status="expired",
+                reason=f"EARLY UNBLOCK by {analyst}: {reason}",
+                enforced=False,
+            )
+
+        adapter = _get_adapter(cfg)
+        if adapter:
+            try:
+                adapter.remove([ip])
+            except Exception as exc:
+                logger.warning("Failed to remove %s from firewall adapter: %s", ip, exc)
+
+        siem = SiemForwarder(cfg.get("siem", {}))
+        siem.emit_analyst_action(ip=ip, action="unblock", reason=reason, analyst=analyst)
+
+        return jsonify({
+            "success": True,
+            "message": f"Indicator '{ip}' successfully removed from active enforcement.",
+            "ip": ip,
+            "status": "expired",
+        })
 
     return app
 

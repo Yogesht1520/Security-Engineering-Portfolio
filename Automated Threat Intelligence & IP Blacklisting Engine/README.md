@@ -1,7 +1,7 @@
 # Automated Threat Intelligence & IP Blacklisting Engine
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-180%20Passed-10B981.svg?logo=pytest&logoColor=white)](https://pytest.org/)
+[![Tests](https://img.shields.io/badge/Tests-196%20Passed-10B981.svg?logo=pytest&logoColor=white)](https://pytest.org/)
 [![License](https://img.shields.io/badge/License-MIT-gray.svg)](LICENSE)
 [![Framework](https://img.shields.io/badge/Dashboard-Flask%20%7C%20Plotly-00F2FE.svg?logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
 [![Enforcement](https://img.shields.io/badge/Enforcement-ipset%20%7C%20AWS%20WAF-purple.svg)](https://ipset.netfilter.org/)
@@ -151,33 +151,41 @@ Automated Threat Intelligence & IP Blacklisting Engine/
 │   ├── otx.py                # AlienVault OTX recent pulses collector
 │   └── spamhaus.py           # Spamhaus DROP & EDROP text feed parser
 ├── engine/                   # Analytics, scoring, and policy engines
+│   ├── validator.py          # IP/CIDR validation, bogon defense (RFC 1918/4193), allowlist
 │   ├── dedup.py              # Multi-source indicator deduplication & bucket grouping
-│   ├── scoring.py            # Weighted average scoring & corroboration bonus logic
+│   ├── scoring.py            # Provenance de-aliasing, freshness decay, clamped score [0, 100]
 │   ├── policy.py             # Confidence threshold policy evaluation & TTL window calculation
+│   ├── failsafe.py           # State machine (HEALTHY, DEGRADED, FAIL_SAFE) & freeze logic
 │   └── expiry.py             # TTL expiry sweeper & database/firewall cleanup
 ├── storage/                  # Relational state store
-│   ├── db.py                 # ThreatIntelDB SQLite CRUD interface
-│   └── schema.sql            # SQLite DDL schema (scored_ips table & indexes)
-├── enforcement/              # Firewall & WAF strategy adapters
+│   ├── db.py                 # ThreatIntelDB SQLite CRUD, lifecycle, & analyst actions
+│   └── schema.sql            # SQLite DDL schema (scored_ips, feed_health_telemetry, indexes)
+├── enforcement/              # Firewall & WAF strategy adapters & safety guardrails
 │   ├── base_adapter.py       # BaseEnforcer ABC & EnforcerError
 │   ├── result.py             # EnforcementResult dataclass
-│   ├── local_firewall.py     # Primary Linux ipset hash:net adapter
-│   └── aws_waf.py            # Optional AWS WAFv2 IPSet boto3 adapter
+│   ├── local_firewall.py     # Primary Linux ipset hash:net adapter (dual-stack IPv4/IPv6)
+│   ├── aws_waf.py            # Optional AWS WAFv2 IPSet boto3 adapter
+│   ├── safety.py             # Rate-of-change and volatility circuit breakers
+│   └── rollback.py           # Last-Known-Good (LKG) snapshot state & atomic restore
+├── siem/                     # SIEM & SOC detection bridge
+│   └── forwarder.py          # Real-time event forwarder (Wazuh JSON Lines, CEF Syslog UDP/TCP)
+├── reporting/                # Scheduled execution reports & alerting
+│   └── digest.py             # Markdown run digest generator & Slack/Teams/Discord webhooks
 ├── audit/                    # Execution auditing
 │   └── logger.py             # AuditLogger writing append-only run_history.jsonl
 ├── dashboard/                # SOC management console
-│   ├── app.py                # Flask application factory, REST APIs, Plotly chart generator
+│   ├── app.py                # Flask application factory, REST APIs, SOC analyst actions, Plotly
 │   ├── templates/            # Jinja2 HTML templates
 │   │   ├── base.html.j2      # Base layout & font typography
-│   │   └── index.html.j2     # Main dashboard interface
+│   │   └── index.html.j2     # Main dashboard interface with SOC actions
 │   └── static/               # Frontend assets
-│       ├── css/dashboard.css # Glassmorphic dark theme stylesheet
-│       └── js/dashboard.js   # Client-side search, column sorting, clipboard utility
+│       ├── css/dashboard.css # Glassmorphic dark theme stylesheet & analyst action styling
+│       └── js/dashboard.js   # Search, sorting, clipboard, and interactive SOC whitelist/unblock modals
 ├── scheduler/                # Production automated scheduling
 │   ├── threat-intel.service  # Systemd service unit definition
 │   ├── threat-intel.timer    # Systemd timer unit (6-hour recurring trigger)
 │   └── crontab.example       # Crontab schedule definition
-└── tests/                    # Comprehensive unit & integration test suite (159 tests)
+└── tests/                    # Comprehensive unit & integration test suite (196 tests)
     ├── test_phase0_config.py
     ├── test_phase1_sources.py
     ├── test_phase2_dedup.py
@@ -187,7 +195,14 @@ Automated Threat Intelligence & IP Blacklisting Engine/
     ├── test_phase2_pipeline.py
     ├── test_phase3_enforcement.py
     ├── test_phase4_expiry_audit.py
-    └── test_phase5_dashboard.py
+    ├── test_phase5_dashboard.py
+    ├── test_v1_validator.py
+    ├── test_v1_scoring_provenance.py
+    ├── test_v1_failsafe_safety.py
+    ├── test_v1_lifecycle_feed_health.py
+    ├── test_v1_siem_forwarder.py
+    ├── test_v1_reporting_digest.py
+    └── test_v2_analyst_feedback.py
 ```
 
 ---
@@ -331,11 +346,32 @@ Open **[http://127.0.0.1:5000](http://127.0.0.1:5000)** in your browser to view:
 * Threat feed health telemetry cards (AbuseIPDB, AlienVault OTX, Spamhaus)
 * 30-day blocklist trajectory trend chart
 * Filterable indicators table with copy-to-clipboard utilities
+* **SOC Analyst Action Buttons**: Interactive **Whitelist** (permanent false-positive resolution) and **Unblock** (early TTL expiration) with analyst reason prompts and SIEM audit forwarder emission
 * Historical audit run logs
+
+#### SOC Analyst REST API Usage:
+```bash
+# Whitelist a false-positive indicator (drops from firewall, sets status='whitelisted')
+curl -X POST http://127.0.0.1:5000/api/indicators/198.51.100.42/whitelist \
+  -H "Content-Type: application/json" \
+  -d '{"reason": "Confirmed customer VPN gateway false-positive", "analyst": "sec-ops"}'
+
+# Manually unblock an indicator ahead of scheduled TTL expiry
+curl -X POST http://127.0.0.1:5000/api/indicators/198.51.100.42/unblock \
+  -H "Content-Type: application/json" \
+  -d '{"reason": "Remediated C2 sinkhole confirmed by incident response", "analyst": "sec-ops"}'
+```
+
+### 6. Scheduled Run Digests & Executive Reporting
+On every pipeline run (or via cron/systemd), the engine compiles an executive Markdown report saved to `data/reports/latest_run.md` and archived under `data/reports/run_<timestamp>.md`.
+
+If configured, it also dispatches formatted rich webhook cards to Slack, Discord, or Microsoft Teams:
+* **Clean Run Notification**: Summary of collected raw indicators, unique IPs, newly blocked, and purged expired IPs.
+* **Circuit Breaker Incident Alert**: Urgent notification if the volatility or rate-of-change safety threshold was breached and run was halted.
 
 ---
 
-## 6. SIEM & Wazuh Detection Lab Integration (Portfolio Bridge)
+## 7. SIEM & Wazuh Detection Lab Integration (Portfolio Bridge)
 
 This project directly connects with **Project 4 (Wazuh SIEM Detection Lab)** by exporting telemetry, policy decisions, and enforcement alerts in real-time.
 
@@ -385,7 +421,7 @@ flowchart LR
 
 ---
 
-## 7. Production Automated Scheduling
+## 8. Production Automated Scheduling
 
 ### Systemd Timer (Recommended on Linux)
 
@@ -411,7 +447,7 @@ Edit system crontab (`sudo crontab -e`):
 
 ---
 
-## 8. Test Suite
+## 9. Test Suite
 
 Execute the comprehensive test suite across all architectural modules and hardening phases:
 
@@ -420,7 +456,7 @@ pytest -v
 ```
 
 ```
-============================= 187 passed in 4.10s =============================
+============================= 196 passed in 9.18s =============================
 ```
 
 ### Coverage by Component
@@ -440,10 +476,12 @@ pytest -v
 | `test_v1_failsafe_safety.py` | Fail-safe states (HEALTHY/DEGRADED/FAIL_SAFE), circuit breakers, LKG rollback | 5 |
 | `test_v1_lifecycle_feed_health.py` | Extended lifecycle timestamps, feed health recording, `/api/feed-health` | 4 |
 | `test_v1_siem_forwarder.py` | Wazuh JSON formatting, CEF export, Syslog UDP/TCP, fault tolerance | 7 |
-| **Total** | **Full System Pipeline** | **187** |
+| `test_v1_reporting_digest.py` | Scheduled Markdown run digests, circuit-breaker alerts, Slack webhooks | 6 |
+| `test_v2_analyst_feedback.py` | SOC analyst actions (whitelist, unblock), DB state mutation, SIEM emission | 3 |
+| **Total** | **Full System Pipeline** | **196** |
 
 ---
 
-## 9. License
+## 10. License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.

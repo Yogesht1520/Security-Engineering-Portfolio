@@ -236,6 +236,42 @@ class ThreatIntelDB:
                 (1 if enforced else 0, ip),
             )
 
+    def update_status(
+        self,
+        ip: str,
+        status: str,
+        reason: str | None = None,
+        enforced: bool | None = None,
+    ) -> bool:
+        """Update operational status and enforced state of an indicator."""
+        now_iso = datetime.now(timezone.utc).isoformat()
+        with self.conn:
+            cursor = self.conn.cursor()
+            if enforced is not None:
+                cursor.execute(
+                    """
+                    UPDATE scored_ips SET
+                        status = ?,
+                        reason = COALESCE(?, reason),
+                        enforced = ?,
+                        last_updated = ?
+                    WHERE ip = ?
+                    """,
+                    (status, reason, 1 if enforced else 0, now_iso, ip),
+                )
+            else:
+                cursor.execute(
+                    """
+                    UPDATE scored_ips SET
+                        status = ?,
+                        reason = COALESCE(?, reason),
+                        last_updated = ?
+                    WHERE ip = ?
+                    """,
+                    (status, reason, now_iso, ip),
+                )
+            return cursor.rowcount > 0
+
     def record_feed_health(
         self,
         feed_name: str,

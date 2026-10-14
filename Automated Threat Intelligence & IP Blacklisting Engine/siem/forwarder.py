@@ -252,6 +252,24 @@ class SiemForwarder:
             },
         ))
 
+    def emit_analyst_action(
+        self,
+        ip: str,
+        action: str,
+        reason: str,
+        analyst: str = "SOC Analyst",
+    ) -> bool:
+        """Emit an interactive analyst manual override event."""
+        return self.emit(SiemEvent(
+            event_type="threat_intel.analyst_override",
+            severity="warning" if action == "whitelist" else "info",
+            summary=f"Analyst {action} override applied for {ip} by {analyst}",
+            target_ip=ip,
+            action=action,
+            reason=reason,
+            details={"analyst": analyst},
+        ))
+
     def emit_batch(self, events: list[SiemEvent]) -> int:
         """Deliver a batch of events, returning successfully dispatched count."""
         count = 0

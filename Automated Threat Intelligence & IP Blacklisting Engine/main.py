@@ -49,6 +49,7 @@ from intel.base_source import BaseIntelSource, SourceFetchError
 from intel.otx import OTXSource
 from intel.spamhaus import SpamhausSource
 from models import RawIndicator
+from reporting.digest import FeedDigest, ReportManager, RunDigest
 from siem.forwarder import SiemForwarder
 from storage.db import ThreatIntelDB
 
@@ -546,6 +547,54 @@ def run_pipeline(
 
         audit_logger.log_run(audit_entry)
         logger.info("  Audit log updated: %s", audit_path)
+
+        # ── Phase 4.5: Executive Reporting & Webhook Alerts ─────────────────
+        report_cfg = cfg.get("reporting", {})
+        if report_cfg.get("enabled", True):
+            report_mgr = ReportManager(report_cfg)
+            cb_tripped = any("Circuit breaker triggered" in str(e) for e in enforcement_result.errors)
+            cb_reason = next((str(e) for e in enforcement_result.errors if "Circuit breaker triggered" in str(e)), "")
+
+            feed_digests = [
+                FeedDigest(
+                    name=s.name,
+                    healthy=s.healthy,
+                    duration_ms=s.duration_ms,
+                    indicators_received=s.indicator_count,
+                    rejected_count=s.rejected_count,
+                    error=s.error,
+                )
+                for s in health_report.feeds.values()
+            ]
+
+            run_digest = RunDigest(
+                run_id=audit_entry["run_id"],
+                timestamp=run_start,
+                duration_seconds=elapsed,
+                operational_state=health_report.operational_state.value,
+                collected_raw=len(raw_indicators),
+                unique_ips=len(buckets),
+                blocked_count=len(blocked),
+                log_only_count=len(log_only),
+                enforced_added=enforcement_result.added,
+                enforced_removed=enforcement_result.removed,
+                enforced_skipped=enforcement_result.skipped,
+                expired_count=expiry_result.expired_count,
+                total_active_in_db=total_active_in_db,
+                is_dry_run=bool(dry_run),
+                circuit_breaker_tripped=cb_tripped,
+                circuit_breaker_reason=cb_reason,
+                feeds=feed_digests,
+                errors=enforcement_result.errors + expiry_result.errors,
+            )
+
+            report_file = report_mgr.save_markdown_digest(run_digest)
+            logger.info("  Executive report saved: %s", report_file)
+
+            if report_mgr.webhook_url:
+                sent = report_mgr.dispatch_webhook(run_digest)
+                if sent:
+                    logger.info("  Webhook alert dispatched successfully")
 
     logger.info("═" * 60)
     logger.info("Run complete in %.2fs [%s]", elapsed, health_report.operational_state.value)

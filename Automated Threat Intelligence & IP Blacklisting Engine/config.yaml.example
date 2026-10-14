@@ -74,6 +74,13 @@ siem:
   syslog_host: "127.0.0.1"
   syslog_port: 514
 
+# --------------- Scheduled Reporting & Alerts ---------------
+reporting:
+  enabled: true                # archive markdown digest reports in data/reports/
+  reports_dir: "data/reports"
+  webhook_url: null            # optional: Slack / Discord / Teams webhook URL
+  notify_on_alert_only: false  # true = only dispatch webhook on circuit trips or feed outages
+
 # --------------- Dashboard ----------------------------------
 dashboard:
   host: "127.0.0.1"
