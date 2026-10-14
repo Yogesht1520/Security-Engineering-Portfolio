@@ -3,8 +3,15 @@ name: Security Pipeline
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - 'Automated DevSecOps CI-CD Security Pipeline/**'
+      - '.github/workflows/security-pipeline.yml'
   pull_request:
     branches: [ "main" ]
+    paths:
+      - 'Automated DevSecOps CI-CD Security Pipeline/**'
+      - '.github/workflows/security-pipeline.yml'
+  workflow_dispatch:
 
 # Supply Chain Security: Pin actions to SHAs
 env:

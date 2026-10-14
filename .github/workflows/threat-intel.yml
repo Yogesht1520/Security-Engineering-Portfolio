@@ -1,0 +1,64 @@
+name: Threat Intel Engine CI
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'Automated Threat Intelligence & IP Blacklisting Engine/**'
+      - '.github/workflows/threat-intel.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'Automated Threat Intelligence & IP Blacklisting Engine/**'
+      - '.github/workflows/threat-intel.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Run Pytest & CLI Validation
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: './Automated Threat Intelligence & IP Blacklisting Engine'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'Automated Threat Intelligence & IP Blacklisting Engine/requirements.txt'
+
+      - name: Install Linux Kernel ipset utility
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ipset
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run Test Suite (196 Tests)
+        run: |
+          pytest -v
+
+      - name: Validate Dry-Run Execution
+        run: |
+          python main.py --dry-run
+
+      - name: Validate Reconciliation Mode
+        run: |
+          python main.py --reconcile --dry-run
+
+      - name: Validate Rollback Mechanism
+        run: |
+          python main.py --rollback
