@@ -39,6 +39,7 @@ from enforcement import (
     BaseEnforcer,
     CircuitBreakerError,
     EnforcementResult,
+    EnforcerError,
     GuardrailConfig,
     LocalFirewallAdapter,
     SafetyController,
@@ -625,10 +626,10 @@ def run_rollback(cfg: dict) -> None:
         logger.error("Rollback failed: %s", exc)
 
 
-def run_reconciliation(cfg: dict) -> None:
+def run_reconciliation(cfg: dict, dry_run: bool | None = None) -> None:
     """Compare desired database state vs. active kernel firewall state and reconcile."""
     logger = logging.getLogger("main.reconcile")
-    adapter = _get_enforcement_adapter(cfg, logger)
+    adapter = _get_enforcement_adapter(cfg, logger, dry_run_override=dry_run)
     if not adapter:
         logger.error("No active enforcement adapter configured for reconciliation.")
         return
@@ -638,7 +639,12 @@ def run_reconciliation(cfg: dict) -> None:
         active_records = db.get_active()
         desired_set = {r["ip"] for r in active_records}
 
-        current_set = adapter.current_set()
+        try:
+            current_set = adapter.current_set()
+        except EnforcerError as exc:
+            logger.warning("Could not query active firewall state: %s", exc)
+            current_set = set()
+
         missing_in_fw = list(desired_set - current_set)
         orphan_in_fw = list(current_set - desired_set)
 
@@ -662,13 +668,16 @@ def run_reconciliation(cfg: dict) -> None:
             logger.info("[DRY-RUN] Drift correction simulated.")
             return
 
-        if missing_in_fw:
-            added = adapter.add(missing_in_fw)
-            logger.info("Reconciled: Added %d missing entries to firewall", added)
+        try:
+            if missing_in_fw:
+                added = adapter.add(missing_in_fw)
+                logger.info("Reconciled: Added %d missing entries to firewall", added)
 
-        if orphan_in_fw:
-            removed = adapter.remove(orphan_in_fw)
-            logger.info("Reconciled: Removed %d orphan entries from firewall", removed)
+            if orphan_in_fw:
+                removed = adapter.remove(orphan_in_fw)
+                logger.info("Reconciled: Removed %d orphan entries from firewall", removed)
+        except EnforcerError as exc:
+            logger.warning("Reconciliation notice: %s", exc)
 
 
 def print_decision_explanation(ip: str, cfg: dict) -> None:
@@ -731,7 +740,8 @@ def main() -> None:
         return
 
     if args.reconcile:
-        run_reconciliation(cfg)
+        is_dry = True if args.dry_run else (False if args.apply else None)
+        run_reconciliation(cfg, dry_run=is_dry)
         return
 
     is_dry = True if args.dry_run else (False if args.apply else None)
