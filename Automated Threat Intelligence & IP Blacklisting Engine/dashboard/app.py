@@ -192,6 +192,7 @@ def create_app(
             db.init_schema()
             stats = compute_dashboard_stats(db, app.config["THREAT_INTEL_CFG"])
             indicators = db.get_active()
+            feed_health = db.get_feed_health()
 
         chart_html = generate_trend_chart_html(
             app.config["AUDIT_PATH"],
@@ -205,6 +206,7 @@ def create_app(
             "index.html.j2",
             stats=stats,
             indicators=indicators,
+            feed_health=feed_health,
             chart_html=chart_html,
             recent_runs=recent_runs,
             now_utc=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
@@ -216,6 +218,13 @@ def create_app(
             db.init_schema()
             stats = compute_dashboard_stats(db, app.config["THREAT_INTEL_CFG"])
         return jsonify(stats)
+
+    @app.route("/api/feed-health")
+    def api_feed_health():
+        with ThreatIntelDB(app.config["DB_PATH"]) as db:
+            db.init_schema()
+            health = db.get_feed_health()
+        return jsonify(health)
 
     @app.route("/api/indicators")
     def api_indicators():

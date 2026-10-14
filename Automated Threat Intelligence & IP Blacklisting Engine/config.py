@@ -51,6 +51,14 @@ _DEFAULTS: dict[str, Any] = {
     },
     "storage": {"db_path": "data/threat_intel.db"},
     "audit":   {"log_path": "data/run_history.jsonl"},
+    "siem": {
+        "enabled": False,
+        "mode": "file",
+        "format": "json",
+        "file_path": "data/siem_events.jsonl",
+        "syslog_host": "127.0.0.1",
+        "syslog_port": 514,
+    },
     "dashboard": {"host": "127.0.0.1", "port": 5000, "chart_days": 30},
     "logging": {"level": "INFO", "format": "%(asctime)s [%(levelname)s] %(name)s — %(message)s"},
 }

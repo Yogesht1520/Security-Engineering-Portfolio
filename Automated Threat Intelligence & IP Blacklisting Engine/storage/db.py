@@ -1,7 +1,8 @@
 """
 storage/db.py — SQLite database interface for threat intelligence indicators
 =============================================================================
-Provides persistent storage, deduplication lookup, TTL tracking, and enforcement state.
+Provides persistent storage, deduplication lookup, TTL tracking, extended lifecycle
+management, and feed health telemetry.
 """
 from __future__ import annotations
 
@@ -33,11 +34,16 @@ def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
             d["sources"] = json.loads(d["sources"])
         except (json.JSONDecodeError, TypeError):
             d["sources"] = []
+    if "evidence_json" in d and isinstance(d["evidence_json"], str):
+        try:
+            d["evidence"] = json.loads(d["evidence_json"])
+        except (json.JSONDecodeError, TypeError):
+            d["evidence"] = []
     return d
 
 
 class ThreatIntelDB:
-    """SQLite CRUD interface for scored IPs and TTL tracking."""
+    """SQLite CRUD interface for scored IPs, indicator lifecycles, and feed health."""
 
     def __init__(self, db_path: str = ":memory:") -> None:
         self.db_path = db_path
@@ -58,35 +64,66 @@ class ThreatIntelDB:
             self.conn.close()
 
     def init_schema(self) -> None:
-        """Run schema.sql DDL — idempotent (CREATE TABLE/INDEX IF NOT EXISTS)."""
+        """Run schema.sql DDL and apply non-destructive schema migrations."""
         schema_path = Path(__file__).parent / "schema.sql"
         sql = schema_path.read_text(encoding="utf-8")
         with self.conn:
             self.conn.executescript(sql)
 
-    def upsert(self, scored_ip: ScoredIP) -> Literal["inserted", "updated"]:
+            # Migration: Ensure new lifecycle columns exist in existing scored_ips tables
+            cursor = self.conn.cursor()
+            cursor.execute("PRAGMA table_info(scored_ips)")
+            existing_cols = {col["name"] for col in cursor.fetchall()}
+
+            migrations = [
+                ("last_seen", "TEXT"),
+                ("last_confirmed", "TEXT"),
+                ("source_count", "INTEGER NOT NULL DEFAULT 1"),
+                ("status", "TEXT NOT NULL DEFAULT 'blocked'"),
+                ("reason", "TEXT NOT NULL DEFAULT ''"),
+                ("evidence_json", "TEXT NOT NULL DEFAULT '[]'"),
+            ]
+            for col_name, col_def in migrations:
+                if col_name not in existing_cols:
+                    self.conn.execute(f"ALTER TABLE scored_ips ADD COLUMN {col_name} {col_def}")
+
+            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_status ON scored_ips(status)")
+
+    def upsert(
+        self,
+        scored_ip: ScoredIP,
+        status: str = "blocked",
+        reason: str = "",
+    ) -> Literal["inserted", "updated"]:
         """
-        INSERT new IP, or UPDATE existing:
-          - always update: combined_score, sources, category, last_updated, expires_at
+        INSERT new IP, or UPDATE existing indicator lifecycle:
+          - always update: combined_score, sources, category, last_updated, last_seen, expires_at,
+                           source_count, status, reason, evidence_json
+          - update last_confirmed if 2+ sources independently corroborate
           - NEVER overwrite: first_seen, enforced
         """
         now_iso = datetime.now(timezone.utc).isoformat()
         first_seen_iso = _to_iso(scored_ip.first_seen)
         expires_at_iso = _to_iso(scored_ip.expires_at)
         sources_json = json.dumps(scored_ip.sources)
+        evidence_json = json.dumps(scored_ip.evidence) if scored_ip.evidence else "[]"
+        source_count = len(scored_ip.sources)
 
         cursor = self.conn.cursor()
-        cursor.execute("SELECT first_seen, enforced FROM scored_ips WHERE ip = ?", (scored_ip.ip,))
+        cursor.execute("SELECT first_seen, enforced, last_confirmed FROM scored_ips WHERE ip = ?", (scored_ip.ip,))
         row = cursor.fetchone()
 
         with self.conn:
             if row is None:
+                # Fresh indicator: last_confirmed set if multi-source
+                last_confirmed = now_iso if source_count >= 2 else first_seen_iso
                 self.conn.execute(
                     """
                     INSERT INTO scored_ips (
                         ip, combined_score, sources, category,
-                        first_seen, last_updated, expires_at, enforced
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+                        first_seen, last_seen, last_confirmed, last_updated, expires_at,
+                        source_count, status, reason, evidence_json, enforced
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
                     """,
                     (
                         scored_ip.ip,
@@ -95,19 +132,35 @@ class ThreatIntelDB:
                         scored_ip.category,
                         first_seen_iso,
                         now_iso,
+                        last_confirmed,
+                        now_iso,
                         expires_at_iso,
+                        source_count,
+                        status,
+                        reason,
+                        evidence_json,
                     ),
                 )
                 return "inserted"
             else:
+                # Existing indicator: only advance last_confirmed if multi-source corroborated
+                existing_confirmed = row["last_confirmed"]
+                last_confirmed = now_iso if source_count >= 2 else (existing_confirmed or now_iso)
+
                 self.conn.execute(
                     """
                     UPDATE scored_ips SET
                         combined_score = ?,
                         sources = ?,
                         category = ?,
+                        last_seen = ?,
+                        last_confirmed = ?,
                         last_updated = ?,
-                        expires_at = ?
+                        expires_at = ?,
+                        source_count = ?,
+                        status = ?,
+                        reason = ?,
+                        evidence_json = ?
                     WHERE ip = ?
                     """,
                     (
@@ -115,7 +168,13 @@ class ThreatIntelDB:
                         sources_json,
                         scored_ip.category,
                         now_iso,
+                        last_confirmed,
+                        now_iso,
                         expires_at_iso,
+                        source_count,
+                        status,
+                        reason,
+                        evidence_json,
                         scored_ip.ip,
                     ),
                 )
@@ -176,3 +235,46 @@ class ThreatIntelDB:
                 "UPDATE scored_ips SET enforced = ? WHERE ip = ?",
                 (1 if enforced else 0, ip),
             )
+
+    def record_feed_health(
+        self,
+        feed_name: str,
+        status: str,
+        duration_ms: float,
+        indicators_received: int,
+        rejected_count: int = 0,
+        error_message: str | None = None,
+    ) -> None:
+        """Record or update health telemetry for a specific threat feed."""
+        now_iso = datetime.now(timezone.utc).isoformat()
+        with self.conn:
+            self.conn.execute(
+                """
+                INSERT INTO feed_health (
+                    feed_name, status, last_sync_utc, duration_ms,
+                    indicators_received, rejected_count, error_message
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(feed_name) DO UPDATE SET
+                    status = excluded.status,
+                    last_sync_utc = excluded.last_sync_utc,
+                    duration_ms = excluded.duration_ms,
+                    indicators_received = excluded.indicators_received,
+                    rejected_count = excluded.rejected_count,
+                    error_message = excluded.error_message
+                """,
+                (
+                    feed_name,
+                    status,
+                    now_iso,
+                    duration_ms,
+                    indicators_received,
+                    rejected_count,
+                    error_message,
+                ),
+            )
+
+    def get_feed_health(self) -> list[dict[str, Any]]:
+        """Retrieve latest health status for all monitored intelligence feeds."""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM feed_health ORDER BY feed_name ASC")
+        return [dict(row) for row in cursor.fetchall()]

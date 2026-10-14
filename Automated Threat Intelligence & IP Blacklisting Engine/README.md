@@ -1,7 +1,7 @@
 # Automated Threat Intelligence & IP Blacklisting Engine
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-159%20Passed-10B981.svg?logo=pytest&logoColor=white)](https://pytest.org/)
+[![Tests](https://img.shields.io/badge/Tests-180%20Passed-10B981.svg?logo=pytest&logoColor=white)](https://pytest.org/)
 [![License](https://img.shields.io/badge/License-MIT-gray.svg)](LICENSE)
 [![Framework](https://img.shields.io/badge/Dashboard-Flask%20%7C%20Plotly-00F2FE.svg?logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
 [![Enforcement](https://img.shields.io/badge/Enforcement-ipset%20%7C%20AWS%20WAF-purple.svg)](https://ipset.netfilter.org/)
@@ -305,7 +305,20 @@ export THREAT_INTEL_API_KEYS_OTX="your_otx_api_key_here"
 ### 4. Execute the Pipeline
 Run a threat intelligence collection and blacklisting cycle:
 ```bash
-python main.py
+# Preview decisions safely without modifying firewall or DB
+python main.py --dry-run
+
+# Execute live evaluation and firewall enforcement
+python main.py --apply
+
+# Rollback to Last-Known-Good (LKG) enforcement state
+python main.py --rollback
+
+# Audit & reconcile database desired state vs. active kernel firewall
+python main.py --reconcile
+
+# Explain decisions and evidence for a specific IP indicator
+python main.py --explain 203.0.113.10
 ```
 
 ### 5. Launch the SOC Dashboard
@@ -315,13 +328,64 @@ python dashboard/app.py
 ```
 Open **[http://127.0.0.1:5000](http://127.0.0.1:5000)** in your browser to view:
 * Real-time KPI summary cards
+* Threat feed health telemetry cards (AbuseIPDB, AlienVault OTX, Spamhaus)
 * 30-day blocklist trajectory trend chart
 * Filterable indicators table with copy-to-clipboard utilities
 * Historical audit run logs
 
 ---
 
-## 6. Production Automated Scheduling
+## 6. SIEM & Wazuh Detection Lab Integration (Portfolio Bridge)
+
+This project directly connects with **Project 4 (Wazuh SIEM Detection Lab)** by exporting telemetry, policy decisions, and enforcement alerts in real-time.
+
+```mermaid
+flowchart LR
+    A[Project 7: Threat Intel Engine] -->|Block / Unblock Events| B(data/siem_events.jsonl)
+    A -->|Syslog UDP / TCP| C[Remote Wazuh / Syslog Daemon]
+    B -->|Wazuh Agent localfile| D[Project 4: Wazuh SIEM Manager]
+    D -->|Rule Correlation| E[SOC Alert Dashboard]
+```
+
+### Supported Ingestion Modes:
+1. **Wazuh Agent Localfile (Zero Overhead)**:
+   Configure the Wazuh agent in `/var/ossec/etc/ossec.conf` to monitor the JSON lines file:
+   ```xml
+   <localfile>
+     <log_format>json</log_format>
+     <location>/path/to/threat-intel/data/siem_events.jsonl</location>
+   </localfile>
+   ```
+2. **Network Syslog (UDP / TCP)**:
+   Stream CEF (Common Event Format) or RFC 5424 syslog packets directly to an external SIEM collector on port `514`.
+
+### Example Wazuh Event Structure:
+```json
+{
+  "timestamp": "2026-10-14T17:15:00.000000Z",
+  "integration": "threat_intel_engine",
+  "event_type": "threat_intel.block",
+  "severity": "high",
+  "summary": "Threat intelligence block enforced for 198.51.100.42",
+  "data": {
+    "action": "block",
+    "src_ip": "198.51.100.42",
+    "confidence_score": 87.54,
+    "category": "brute-force",
+    "threat_sources": ["abuseipdb", "otx"],
+    "reason": "Corroborated high-confidence threat",
+    "details": {
+      "evidence_items": [
+        {"source": "abuseipdb", "conf": 90, "freshness_factor": 1.0}
+      ]
+    }
+  }
+}
+```
+
+---
+
+## 7. Production Automated Scheduling
 
 ### Systemd Timer (Recommended on Linux)
 
@@ -342,21 +406,21 @@ systemctl list-timers --all | grep threat-intel
 ### Crontab (Alternative)
 Edit system crontab (`sudo crontab -e`):
 ```bash
-0 */6 * * * root cd /opt/threat-intel-blacklister && /opt/threat-intel-blacklister/venv/bin/python main.py >> /var/log/threat-intel.log 2>&1
+0 */6 * * * root cd /opt/threat-intel-blacklister && /opt/threat-intel-blacklister/venv/bin/python main.py --apply >> /var/log/threat-intel.log 2>&1
 ```
 
 ---
 
-## 7. Test Suite
+## 8. Test Suite
 
-Execute the comprehensive test suite across all 6 phases:
+Execute the comprehensive test suite across all architectural modules and hardening phases:
 
 ```bash
 pytest -v
 ```
 
 ```
-============================= 159 passed in 3.73s =============================
+============================= 187 passed in 4.10s =============================
 ```
 
 ### Coverage by Component
@@ -371,10 +435,15 @@ pytest -v
 | `test_phase3_enforcement.py` | `LocalFirewallAdapter`, `AWSWAFAdapter`, diffing, dry-run safety | 31 |
 | `test_phase4_expiry_audit.py` | TTL expiry sweep, synchronized teardown, JSONL audit trails | 18 |
 | `test_phase5_dashboard.py` | Flask factory, REST APIs, Plotly charts, search filter, scheduler units | 17 |
-| **Total** | **Full System Pipeline** | **159** |
+| `test_v1_validator.py` | Dual-stack IPv4/IPv6, CIDR, RFC 1918 bogons, custom allowlist | 8 |
+| `test_v1_scoring_provenance.py` | Upstream de-aliasing, freshness decay, clamped score | 4 |
+| `test_v1_failsafe_safety.py` | Fail-safe states (HEALTHY/DEGRADED/FAIL_SAFE), circuit breakers, LKG rollback | 5 |
+| `test_v1_lifecycle_feed_health.py` | Extended lifecycle timestamps, feed health recording, `/api/feed-health` | 4 |
+| `test_v1_siem_forwarder.py` | Wazuh JSON formatting, CEF export, Syslog UDP/TCP, fault tolerance | 7 |
+| **Total** | **Full System Pipeline** | **187** |
 
 ---
 
-## 8. License
+## 9. License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.

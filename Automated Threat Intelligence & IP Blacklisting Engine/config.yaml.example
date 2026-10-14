@@ -65,6 +65,15 @@ storage:
 audit:
   log_path: "data/run_history.jsonl"
 
+# --------------- SIEM / Wazuh Integration -------------------
+siem:
+  enabled: false               # set true to forward events to Wazuh or Syslog
+  mode: "file"                 # "file" (Wazuh JSON) | "syslog_udp" | "syslog_tcp"
+  format: "json"               # "json" (native Wazuh) | "cef" (ArcSight / QRadar)
+  file_path: "data/siem_events.jsonl" # monitorable via Wazuh agent localfile
+  syslog_host: "127.0.0.1"
+  syslog_port: 514
+
 # --------------- Dashboard ----------------------------------
 dashboard:
   host: "127.0.0.1"
