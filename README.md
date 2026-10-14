@@ -63,7 +63,7 @@ Incident Response
 **Architecture / Tools:** Microsoft Entra ID · Conditional Access · Microsoft Graph PowerShell
 **Implementation:** A modeled enterprise identity tenant enforcing MFA for admin roles, geo-based access blocking, legacy-auth blocking, and risk-based sign-in policies — configured as code via Graph PowerShell, not clicked manually.
 **Proof:** Screenshots of denied sign-in from a blocked region · MFA challenge triggered for an admin-role test account
-**Connects to:** Identity-layer counterpart to → [Project 6 (Zero-Trust Network)](https://github.com/Yogesht1520/sec-portfolio-06-zero-trust-vpn)'s network-layer trust boundaries
+**Connects to:** Identity-layer counterpart to → [Zero-Trust Network & VPN Topology Architecture](./Zero-Trust%20Network%20&%20VPN%20Topology%20Architecture)'s network-layer trust boundaries
 
 ---
 
@@ -72,7 +72,7 @@ Incident Response
 **Architecture / Tools:** Wazuh (OpenSearch-based SIEM) · a real internet-facing honeypot · custom MITRE-mapped detection rules
 **Implementation:** A live SIEM ingesting real attack traffic from a deliberately exposed honeypot VM, with custom rules for brute-force and privilege escalation, visualized on a world-attack-map dashboard.
 **Proof:** Dashboard showing real (not synthetic) internet attack traffic · a custom rule firing, mapped to a MITRE ATT&CK technique ID
-**Connects to:** Natural home for telemetry from → [Secure Corporate Cloud Environment](./Secure%20Corporate%20Cloud%20Environment)'s VPC Flow Logs and → [Project 7](https://github.com/Yogesht1520/sec-portfolio-07-threat-intel-blacklister)'s IOC feed
+**Connects to:** Natural home for telemetry from → [Secure Corporate Cloud Environment](./Secure%20Corporate%20Cloud%20Environment)'s VPC Flow Logs and → [Automated Threat Intelligence & IP Blacklisting Engine](./Automated%20Threat%20Intelligence%20&%20IP%20Blacklisting%20Engine)'s IOC feed
 
 ---
 
@@ -94,7 +94,7 @@ Incident Response
 
 ---
 
-### 7. [Automated Threat Intelligence & IP Blacklisting Engine](https://github.com/Yogesht1520/sec-portfolio-07-threat-intel-blacklister)
+### 7. [Automated Threat Intelligence & IP Blacklisting Engine](./Automated%20Threat%20Intelligence%20&%20IP%20Blacklisting%20Engine)
 **The Problem:** Reacting to attacks after they happen is slower than defending against IPs already known to be malicious.
 **Architecture / Tools:** Python · AbuseIPDB/AlienVault OTX APIs · SQLite · ipset/nftables
 **Implementation:** A scheduled pipeline that collects, deduplicates, and confidence-scores malicious IPs from multiple free threat-intel feeds, then automatically enforces a TTL-based firewall blocklist — avoiding the common mistake of blocklists that only ever grow.
@@ -103,7 +103,7 @@ Incident Response
 
 ---
 
-### 8. [Controlled Ransomware Simulation & Digital Forensics](https://github.com/Yogesht1520/sec-portfolio-08-dfir-ransomware-sim)
+### 8. [Controlled Ransomware Simulation & Digital Forensics](./Controlled%20Ransomware%20Simulation%20&%20Digital%20Forensics)
 **The Problem:** Understanding an attack after it's already happened — using only forensic evidence — is a fundamentally different skill from preventing one.
 **Architecture / Tools:** Air-gapped VirtualBox VM · Atomic Red Team · Volatility 3 · Autopsy
 **Implementation:** A safe, non-destructive, MITRE-mapped attack simulation run inside a fully isolated VM, investigated blind using memory and disk forensics, and written up as a consulting-grade Incident Response report.
