@@ -7,7 +7,7 @@
 #>
 
 function New-SecureTemporaryPassword {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess=$true)]
     param (
         [int]$Length = 24
     )
@@ -43,7 +43,9 @@ function New-SecureTemporaryPassword {
         $chars[$j] = $temp
     }
 
-    return New-Object string ($chars, 0, $Length)
+    if ($PSCmdlet.ShouldProcess("TemporaryCredential", "Generate high-entropy random password")) {
+        return New-Object string ($chars, 0, $Length)
+    }
 }
 
 function Get-RbacGroupForDepartment {

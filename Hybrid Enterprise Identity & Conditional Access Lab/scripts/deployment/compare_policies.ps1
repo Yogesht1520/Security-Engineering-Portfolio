@@ -18,7 +18,7 @@ param (
     [PSObject]$LivePolicy
 )
 
-function Normalize-PolicyObject ($policy) {
+function Format-PolicyObject ($policy) {
     if (-not $policy) { return $null }
 
     # Clone and strip read-only / dynamic Graph metadata
@@ -38,7 +38,7 @@ function Normalize-PolicyObject ($policy) {
     return $clone
 }
 
-function Compare-NormalizedPolicies ($desired, $actual) {
+function Compare-NormalizedPolicy ($desired, $actual) {
     $diffs = @()
 
     # Compare State
@@ -94,9 +94,9 @@ function Compare-NormalizedPolicies ($desired, $actual) {
 }
 
 if ($LocalPolicy -and $LivePolicy) {
-    $normLocal = Normalize-PolicyObject $LocalPolicy
-    $normLive  = Normalize-PolicyObject $LivePolicy
-    $differences = @(Compare-NormalizedPolicies $normLocal $normLive)
+    $normLocal = Format-PolicyObject $LocalPolicy
+    $normLive  = Format-PolicyObject $LivePolicy
+    $differences = @(Compare-NormalizedPolicy $normLocal $normLive)
 
     if ($differences.Count -gt 0) {
         Write-Host "`n  [DRIFT DETECTED] Policy: $($normLocal.displayName)" -ForegroundColor Red

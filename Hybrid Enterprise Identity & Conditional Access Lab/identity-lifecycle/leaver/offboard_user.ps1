@@ -116,7 +116,14 @@ $offboardingAuditDetails = @{
     TicketId        = $TicketId
     Reason          = $Reason
     Operator        = $activeContext.Account
-    Stages          = @{}
+}
+
+# Transaction-Style Stage Tracking
+$stageResults = [ordered]@{
+    Stage1_SessionRevocation = "Pending"
+    Stage2_AccountDisabled   = "Pending"
+    Stage3_GroupsStripped    = "Pending"
+    Stage4_RolesStripped     = "Pending"
 }
 
 # -------------------------------------------------------------
@@ -127,10 +134,10 @@ $revokeUri = "https://graph.microsoft.com/v1.0/users/$($user.id)/revokeSignInSes
 try {
     Invoke-MgGraphRequest -Method POST -Uri $revokeUri -ContentType "application/json" -ErrorAction Stop | Out-Null
     Write-Host "  -> Active refresh tokens successfully revoked (PRT invalidated)." -ForegroundColor Green
-    $offboardingAuditDetails.Stages["Stage1_SessionRevocation"] = "Success"
+    $stageResults["Stage1_SessionRevocation"] = "Completed"
 } catch {
     Write-Warning "  -> Session revocation failed: $($_.Exception.Message)"
-    $offboardingAuditDetails.Stages["Stage1_SessionRevocation"] = "Warning: $($_.Exception.Message)"
+    $stageResults["Stage1_SessionRevocation"] = "Failed: $($_.Exception.Message)"
 }
 
 # -------------------------------------------------------------
@@ -153,10 +160,10 @@ try {
     Invoke-MgGraphRequest -Method PATCH -Uri $userUri -Body $accountUpdatePayload -ContentType "application/json" -ErrorAction Stop
     Write-Host "  -> Account disabled (accountEnabled = False)." -ForegroundColor Green
     Write-Host "  -> Password scrambled with 64-character high-entropy token." -ForegroundColor Green
-    $offboardingAuditDetails.Stages["Stage2_AccountDisabled"] = "Success"
+    $stageResults["Stage2_AccountDisabled"] = "Completed"
 } catch {
     Write-Error "  -> Failed disabling account: $($_.Exception.Message)"
-    $offboardingAuditDetails.Stages["Stage2_AccountDisabled"] = "Failed: $($_.Exception.Message)"
+    $stageResults["Stage2_AccountDisabled"] = "Failed: $($_.Exception.Message)"
 } finally {
     $scrambledPassword = $null
 }
@@ -167,6 +174,7 @@ try {
 Write-Host "`n[Stage 3/5] Stripping all security group memberships..." -ForegroundColor Yellow
 $memberOfUri = "https://graph.microsoft.com/v1.0/users/$($user.id)/memberOf"
 $groupsStripped = @()
+$stripFailed = $false
 
 try {
     $memberOfResp = Invoke-MgGraphRequest -Method GET -Uri $memberOfUri
@@ -181,12 +189,14 @@ try {
                 $groupsStripped += $grpName
             } catch {
                 Write-Warning "  -> Could not remove from group $grpName : $($_.Exception.Message)"
+                $stripFailed = $true
             }
         }
     }
-    $offboardingAuditDetails.Stages["Stage3_GroupsStripped"] = $groupsStripped
+    $stageResults["Stage3_GroupsStripped"] = if ($stripFailed) { "PartiallyCompleted" } else { "Completed" }
 } catch {
     Write-Warning "  -> Error querying group memberships: $($_.Exception.Message)"
+    $stageResults["Stage3_GroupsStripped"] = "Failed: $($_.Exception.Message)"
 }
 
 # -------------------------------------------------------------
@@ -194,6 +204,8 @@ try {
 # -------------------------------------------------------------
 Write-Host "`n[Stage 4/5] Checking and stripping administrative directory roles..." -ForegroundColor Yellow
 $rolesStripped = @()
+$rolesFailed = $false
+
 try {
     $rolesUri = "https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments?`$filter=principalId eq '$($user.id)'"
     $rolesResp = Invoke-MgGraphRequest -Method GET -Uri $rolesUri
@@ -206,23 +218,45 @@ try {
             $rolesStripped += $roleAssign.roleDefinitionId
         } catch {
             Write-Warning "  -> Could not remove role assignment $($roleAssignId): $($_.Exception.Message)"
+            $rolesFailed = $true
         }
     }
-    $offboardingAuditDetails.Stages["Stage4_RolesStripped"] = $rolesStripped
+    $stageResults["Stage4_RolesStripped"] = if ($rolesFailed) { "PartiallyCompleted" } else { "Completed" }
 } catch {
     Write-Warning "  -> Role check failed or requires PIM module: $($_.Exception.Message)"
+    $stageResults["Stage4_RolesStripped"] = "Failed: $($_.Exception.Message)"
 }
 
 # -------------------------------------------------------------
-# STAGE 5: Audit Telemetry & Evidence Receipt
+# STAGE 5: Transaction Evaluation, Audit Telemetry & Evidence Receipt
 # -------------------------------------------------------------
-Write-Host "`n[Stage 5/5] Generating offboarding compliance receipt..." -ForegroundColor Cyan
+Write-Host "`n[Stage 5/5] Evaluating transaction state and generating offboarding compliance receipt..." -ForegroundColor Cyan
+
+$totalStages = $stageResults.Count
+$failedStages = ($stageResults.Values | Where-Object { $_ -like "Failed*" }).Count
+$partialStages = ($stageResults.Values | Where-Object { $_ -eq "PartiallyCompleted" }).Count
+$completedStages = ($stageResults.Values | Where-Object { $_ -eq "Completed" }).Count
+
+$overallState = if ($failedStages -eq 0 -and $partialStages -eq 0 -and $completedStages -eq $totalStages) {
+    "Completed"
+} elseif ($completedStages -gt 0 -or $partialStages -gt 0) {
+    "PartiallyCompleted"
+} elseif ($failedStages -eq $totalStages) {
+    "Failed"
+} else {
+    "PendingVerification"
+}
+
+$offboardingAuditDetails["OverallState"]   = $overallState
+$offboardingAuditDetails["StageBreakdown"] = $stageResults
+$offboardingAuditDetails["GroupsStripped"] = $groupsStripped
+$offboardingAuditDetails["RolesStripped"]  = $rolesStripped
 
 Write-LifecycleAuditLog -EventType "LEAVER" `
                         -TargetUserPrincipalName $UserPrincipalName `
                         -TargetUserId $user.id `
                         -Action "OffboardUser" `
-                        -Status "SUCCESS" `
+                        -Status $overallState `
                         -Details $offboardingAuditDetails `
                         -Initiator $activeContext.Account
 
@@ -239,11 +273,19 @@ $offboardingAuditDetails | ConvertTo-Json -Depth 6 | Set-Content -Path $receiptP
 
 Write-Host "  -> Compliance Receipt exported: $receiptPath" -ForegroundColor Green
 
-Write-Host "`n================ LEAVER OFFBOARDING SUCCESSFUL ================" -ForegroundColor Red
+$statusColor = switch ($overallState) {
+    "Completed"          { "Green" }
+    "PartiallyCompleted" { "Yellow" }
+    "Failed"             { "Red" }
+    Default              { "Cyan" }
+}
+
+Write-Host "`n================ LEAVER OFFBOARDING TRANSACTION: $overallState ================" -ForegroundColor $statusColor
 Write-Host "User Principal Name : $UserPrincipalName" -ForegroundColor White
-Write-Host "Account Status      : Disabled (accountEnabled = False)" -ForegroundColor Green
-Write-Host "Session Tokens      : Revoked" -ForegroundColor Green
-Write-Host "Groups Stripped     : $($groupsStripped.Count)" -ForegroundColor Green
-Write-Host "Roles Stripped      : $($rolesStripped.Count)" -ForegroundColor Green
+Write-Host "Transaction Status  : $overallState" -ForegroundColor $statusColor
+Write-Host "Account Status      : $($stageResults['Stage2_AccountDisabled'])" -ForegroundColor White
+Write-Host "Session Tokens      : $($stageResults['Stage1_SessionRevocation'])" -ForegroundColor White
+Write-Host "Groups Stripped     : $($groupsStripped.Count) ($($stageResults['Stage3_GroupsStripped']))" -ForegroundColor White
+Write-Host "Roles Stripped      : $($rolesStripped.Count) ($($stageResults['Stage4_RolesStripped']))" -ForegroundColor White
 Write-Host "Compliance Receipt  : $receiptPath" -ForegroundColor Gray
-Write-Host "==============================================================" -ForegroundColor Red
+Write-Host "================================================================================" -ForegroundColor $statusColor

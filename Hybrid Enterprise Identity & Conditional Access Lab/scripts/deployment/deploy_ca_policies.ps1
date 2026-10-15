@@ -27,7 +27,7 @@
 
 [CmdletBinding(DefaultParameterSetName="Plan")]
 param (
-    [string]$PoliciesPath = "$PSScriptRoot\..\..\policies",
+    [string]$PoliciesPath,
 
     [switch]$ValidateOnly,
 
@@ -50,8 +50,11 @@ Write-Host "  Environment: $Environment | Mode: $(if($ValidateOnly){'ValidateOnl
 Write-Host "==========================================================" -ForegroundColor Cyan
 
 # 1. Resolve Policy Directory
+if ([string]::IsNullOrWhiteSpace($PoliciesPath)) {
+    $PoliciesPath = Join-Path $PSScriptRoot "..\..\policies"
+}
 $resolvedPoliciesPath = Resolve-Path $PoliciesPath -ErrorAction SilentlyContinue
-if (-not $resolvedPoliciesPath) {
+if (-not $resolvedPoliciesPath -or -not (Test-Path $resolvedPoliciesPath)) {
     Write-Error "Policies directory not found at $PoliciesPath"
     exit 1
 }
@@ -64,37 +67,33 @@ if ($PolicyId) {
 Write-Host "`n[Step 1/5] Loaded $($policyFiles.Count) declarative policy definition(s) from $resolvedPoliciesPath" -ForegroundColor White
 
 # 2. Syntax & Schema Validation Check
-Write-Host "`n[Step 2/5] Performing Schema & Baseline Pre-Flight Validation..." -ForegroundColor Cyan
+Write-Host "`n[Step 2/5] Performing Deep Recursive Schema & Baseline Pre-Flight Validation..." -ForegroundColor Cyan
 $parsedPolicies = @()
 $schemaFile = Join-Path $PSScriptRoot "..\..\policies\schema\conditional-access.schema.json"
+. (Join-Path $PSScriptRoot "validate_schema.ps1")
 
 foreach ($file in $policyFiles) {
     try {
-        $content = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
+        $rawJson = Get-Content -Path $file.FullName -Raw
+        $content = $rawJson | ConvertFrom-Json
         
-        # Validation checks
-        if (-not $content.displayName) {
-            throw "Missing required top-level property: 'displayName'."
-        }
-        if (-not $content.state) {
-            throw "Missing required top-level property: 'state'."
-        }
-        if (-not $content.conditions -or -not $content.conditions.users -or -not $content.conditions.applications) {
-            throw "Missing required conditions: 'users' and 'applications' must be defined."
-        }
+        # Deep recursive draft-07 JSON Schema validation
+        $null = Test-PolicyJsonSchema -JsonData $content -SchemaPath $schemaFile -PolicyFileName $file.Name
 
         # Check for known unresolvable placeholders
-        $rawJson = Get-Content -Path $file.FullName -Raw
         if ($rawJson -match "emergency-admin-id" -or $rawJson -match "<[A-Z0-9_]+>") {
             throw "Unresolved placeholder detected in $($file.Name). Must resolve before deployment."
         }
 
-        # Mandatory Break-Glass Exclusion Check for broad/blocking policies
-        $isGlobalPolicy = $content.conditions.users.includeUsers -contains "All" -or $content.conditions.users.includeRoles.Count -gt 0
-        if ($isGlobalPolicy -and $content.displayName -notmatch "CAP-005") {
-            $hasBreakGlassExclusion = $content.conditions.users.excludeGroups -contains "SEC-BreakGlass-Exclusion"
+        # Mandatory Break-Glass Exclusion Hard Gate for broad/blocking policies
+        $hasBroadUsers = $content.conditions.users.includeUsers -and ($content.conditions.users.includeUsers -contains "All")
+        $hasBroadRoles = $content.conditions.users.includeRoles -and ($content.conditions.users.includeRoles.Count -gt 0)
+        $hasBroadGroups = $content.conditions.users.includeGroups -and ($content.conditions.users.includeGroups -contains "All")
+
+        if ($hasBroadUsers -or $hasBroadRoles -or $hasBroadGroups) {
+            $hasBreakGlassExclusion = $content.conditions.users.excludeGroups -and ($content.conditions.users.excludeGroups -contains "SEC-BreakGlass-Exclusion")
             if (-not $hasBreakGlassExclusion) {
-                Write-Warning "Policy '$($content.displayName)' does not exclude 'SEC-BreakGlass-Exclusion'. This violates safety baseline standards."
+                throw "[FAIL-CLOSED GATE] Policy '$($content.displayName)' targets broad users/roles but lacks mandatory 'SEC-BreakGlass-Exclusion' exclusion. Deployment rejected to prevent tenant lockout."
             }
         }
 
@@ -196,6 +195,31 @@ foreach ($p in $parsedPolicies) {
 }
 Write-Host "  -> All identity references successfully resolved to active tenant GUIDs." -ForegroundColor Green
 
+# 4.5. Fail-Closed Break-Glass Group Integrity Gate
+Write-Host "`n[Safety Gate] Verifying live emergency break-glass exclusion group integrity..." -ForegroundColor Cyan
+$bgGroupName = "SEC-BreakGlass-Exclusion"
+try {
+    $bgSearchUri = "https://graph.microsoft.com/v1.0/groups?`$filter=displayName eq '$bgGroupName'"
+    $bgResp = Invoke-MgGraphRequest -Method GET -Uri $bgSearchUri -ErrorAction Stop
+    if (-not $bgResp.value -or $bgResp.value.Count -eq 0) {
+        throw "[FAIL-CLOSED GATE] Required break-glass exclusion group '$bgGroupName' was not found in live tenant. Deployment aborted to prevent tenant lockout."
+    }
+    $bgGroupId = $bgResp.value[0].id
+    $membersUri = "https://graph.microsoft.com/v1.0/groups/$bgGroupId/members"
+    $membersResp = Invoke-MgGraphRequest -Method GET -Uri $membersUri -ErrorAction Stop
+    if (-not $membersResp.value -or $membersResp.value.Count -eq 0) {
+        throw "[FAIL-CLOSED GATE] Break-glass exclusion group '$bgGroupName' has 0 members in live tenant! Cannot safely enforce conditional access without active emergency accounts."
+    }
+    Write-Host "  [PASS] Verified '$bgGroupName' (ID: $bgGroupId) contains $($membersResp.value.Count) active emergency member(s)." -ForegroundColor Green
+} catch {
+    if ($_ -match "\[FAIL-CLOSED GATE\]") {
+        Write-Error $_
+        exit 1
+    } else {
+        Write-Warning "Could not verify live break-glass group members: $($_.Exception.Message)"
+    }
+}
+
 # 5. Query Live Policies with Pagination Support
 Write-Host "`n[Step 5/5] Comparing Desired State with Live Tenant..." -ForegroundColor Cyan
 $livePolicies = @()
@@ -239,7 +263,7 @@ foreach ($p in $parsedPolicies) {
 }
 
 # 6. Execution Gate (Plan vs Deploy)
-if (-not $Deploy) {
+if (-not $Deploy -or $Plan) {
     Write-Host "`n==========================================================" -ForegroundColor Yellow
     Write-Host "  [PLAN COMPLETE] Execution Summary:                    " -ForegroundColor Yellow
     Write-Host "  Policies to Create: $(($actionsToTake | Where-Object { $_.Action -eq 'Create' }).Count)" -ForegroundColor White

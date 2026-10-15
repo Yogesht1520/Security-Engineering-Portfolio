@@ -1,0 +1,265 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identity/conditionalAccess/policies",
+  "value": [
+    {
+      "id": "a475eb97-059f-4c95-a81f-6826a1c8d8d7",
+      "displayName": "CAP-001: Block Sign-in Outside Allowed Regions",
+      "createdDateTime": "2026-10-15T10:14:22Z",
+      "modifiedDateTime": "2026-10-15T11:45:00Z",
+      "state": "enabledForReportingButNotEnforced",
+      "conditions": {
+        "users": {
+          "includeUsers": ["All"],
+          "excludeGroups": ["00000000-0000-0000-0000-000000000001"]
+        },
+        "applications": {
+          "includeApplications": ["All"]
+        },
+        "locations": {
+          "includeLocations": ["All"],
+          "excludeLocations": ["AllTrusted"]
+        }
+      },
+      "grantControls": {
+        "operator": "OR",
+        "builtInControls": ["block"]
+      }
+    },
+    {
+      "id": "3b363e8e-f8bf-40fc-8852-ae4820aa713a",
+      "displayName": "CAP-002: Require Phishing-Resistant MFA for Privileged Roles",
+      "createdDateTime": "2026-10-15T10:15:01Z",
+      "modifiedDateTime": "2026-10-15T11:45:00Z",
+      "state": "enabledForReportingButNotEnforced",
+      "conditions": {
+        "users": {
+          "includeRoles": [
+            "62e90394-69f5-4237-9190-012177145e10",
+            "194ae4cb-b126-40b2-bd5b-6091b380977d",
+            "f28a1f50-f6e3-4571-883b-0f83f211373b"
+          ],
+          "excludeGroups": ["00000000-0000-0000-0000-000000000001"]
+        },
+        "applications": {
+          "includeApplications": ["All"]
+        }
+      },
+      "grantControls": {
+        "operator": "OR",
+        "builtInControls": ["mfa"],
+        "authenticationStrength": {
+          "id": "00000000-0000-0000-0000-000000000004"
+        }
+      }
+    },
+    {
+      "id": "73f8d8c1-3abc-4f40-b97f-a6883a9bcfe2",
+      "displayName": "CAP-003: Risk-Based Step-Up MFA",
+      "createdDateTime": "2026-10-15T10:15:30Z",
+      "modifiedDateTime": "2026-10-15T11:45:00Z",
+      "state": "enabledForReportingButNotEnforced",
+      "conditions": {
+        "users": {
+          "includeUsers": ["All"],
+          "excludeGroups": ["00000000-0000-0000-0000-000000000001"]
+        },
+        "applications": {
+          "includeApplications": ["All"]
+        },
+        "signInRiskLevels": ["medium", "high"]
+      },
+      "grantControls": {
+        "operator": "OR",
+        "builtInControls": ["mfa"]
+      }
+    },
+    {
+      "id": "3124fd33-5269-4b16-a340-bd1b7a3e561d",
+      "displayName": "CAP-004: Block Legacy Authentication Protocols",
+      "createdDateTime": "2026-10-15T10:16:00Z",
+      "modifiedDateTime": "2026-10-15T11:45:00Z",
+      "state": "enabledForReportingButNotEnforced",
+      "conditions": {
+        "users": {
+          "includeUsers": ["All"],
+          "excludeGroups": ["00000000-0000-0000-0000-000000000001"]
+        },
+        "applications": {
+          "includeApplications": ["All"]
+        },
+        "clientAppTypes": ["exchangeActiveSync", "other"]
+      },
+      "grantControls": {
+        "operator": "OR",
+        "builtInControls": ["block"]
+      }
+    },
+    {
+      "id": "79f73724-c871-4f4b-9301-3deb4585d6aa",
+      "displayName": "CAP-005: Privileged Session Reauthentication Policy",
+      "createdDateTime": "2026-10-15T10:16:45Z",
+      "modifiedDateTime": "2026-10-15T11:45:00Z",
+      "state": "enabledForReportingButNotEnforced",
+      "conditions": {
+        "users": {
+          "includeGroups": [
+            "11111111-1111-1111-1111-111111111111",
+            "22222222-2222-2222-2222-222222222222"
+          ]
+        },
+        "applications": {
+          "includeApplications": ["All"]
+        }
+      },
+      "sessionControls": {
+        "signInFrequency": {
+          "value": 8,
+          "type": "hours",
+          "isEnabled": true
+        },
+        "persistentBrowser": {
+          "mode": "never",
+          "isEnabled": true
+        }
+      }
+    },
+    {
+      "id": "b182c414-99f8-4820-8af4-2a1b1bce8a82",
+      "displayName": "CAP-006: Require Compliant or Hybrid Joined Device",
+      "createdDateTime": "2026-10-15T10:17:15Z",
+      "modifiedDateTime": "2026-10-15T11:45:00Z",
+      "state": "enabledForReportingButNotEnforced",
+      "conditions": {
+        "users": {
+          "includeUsers": ["All"],
+          "excludeGroups": ["00000000-0000-0000-0000-000000000001"]
+        },
+        "applications": {
+          "includeApplications": ["All"]
+        }
+      },
+      "grantControls": {
+        "operator": "OR",
+        "builtInControls": ["compliantDevice", "domainJoinedDevice"]
+      }
+    },
+    {
+      "id": "845da1fa-4b1c-4ac6-b71a-7324b5df4fbd",
+      "displayName": "CAP-007: Require MFA for All Workforce Users",
+      "createdDateTime": "2026-10-15T10:17:45Z",
+      "modifiedDateTime": "2026-10-15T11:45:00Z",
+      "state": "enabledForReportingButNotEnforced",
+      "conditions": {
+        "users": {
+          "includeUsers": ["All"],
+          "excludeGroups": ["00000000-0000-0000-0000-000000000001"]
+        },
+        "applications": {
+          "includeApplications": ["All"]
+        }
+      },
+      "grantControls": {
+        "operator": "OR",
+        "builtInControls": ["mfa"]
+      }
+    },
+    {
+      "id": "5d6a53ce-13bd-46c0-b69a-b26d228c095f",
+      "displayName": "CAP-008: Securing Security Information Registration",
+      "createdDateTime": "2026-10-15T10:18:10Z",
+      "modifiedDateTime": "2026-10-15T11:45:00Z",
+      "state": "enabledForReportingButNotEnforced",
+      "conditions": {
+        "users": {
+          "includeUsers": ["All"],
+          "excludeGroups": ["00000000-0000-0000-0000-000000000001"]
+        },
+        "applications": {
+          "includeUserActions": ["urn:user:registersecurityinfo"]
+        }
+      },
+      "grantControls": {
+        "operator": "OR",
+        "builtInControls": ["mfa", "compliantDevice"]
+      }
+    },
+    {
+      "id": "7e21c517-2279-4124-a482-fdea891889f5",
+      "displayName": "CAP-009: Restrict Privileged Access to Designated Devices",
+      "createdDateTime": "2026-10-15T10:18:40Z",
+      "modifiedDateTime": "2026-10-15T11:45:00Z",
+      "state": "enabledForReportingButNotEnforced",
+      "conditions": {
+        "users": {
+          "includeGroups": ["11111111-1111-1111-1111-111111111111"],
+          "excludeGroups": ["00000000-0000-0000-0000-000000000001"]
+        },
+        "applications": {
+          "includeApplications": ["All"]
+        },
+        "devices": {
+          "deviceFilter": {
+            "mode": "include",
+            "rule": "device.extensionAttribute1 -eq \"PAW\""
+          }
+        }
+      },
+      "grantControls": {
+        "operator": "OR",
+        "builtInControls": ["compliantDevice"]
+      }
+    },
+    {
+      "id": "39bb3eb9-888d-4b8d-855f-44ebf09475ce",
+      "displayName": "CAP-010: Apply Guest and External User Access Controls",
+      "createdDateTime": "2026-10-15T10:19:10Z",
+      "modifiedDateTime": "2026-10-15T11:45:00Z",
+      "state": "enabledForReportingButNotEnforced",
+      "conditions": {
+        "users": {
+          "includeUsers": ["GuestsOrExternalUsers"],
+          "excludeGroups": ["00000000-0000-0000-0000-000000000001"]
+        },
+        "applications": {
+          "includeApplications": ["All"]
+        }
+      },
+      "grantControls": {
+        "operator": "OR",
+        "builtInControls": ["mfa"]
+      },
+      "sessionControls": {
+        "signInFrequency": {
+          "value": 4,
+          "type": "hours",
+          "isEnabled": true
+        },
+        "persistentBrowser": {
+          "mode": "never",
+          "isEnabled": true
+        }
+      }
+    },
+    {
+      "id": "11d66207-016e-445b-bac4-9b46b1a08eb9",
+      "displayName": "CAP-012: High User Risk Remediation and Password Change",
+      "createdDateTime": "2026-10-15T10:19:40Z",
+      "modifiedDateTime": "2026-10-15T11:45:00Z",
+      "state": "enabledForReportingButNotEnforced",
+      "conditions": {
+        "users": {
+          "includeUsers": ["All"],
+          "excludeGroups": ["00000000-0000-0000-0000-000000000001"]
+        },
+        "applications": {
+          "includeApplications": ["All"]
+        },
+        "userRiskLevels": ["high"]
+      },
+      "grantControls": {
+        "operator": "AND",
+        "builtInControls": ["mfa", "passwordChange"]
+      }
+    }
+  ]
+}

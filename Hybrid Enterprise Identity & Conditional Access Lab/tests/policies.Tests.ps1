@@ -9,7 +9,8 @@ Describe "Conditional Access Declarative Policy Validation" {
     $deployScript = Join-Path $PSScriptRoot "..\scripts\deployment\deploy_ca_policies.ps1"
 
     Context "Policy File Inventory" {
-        It "Should contain all 11 required baseline policy files" {
+        It "Should contain all 11 required baseline policy files and schema" {
+            (Test-Path $schemaPath) | Should Be $true
             $expectedPolicies = @(
                 "CAP-001-location.json",
                 "CAP-002-admin-mfa.json",
@@ -32,7 +33,7 @@ Describe "Conditional Access Declarative Policy Validation" {
 
     Context "Schema Conformance" {
         It "Must validate all policy definitions with zero schema errors (-ValidateOnly)" {
-            $result = & $deployScript -ValidateOnly
+            $null = & $deployScript -ValidateOnly
             $LASTEXITCODE | Should Be 0
         }
 

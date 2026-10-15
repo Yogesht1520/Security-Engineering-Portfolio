@@ -15,14 +15,15 @@ Write-Host "==========================================================" -Foregro
 
 $testStartTime = Get-Date
 
-Write-Host "`n[Suite 1/4] Running Policy Schema & Baseline Checks..." -ForegroundColor Yellow
-& "$PSScriptRoot\..\scripts\deploy_ca_policies.ps1" -ValidateOnly
+Write-Host "`n[Suite 1/4] Running Deep Schema Validation & Safety Gate Security Tests..." -ForegroundColor Yellow
+& "$PSScriptRoot\schema\test_policy_schema.ps1"
 if ($LASTEXITCODE -ne 0) { exit 1 }
 
-Write-Host "`n[Suite 2/4] Running Identity Resolution & Drift Engine Tests..." -ForegroundColor Yellow
+Write-Host "`n[Suite 2/4] Running Identity Resolution, Drift & Cryptographic Snapshot Tests..." -ForegroundColor Yellow
 & "$PSScriptRoot\identity\test_group_resolution.ps1"
 & "$PSScriptRoot\identity\test_user_resolution.ps1"
 & "$PSScriptRoot\deployment\test_compare_policies.ps1"
+& "$PSScriptRoot\deployment\test_snapshot_integrity.ps1"
 
 Write-Host "`n[Suite 3/4] Running Identity Lifecycle (JML) Tests..." -ForegroundColor Yellow
 & "$PSScriptRoot\lifecycle\test_lifecycle_engine.ps1"

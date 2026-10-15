@@ -128,6 +128,7 @@ try {
     }
 } catch {
     # 404 is expected for new accounts
+    Write-Verbose "User not found (expected for new onboarding identity): $($_.Exception.Message)"
 }
 
 # 4. Resolve Target Group

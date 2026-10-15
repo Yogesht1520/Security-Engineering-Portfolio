@@ -44,7 +44,7 @@
           "properties": {
             "includeUsers": {
               "type": "array",
-              "items": { "type": "string", "pattern": "^(All|None|[a-f0-9\\-]{36}|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})$" }
+              "items": { "type": "string", "pattern": "^(All|None|GuestsOrExternalUsers|[a-f0-9\\-]{36}|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})$" }
             },
             "excludeUsers": {
               "type": "array",

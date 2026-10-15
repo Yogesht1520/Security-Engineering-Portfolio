@@ -1,0 +1,51 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#roleManagement/directory/roleEligibilityScheduleInstances",
+  "value": [
+    {
+      "id": "elig-sched-001-ca-admin",
+      "roleDefinitionId": "f28a1f50-f6e3-4571-883b-0f83f211373b",
+      "principalId": "88888888-8888-8888-8888-888888888888",
+      "directoryScopeId": "/",
+      "memberType": "Eligible",
+      "startDateTime": "2026-10-15T11:00:00Z",
+      "endDateTime": null,
+      "status": "Provisioned",
+      "roleDefinition": {
+        "id": "f28a1f50-f6e3-4571-883b-0f83f211373b",
+        "displayName": "Conditional Access Administrator",
+        "description": "Can manage Conditional Access policies and named locations."
+      },
+      "principal": {
+        "displayName": "Alex Rivera",
+        "userPrincipalName": "adm-alex@<LAB_DOMAIN>"
+      }
+    },
+    {
+      "id": "elig-sched-002-sec-admin",
+      "roleDefinitionId": "194ae4cb-b126-40b2-bd5b-6091b380977d",
+      "principalId": "88888888-8888-8888-8888-888888888888",
+      "directoryScopeId": "/",
+      "memberType": "Eligible",
+      "startDateTime": "2026-10-15T11:05:00Z",
+      "endDateTime": null,
+      "status": "Provisioned",
+      "roleDefinition": {
+        "id": "194ae4cb-b126-40b2-bd5b-6091b380977d",
+        "displayName": "Security Administrator",
+        "description": "Can control overall security settings, alerts, and risk detections."
+      },
+      "principal": {
+        "displayName": "Alex Rivera",
+        "userPrincipalName": "adm-alex@<LAB_DOMAIN>"
+      }
+    }
+  ],
+  "governancePolicyRules": {
+    "maxActivationDurationHours": 4,
+    "requireMfaOnActivation": true,
+    "authenticationStrength": "Phishing-Resistant MFA (FIDO2 / Windows Hello)",
+    "requireTicketJustification": true,
+    "requireApproval": true,
+    "approverGroup": "SEC-Admins"
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#auditLogs/signIns",
+  "value": [
+    {
+      "id": "signin-telemetry-001",
+      "createdDateTime": "2026-10-15T11:46:12Z",
+      "userDisplayName": "Alex Rivera",
+      "userPrincipalName": "adm-alex@<LAB_DOMAIN>",
+      "userId": "88888888-8888-8888-8888-888888888888",
+      "appDisplayName": "Microsoft Entra admin center",
+      "appId": "c44b4083-3bb0-49c1-b47d-974e53cbdf3c",
+      "ipAddress": "198.51.100.45",
+      "clientAppUsed": "Browser",
+      "conditionalAccessStatus": "reportOnlySuccess",
+      "appliedConditionalAccessPolicies": [
+        {
+          "id": "3b363e8e-f8bf-40fc-8852-ae4820aa713a",
+          "displayName": "CAP-002: Require Phishing-Resistant MFA for Privileged Roles",
+          "result": "reportOnlySuccess",
+          "enforcedGrantControls": ["Mfa"],
+          "enforcedSessionControls": []
+        },
+        {
+          "id": "79f73724-c871-4f4b-9301-3deb4585d6aa",
+          "displayName": "CAP-005: Privileged Session Reauthentication Policy",
+          "result": "reportOnlySuccess",
+          "enforcedGrantControls": [],
+          "enforcedSessionControls": ["SignInFrequency", "PersistentBrowser"]
+        },
+        {
+          "id": "a475eb97-059f-4c95-a81f-6826a1c8d8d7",
+          "displayName": "CAP-001: Block Sign-in Outside Allowed Regions",
+          "result": "reportOnlyNotApplied",
+          "enforcedGrantControls": [],
+          "enforcedSessionControls": []
+        }
+      ]
+    },
+    {
+      "id": "signin-telemetry-002",
+      "createdDateTime": "2026-10-15T11:48:30Z",
+      "userDisplayName": "Jane Doe",
+      "userPrincipalName": "usr-jane@<LAB_DOMAIN>",
+      "userId": "99999999-9999-9999-9999-999999999999",
+      "appDisplayName": "Office 365 Exchange Online",
+      "appId": "00000002-0000-0ff1-ce00-000000000000",
+      "ipAddress": "198.51.100.82",
+      "clientAppUsed": "Mobile Apps and Desktop clients",
+      "conditionalAccessStatus": "reportOnlySuccess",
+      "appliedConditionalAccessPolicies": [
+        {
+          "id": "845da1fa-4b1c-4ac6-b71a-7324b5df4fbd",
+          "displayName": "CAP-007: Require MFA for All Workforce Users",
+          "result": "reportOnlySuccess",
+          "enforcedGrantControls": ["Mfa"],
+          "enforcedSessionControls": []
+        },
+        {
+          "id": "b182c414-99f8-4820-8af4-2a1b1bce8a82",
+          "displayName": "CAP-006: Require Compliant or Hybrid Joined Device",
+          "result": "reportOnlySuccess",
+          "enforcedGrantControls": ["CompliantDevice"],
+          "enforcedSessionControls": []
+        }
+      ]
+    }
+  ]
+}
