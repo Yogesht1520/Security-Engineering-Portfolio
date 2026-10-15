@@ -31,7 +31,7 @@ flowchart TB
     %% CONCEPTUAL SECTION
     subgraph OnPrem["[CONCEPTUAL REFERENCE ARCHITECTURE] On-Premises Active Directory"]
         AD[("Windows Server AD DS\n(corp.local)\n[Reference Design]")]
-        Connect["Microsoft Entra Connect Sync\n(Password Hash Sync / PHS)\n[Sync Engine]")]
+        Connect["Microsoft Entra Connect Sync\n(Password Hash Sync / PHS)\n[Sync Engine]"]
         AD -.->|Hybrid Directory Sync| Connect
     end
 
@@ -87,8 +87,7 @@ flowchart TB
 
     %% Connectors
     Connect -.->|Password Hash Sync (PHS)| Users
-    Users --> Directory
-    Directory --> Signals
+    Users --> Signals
     Signals --> PolicyEngine
 
     PolicyEngine -->|Foreign Geo / Legacy Auth / Non-PAW| GrantBlock
