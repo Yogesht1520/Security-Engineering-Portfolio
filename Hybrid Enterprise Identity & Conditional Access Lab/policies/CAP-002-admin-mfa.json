@@ -1,20 +1,21 @@
 {
-  "displayName": "CAP-002: Require Multi-Factor Authentication for Admins",
-  "state": "enabled",
+  "displayName": "CAP-002: Require Phishing-Resistant MFA for Privileged Roles",
+  "state": "enabledForReportingButNotEnforced",
   "conditions": {
     "users": {
       "includeRoles": [
         "62e90394-69f5-4237-9190-012177145e10",
-        "e8611b58-52c0-456c-8843-e1214c1f3f4c",
-        "f28a1f50-f6e7-4571-818b-6a12f2af6b6c",
-        "b0f54661-2d74-4c50-afa3-1ec803f12efe",
+        "e8611ab8-c189-46e8-94e1-60213ab1f814",
+        "194ae4cb-b126-40b2-bd5b-6091b380977d",
+        "b1be1c3e-b65d-4f19-8427-f6fa0d97feb9",
         "fe930be7-5e62-47db-91af-98c3a49a38b1"
       ],
       "includeGroups": [
         "SEC-Admins"
       ],
-      "excludeUsers": [
-        "emergency-admin-id"
+      "excludeUsers": [],
+      "excludeGroups": [
+        "SEC-BreakGlass-Exclusion"
       ]
     },
     "applications": {
@@ -25,8 +26,9 @@
   },
   "grantControls": {
     "operator": "OR",
-    "builtInControls": [
-      "mfa"
-    ]
+    "builtInControls": [],
+    "authenticationStrength": {
+      "id": "00000000-0000-0000-0000-000000000004"
+    }
   }
 }

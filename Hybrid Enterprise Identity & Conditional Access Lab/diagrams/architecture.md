@@ -26,12 +26,17 @@ flowchart TB
         end
 
         subgraph PolicyEngine["Declarative Conditional Access Engine (Identity-as-Code)"]
-            CAP1["CAP-001: Block Foreign Geo-Locations"]
-            CAP2["CAP-002: Require MFA for Admin Roles"]
-            CAP3["CAP-003: Require MFA for Risky Sign-ins"]
-            CAP4["CAP-004: Block Legacy Authentication"]
-            CAP5["CAP-005: 8-Hour Session Lifetime (Admins/Vendors)"]
-            CAP6["CAP-006: Require Compliant / Hybrid Device"]
+            CAP1["CAP-001: Block Sign-in Outside Allowed Regions"]
+            CAP2["CAP-002: Require Phishing-Resistant MFA for Privileged Roles"]
+            CAP3["CAP-003: Risk-Based Step-Up MFA"]
+            CAP4["CAP-004: Block Legacy Authentication Protocols"]
+            CAP5["CAP-005: Privileged Session Reauthentication Policy"]
+            CAP6["CAP-006: Require Compliant or Hybrid Joined Device"]
+            CAP7["CAP-007: Require MFA for All Workforce Users"]
+            CAP8["CAP-008: Securing Security Information Registration"]
+            CAP9["CAP-009: Restrict Privileged Access to Designated Devices"]
+            CAP10["CAP-010: Apply Guest and External User Access Controls"]
+            CAP12["CAP-012: High User Risk Remediation & Password Change"]
         end
 
         subgraph Controls["Enforcement & Grant Controls"]

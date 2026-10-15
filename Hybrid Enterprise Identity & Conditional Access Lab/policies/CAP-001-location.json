@@ -6,9 +6,7 @@
       "includeUsers": [
         "All"
       ],
-      "excludeUsers": [
-        "GuestsOrExternalUsers"
-      ],
+      "excludeUsers": [],
       "excludeGroups": [
         "SEC-BreakGlass-Exclusion"
       ]
@@ -23,7 +21,7 @@
         "All"
       ],
       "excludeLocations": [
-        "Allowed-Home-Country-Id"
+        "Allowed-Home-Country"
       ]
     }
   },

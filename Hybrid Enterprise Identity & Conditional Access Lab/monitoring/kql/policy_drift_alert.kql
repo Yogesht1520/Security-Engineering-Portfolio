@@ -1,0 +1,43 @@
+// ==============================================================================
+// Rule Name   : Conditional Access Policy Drift & Out-of-Band Tampering
+// Severity    : HIGH
+// MITRE ATT&CK: T1562.001 (Impair Defenses: Disable or Modify Tools), T1556 (Modify Authentication Process)
+// Description : Detects manual changes, modifications, or deletions made to 
+//               Conditional Access policies in the Microsoft Entra admin center
+//               that bypass the GitOps / Identity-as-Code pipeline.
+// ==============================================================================
+
+let LookbackPeriod = 24h;
+// Optional: Define approved CI/CD Service Principal AppId to whitelist automated deployments
+let AuthorizedDeploymentAppIds = dynamic(["00000000-0000-0000-0000-000000000000"]);
+
+AuditLogs
+| where TimeGenerated >= ago(LookbackPeriod)
+| where Category =~ "Policy"
+| where OperationName in~ (
+    "Add conditional access policy",
+    "Update conditional access policy",
+    "Delete conditional access policy"
+)
+| extend InitiatorUser = tostring(InitiatedBy.user.userPrincipalName)
+| extend InitiatorApp = tostring(InitiatedBy.app.displayName)
+| extend InitiatorAppId = tostring(InitiatedBy.app.appId)
+| extend TargetPolicy = tostring(TargetResources[0].displayName)
+| extend TargetPolicyId = tostring(TargetResources[0].id)
+// Flag interactive human modifications in Portal (bypassing IaC Git repository)
+| extend IsOutOfBandManualChange = isnotempty(InitiatorUser)
+| project
+    TimeGenerated,
+    OperationName,
+    TargetPolicy,
+    TargetPolicyId,
+    Result,
+    ResultDescription,
+    InitiatorUser,
+    InitiatorApp,
+    InitiatorAppId,
+    IsOutOfBandManualChange,
+    LoggedByService,
+    CorrelationId
+| extend AlertSeverity = iff(OperationName =~ "Delete conditional access policy", "CRITICAL", "HIGH")
+| extend AlertTitle = strcat("CONDITIONAL ACCESS POLICY DRIFT: ", OperationName, " on '", TargetPolicy, "' by ", coalesce(InitiatorUser, InitiatorApp))

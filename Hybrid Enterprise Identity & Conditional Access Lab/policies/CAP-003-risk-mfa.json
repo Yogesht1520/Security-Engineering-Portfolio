@@ -6,8 +6,9 @@
       "includeUsers": [
         "All"
       ],
-      "excludeUsers": [
-        "emergency-admin-id"
+      "excludeUsers": [],
+      "excludeGroups": [
+        "SEC-BreakGlass-Exclusion"
       ]
     },
     "applications": {

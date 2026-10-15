@@ -1,34 +1,55 @@
 <#
 .SYNOPSIS
-    Seeds synthetic users and security groups for the Entra ID Hybrid & Conditional Access Lab.
+    Seeds synthetic users and security groups for the Entra ID Zero Trust & Conditional Access Lab.
 .DESCRIPTION
-    Automates Phase 1:
-    - Connects to Microsoft Graph using interactive OAuth authentication.
-    - Creates 3 security groups: SEC-Admins, SEC-StandardUsers, SEC-Contractors.
-    - Creates 8 test users across departments with standardized naming conventions.
-    - Adds test users to their respective security groups.
+    Phase 0 / Phase 1 Automation:
+    - Connects to Microsoft Graph using interactive OAuth authentication (least privilege scopes).
+    - Creates 4 security groups:
+        1. SEC-Admins
+        2. SEC-StandardUsers
+        3. SEC-Contractors
+        4. SEC-BreakGlass-Exclusion
+    - Creates 10 test personas (8 workforce users + 2 emergency break-glass administrators).
+    - Adds users to their designated security groups.
+    - Exports resolved identifiers to local config for downstream policy automation.
 .NOTES
-    Lab: Hybrid Enterprise Identity & Conditional Access Lab
-    Domain: quickheal327.onmicrosoft.com
+    Lab: Enterprise Identity Security & Conditional Access Engineering Lab
 #>
 
 param (
-    [string]$Domain = "quickheal327.onmicrosoft.com",
+    [Parameter(Mandatory=$false)]
+    [string]$Domain,
+
+    [Parameter(Mandatory=$false)]
     [System.Security.SecureString]$InitialPassword
 )
 
-# If no password is provided, securely prompt the operator
+# 0. Resolve Domain from Config if not explicitly provided
+if (-not $Domain) {
+    $tenantConfigFile = Join-Path $PSScriptRoot "..\config\tenant.json"
+    if (Test-Path $tenantConfigFile) {
+        $tenantConfig = Get-Content $tenantConfigFile -Raw | ConvertFrom-Json
+        $Domain = $tenantConfig.primaryDomain
+    }
+}
+
+if (-not $Domain) {
+    $Domain = Read-Host "Enter your Entra ID Primary Domain (e.g. contoso.onmicrosoft.com)"
+}
+
+Write-Host "Target Domain: $Domain" -ForegroundColor Cyan
+
+# 1. Secure Credential Handling
 if (-not $InitialPassword) {
-    Write-Host "`n[Security Requirement] Please provide an initial temporary password for synthetic users:" -ForegroundColor Yellow
+    Write-Host "`n[Security Requirement] Enter a temporary password for synthetic users (must meet complexity requirements):" -ForegroundColor Yellow
     $InitialPassword = Read-Host -AsSecureString
 }
 
-# Convert SecureString for Graph PasswordProfile API securely
 $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($InitialPassword)
 $plainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
 [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
 
-# 1. Verify and Install Microsoft Graph SDK if missing
+# 2. Check and Load Microsoft Graph SDK
 Write-Host "`n[1/5] Checking Microsoft.Graph PowerShell SDK..." -ForegroundColor Cyan
 $requiredModules = @('Microsoft.Graph.Authentication', 'Microsoft.Graph.Users', 'Microsoft.Graph.Groups')
 
@@ -41,18 +62,17 @@ foreach ($module in $requiredModules) {
     }
 }
 
-# 2. Connect to Microsoft Graph with Least-Privilege Scopes
-Write-Host "`n[2/5] Connecting to Microsoft Graph (Least Privilege: User & Group ReadWrite)..." -ForegroundColor Cyan
-Write-Host "Please sign in with your Lab Admin account ($Domain)." -ForegroundColor Yellow
+# 3. Connect to Microsoft Graph
+Write-Host "`n[2/5] Connecting to Microsoft Graph (Scopes: User.ReadWrite.All, Group.ReadWrite.All)..." -ForegroundColor Cyan
 Connect-MgGraph -TenantId $Domain -Scopes "User.ReadWrite.All", "Group.ReadWrite.All" -NoWelcome
 
-# 3. Create Security Groups
+# 4. Provision Security Groups
 Write-Host "`n[3/5] Provisioning Security Groups..." -ForegroundColor Cyan
 $groupsToCreate = @(
     @{
         DisplayName     = "SEC-Admins"
         MailNickname    = "SEC-Admins"
-        Description     = "Privileged administrative users subject to strict MFA and session controls."
+        Description     = "Privileged administrative users subject to strict MFA, session controls, and PIM."
     },
     @{
         DisplayName     = "SEC-StandardUsers"
@@ -63,6 +83,11 @@ $groupsToCreate = @(
         DisplayName     = "SEC-Contractors"
         MailNickname    = "SEC-Contractors"
         Description     = "Third-party contractors subject to aggressive session timeout policies."
+    },
+    @{
+        DisplayName     = "SEC-BreakGlass-Exclusion"
+        MailNickname    = "SEC-BreakGlass-Exclusion"
+        Description     = "Dedicated emergency break-glass exclusion group. Membership strictly restricted to 2 emergency accounts."
     }
 )
 
@@ -71,7 +96,7 @@ $groupMap = @{}
 foreach ($grp in $groupsToCreate) {
     $existing = Get-MgGroup -Filter "displayName eq '$($grp.DisplayName)'" -ErrorAction SilentlyContinue
     if ($existing) {
-        Write-Host "  [Exists] Group $($grp.DisplayName) already exists (ID: $($existing.Id))" -ForegroundColor Gray
+        Write-Host "  [Exists] Group $($grp.DisplayName) (ID: $($existing.Id))" -ForegroundColor Gray
         $groupMap[$grp.DisplayName] = $existing.Id
     } else {
         $created = New-MgGroup -DisplayName $grp.DisplayName `
@@ -84,12 +109,12 @@ foreach ($grp in $groupsToCreate) {
     }
 }
 
-# 4. Create Synthetic Test Users
+# 5. Provision Users
 Write-Host "`n[4/5] Provisioning Synthetic Users..." -ForegroundColor Cyan
 
 $passwordProfile = @{
     Password                      = $plainPassword
-    ForceChangePasswordNextSignIn = $false
+    ForceChangePasswordNextSignIn = $true
 }
 
 $usersToCreate = @(
@@ -167,8 +192,29 @@ $usersToCreate = @(
         GroupName         = "SEC-Contractors"
         JobTitle          = "DevOps Consultant"
         Department        = "External Contractors"
+    },
+    # Dual Break-Glass Emergency Accounts
+    @{
+        DisplayName       = "Emergency Break-Glass 01"
+        GivenName         = "Emergency"
+        Surname           = "Admin-01"
+        UserPrincipalName = "emergency-admin-01@$Domain"
+        GroupName         = "SEC-BreakGlass-Exclusion"
+        JobTitle          = "Break-Glass Account"
+        Department        = "Security Operations"
+    },
+    @{
+        DisplayName       = "Emergency Break-Glass 02"
+        GivenName         = "Emergency"
+        Surname           = "Admin-02"
+        UserPrincipalName = "emergency-admin-02@$Domain"
+        GroupName         = "SEC-BreakGlass-Exclusion"
+        JobTitle          = "Break-Glass Account"
+        Department        = "Security Operations"
     }
 )
+
+$userMap = @{}
 
 foreach ($u in $usersToCreate) {
     $existingUser = Get-MgUser -Filter "userPrincipalName eq '$($u.UserPrincipalName)'" -ErrorAction SilentlyContinue
@@ -199,28 +245,31 @@ foreach ($u in $usersToCreate) {
         }
     }
 
-    # 5. Add User to Group
-    $targetGroupId = $groupMap[$u.GroupName]
-    if ($targetGroupId -and $userId) {
-        try {
-            New-MgGroupMember -GroupId $targetGroupId -DirectoryObjectId $userId -ErrorAction Stop | Out-Null
-            Write-Host "    -> Added to group $($u.GroupName)" -ForegroundColor DarkGreen
-        } catch {
-            if ($_.Exception.Message -match "already exist") {
-                Write-Host "    -> Already in group $($u.GroupName)" -ForegroundColor Gray
-            } else {
-                Write-Host "    -> Member status: $($_.Exception.Message)" -ForegroundColor Gray
+    if ($userId) {
+        $userMap[$u.UserPrincipalName] = $userId
+        # Add User to Group
+        $targetGroupId = $groupMap[$u.GroupName]
+        if ($targetGroupId) {
+            try {
+                New-MgGroupMember -GroupId $targetGroupId -DirectoryObjectId $userId -ErrorAction Stop | Out-Null
+                Write-Host "    -> Added to group $($u.GroupName)" -ForegroundColor DarkGreen
+            } catch {
+                if ($_.Exception.Message -match "already exist") {
+                    Write-Host "    -> Already in group $($u.GroupName)" -ForegroundColor Gray
+                } else {
+                    Write-Host "    -> Member status: $($_.Exception.Message)" -ForegroundColor Gray
+                }
             }
         }
     }
 }
 
-# Clear sensitive plaintext variable from memory
+# Clean memory
 $plainPassword = $null
 [System.GC]::Collect()
 
-Write-Host "`n[5/5] Seeding Complete!" -ForegroundColor Green
+Write-Host "`n[5/5] Provisioning Complete!" -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host "Security Groups: SEC-Admins, SEC-StandardUsers, SEC-Contractors" -ForegroundColor White
-Write-Host "Test user population seeded successfully with provided temporary credential." -ForegroundColor Yellow
+Write-Host "Groups Created/Verified: SEC-Admins, SEC-StandardUsers, SEC-Contractors, SEC-BreakGlass-Exclusion" -ForegroundColor White
+Write-Host "Users Created/Verified: 8 Workforce Personas + 2 Emergency Break-Glass Admins" -ForegroundColor White
 Write-Host "==========================================================" -ForegroundColor Cyan

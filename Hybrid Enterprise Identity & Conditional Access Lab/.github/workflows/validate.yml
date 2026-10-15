@@ -1,0 +1,82 @@
+name: Identity-as-Code CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate-policies:
+    name: "Declarative Policy Schema & Baseline Gate"
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Validate Conditional Access Policy Schema
+        shell: pwsh
+        run: |
+          Write-Host "Running Schema & Baseline Pre-Flight Validation..." -ForegroundColor Cyan
+          ./scripts/deploy_ca_policies.ps1 -ValidateOnly
+
+  pester-tests:
+    name: "Automated Pester Unit & Governance Tests"
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Run Pester Test Suites
+        shell: pwsh
+        run: |
+          $pesterConfig = [PesterConfiguration]::Default
+          $pesterConfig.Run.Path = "tests"
+          $pesterConfig.Output.Verbosity = "Detailed"
+          Invoke-Pester -Configuration $pesterConfig
+
+  static-analysis:
+    name: "PSScriptAnalyzer Static Code Quality"
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Run PSScriptAnalyzer Linting
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error, Warning
+          if ($results) {
+            $results | Format-Table ScriptName, Line, Message, Severity -AutoSize
+            $errors = $results | Where-Object { $_.Severity -eq "Error" }
+            if ($errors.Count -gt 0) {
+              Write-Error "Static analysis detected $($errors.Count) critical errors."
+              exit 1
+            }
+          } else {
+            Write-Host "PSScriptAnalyzer passed with zero errors or warnings!" -ForegroundColor Green
+          }
+
+  secret-scanning:
+    name: "Repository Hygiene & Secret Scanning Gate"
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Verify No Secrets Committed
+        shell: pwsh
+        run: |
+          $prohibitedFiles = @(
+            "config/tenant.json",
+            "config/environment.json",
+            "config/identity-mapping.json"
+          )
+          foreach ($file in $prohibitedFiles) {
+            if (Test-Path $file) {
+              Write-Error "CRITICAL: Live credentials file '$file' detected in repository!"
+              exit 1
+            }
+          }
+          Write-Host "Secret scanning gate passed: No sensitive configuration files committed." -ForegroundColor Green

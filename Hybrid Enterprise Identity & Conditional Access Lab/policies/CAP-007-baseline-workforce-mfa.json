@@ -1,0 +1,26 @@
+{
+  "displayName": "CAP-007: Require MFA for All Workforce Users",
+  "state": "enabledForReportingButNotEnforced",
+  "conditions": {
+    "users": {
+      "includeUsers": [
+        "All"
+      ],
+      "excludeUsers": [],
+      "excludeGroups": [
+        "SEC-BreakGlass-Exclusion"
+      ]
+    },
+    "applications": {
+      "includeApplications": [
+        "All"
+      ]
+    }
+  },
+  "grantControls": {
+    "operator": "OR",
+    "builtInControls": [
+      "mfa"
+    ]
+  }
+}

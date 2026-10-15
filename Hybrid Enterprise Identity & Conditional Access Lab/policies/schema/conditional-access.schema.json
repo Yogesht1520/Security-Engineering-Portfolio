@@ -1,0 +1,243 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Microsoft Entra Conditional Access Policy Definition",
+  "description": "Enterprise JSON schema for declarative Conditional Access policies adhering to Zero Trust and safe deployment standards.",
+  "type": "object",
+  "required": [
+    "displayName",
+    "state",
+    "conditions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Optional Graph Object ID when synchronized from live tenant."
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 256,
+      "pattern": "^CAP-[0-9]{3}:\\s.+$",
+      "description": "Standardized policy name starting with CAP-XXX prefix."
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "enabledForReportingButNotEnforced",
+        "enabled",
+        "disabled"
+      ],
+      "description": "Deployment state. Production standard mandates 'enabledForReportingButNotEnforced' (Report-only) prior to enforcement."
+    },
+    "conditions": {
+      "type": "object",
+      "required": [
+        "users",
+        "applications"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "users": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "includeUsers": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^(All|None|[a-f0-9\\-]{36}|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})$" }
+            },
+            "excludeUsers": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^(GuestsOrExternalUsers|[a-f0-9\\-]{36}|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})$" }
+            },
+            "includeGroups": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "excludeGroups": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "includeRoles": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[a-f0-9\\-]{36}$" }
+            },
+            "excludeRoles": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[a-f0-9\\-]{36}$" }
+            }
+          }
+        },
+        "applications": {
+          "type": "object",
+          "anyOf": [
+            { "required": ["includeApplications"] },
+            { "required": ["includeUserActions"] }
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "includeApplications": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1
+            },
+            "excludeApplications": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "includeUserActions": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1
+            }
+          }
+        },
+        "devices": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "deviceFilter": {
+              "type": "object",
+              "required": ["mode", "rule"],
+              "properties": {
+                "mode": { "type": "string", "enum": ["include", "exclude"] },
+                "rule": { "type": "string" }
+              }
+            }
+          }
+        },
+        "locations": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "includeLocations": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "excludeLocations": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "clientAppTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "browser",
+              "mobileAppsAndDesktopClients",
+              "exchangeActiveSync",
+              "easSupported",
+              "other"
+            ]
+          }
+        },
+        "platforms": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "includePlatforms": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["all", "android", "iOS", "windows", "windowsPhone", "macOS", "linux"]
+              }
+            },
+            "excludePlatforms": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["android", "iOS", "windows", "windowsPhone", "macOS", "linux"]
+              }
+            }
+          }
+        },
+        "signInRiskLevels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "hidden"]
+          }
+        },
+        "userRiskLevels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "hidden"]
+          }
+        }
+      }
+    },
+    "grantControls": {
+      "type": "object",
+      "required": [
+        "operator",
+        "builtInControls"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "operator": {
+          "type": "string",
+          "enum": ["OR", "AND"]
+        },
+        "builtInControls": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "block",
+              "mfa",
+              "compliantDevice",
+              "domainJoinedDevice",
+              "approvedApplication",
+              "compliantApplication",
+              "passwordChange"
+            ]
+          },
+          "minItems": 0
+        },
+        "authenticationStrength": {
+          "type": "object",
+          "required": ["id"],
+          "properties": {
+            "id": { "type": "string" }
+          }
+        }
+      }
+    },
+    "sessionControls": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "signInFrequency": {
+          "type": "object",
+          "required": ["value", "type", "isEnabled"],
+          "additionalProperties": false,
+          "properties": {
+            "value": { "type": "integer", "minimum": 1 },
+            "type": { "type": "string", "enum": ["hours", "days"] },
+            "isEnabled": { "type": "boolean" },
+            "authenticationType": { "type": "string" },
+            "frequencyInterval": { "type": "string" }
+          }
+        },
+        "persistentBrowser": {
+          "type": "object",
+          "required": ["mode", "isEnabled"],
+          "additionalProperties": false,
+          "properties": {
+            "mode": { "type": "string", "enum": ["always", "never"] },
+            "isEnabled": { "type": "boolean" }
+          }
+        },
+        "continuousAccessEvaluation": {
+          "type": "object",
+          "properties": {
+            "mode": { "type": "string", "enum": ["disabled", "strictEnforcement"] }
+          }
+        }
+      }
+    }
+  }
+}

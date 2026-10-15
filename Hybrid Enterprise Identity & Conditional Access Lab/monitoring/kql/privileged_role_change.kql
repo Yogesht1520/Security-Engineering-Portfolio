@@ -1,0 +1,46 @@
+// ==============================================================================
+// Rule Name   : Unauthorized or Out-of-Band Privileged Directory Role Change
+// Severity    : HIGH
+// MITRE ATT&CK: T1098 (Account Manipulation), T1078.004 (Valid Accounts: Cloud Accounts)
+// Description : Detects permanent standing role assignments or direct modifications
+//               to Tier-0 administrative roles (Global Admin, Privileged Role Admin,
+//               Security Admin, CA Admin) that bypass PIM Just-In-Time approval workflows.
+// ==============================================================================
+
+let LookbackPeriod = 24h;
+let Tier0Roles = dynamic([
+    "Global Administrator",
+    "Privileged Role Administrator",
+    "Security Administrator",
+    "Conditional Access Administrator",
+    "User Administrator"
+]);
+
+AuditLogs
+| where TimeGenerated >= ago(LookbackPeriod)
+| where Category =~ "RoleManagement"
+| where OperationName in~ (
+    "Add member to role",
+    "Add member to role outside PIM (permanent)",
+    "Add eligible member to role in PIM completed",
+    "Add active assignment to role in PIM"
+)
+| extend Initiator = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName))
+| extend TargetRole = tostring(TargetResources[0].displayName)
+| extend TargetUser = tostring(TargetResources[2].displayName)
+| extend TargetUserPrincipalName = tostring(TargetResources[2].userPrincipalName)
+| where TargetRole has_any (Tier0Roles)
+| extend IsStandingBypass = OperationName in~ ("Add member to role", "Add member to role outside PIM (permanent)")
+| project
+    TimeGenerated,
+    OperationName,
+    TargetRole,
+    TargetUser,
+    TargetUserPrincipalName,
+    Initiator,
+    IsStandingBypass,
+    Result,
+    ResultDescription,
+    CorrelationId
+| extend AlertSeverity = iff(IsStandingBypass, "CRITICAL", "HIGH")
+| extend AlertTitle = strcat("PRIVILEGED ROLE ASSIGNMENT: '", TargetRole, "' assigned to '", coalesce(TargetUserPrincipalName, TargetUser), "' by ", Initiator)

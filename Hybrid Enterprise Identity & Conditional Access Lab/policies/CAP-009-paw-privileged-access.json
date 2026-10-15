@@ -1,0 +1,32 @@
+{
+  "displayName": "CAP-009: Restrict Privileged Access to Designated Devices",
+  "state": "enabledForReportingButNotEnforced",
+  "conditions": {
+    "users": {
+      "includeGroups": [
+        "SEC-Admins"
+      ],
+      "excludeUsers": [],
+      "excludeGroups": [
+        "SEC-BreakGlass-Exclusion"
+      ]
+    },
+    "applications": {
+      "includeApplications": [
+        "All"
+      ]
+    },
+    "devices": {
+      "deviceFilter": {
+        "mode": "exclude",
+        "rule": "device.isCompliant -eq True"
+      }
+    }
+  },
+  "grantControls": {
+    "operator": "OR",
+    "builtInControls": [
+      "block"
+    ]
+  }
+}

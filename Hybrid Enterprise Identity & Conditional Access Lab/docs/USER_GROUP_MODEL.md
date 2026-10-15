@@ -2,23 +2,26 @@
 
 ## 1. Directory Overview
 
-| Property | Value |
-|---|---|
-| **Identity Platform** | Microsoft Entra ID (P2 Active) |
-| **Primary Domain** | `quickheal327.onmicrosoft.com` |
-| **Tenant ID** | `464a788a-fba5-4e94-9b06-a6359091ad74` |
-| **Provisioning Standard** | Automated via Microsoft Graph PowerShell SDK (`seed_users.ps1`) |
-| **Architecture Model** | Cloud-native simulation of Hybrid Zero Trust IAM |
+| Property | Value | Notes |
+|---|---|---|
+| **Identity Platform** | Microsoft Entra ID (P2 Active / Trial) | Enterprise Zero Trust configuration |
+| **Primary Domain** | `<PRIMARY_DOMAIN>.onmicrosoft.com` | Parameterized in `config/tenant.json` |
+| **Tenant ID** | `<TENANT_ID>` | Parameterized in `config/tenant.json` |
+| **Provisioning Standard** | Automated via Microsoft Graph PowerShell SDK | Scripted via `identity-lifecycle/` |
+| **Architecture Model** | Enterprise Cloud-Native Zero Trust IAM | Conceptual on-premises AD DS reference architecture |
 
 ---
 
 ## 2. Security Group Matrix
 
-| Group Name | Object ID | Purpose & Access Boundary | Applicable CA Policies |
+All group object identifiers are dynamic and resolved at runtime via `scripts/identity/resolve_groups.ps1` from local deployment mapping:
+
+| Group Name | Canonical Identifier | Purpose & Access Boundary | Applicable CA Policies |
 |---|---|---|---|
-| **`SEC-Admins`** | `10a34fab-c98d-4a85-84e9-42b92e96fe82` | Privileged administrators holding directory roles or high-privilege operations. | CAP-001, CAP-002, CAP-003, CAP-004, CAP-005 |
-| **`SEC-StandardUsers`** | `bb2d5dcc-cdd9-413f-85a8-f256171aa177` | Standard full-time personnel across Engineering, HR, Finance, and Marketing. | CAP-001, CAP-003, CAP-004 |
-| **`SEC-Contractors`** | `369c861a-5277-459f-abc4-7cc86d61b2e1` | External contractors and vendors subject to strict re-authentication timeouts. | CAP-001, CAP-003, CAP-004, CAP-005 |
+| **`SEC-Admins`** | `<SEC_ADMINS_GROUP_ID>` | Privileged administrators holding directory roles or high-privilege operations. | CAP-001, CAP-002, CAP-003, CAP-004, CAP-005, CAP-009 |
+| **`SEC-StandardUsers`** | `<SEC_STANDARDUSERS_GROUP_ID>` | Standard full-time personnel across Engineering, HR, Finance, and Marketing. | CAP-001, CAP-003, CAP-004, CAP-007 |
+| **`SEC-Contractors`** | `<SEC_CONTRACTORS_GROUP_ID>` | External contractors and vendors subject to strict re-authentication timeouts. | CAP-001, CAP-003, CAP-004, CAP-005, CAP-007 |
+| **`SEC-BreakGlass-Exclusion`** | `<SEC_BREAKGLASS_GROUP_ID>` | Dedicated emergency break-glass exclusion group. Membership strictly limited to 2 emergency accounts. | Excluded from CAP-001, CAP-002, CAP-003, CAP-004, CAP-005 |
 
 ---
 
@@ -27,24 +30,32 @@
 ### 3.1 Privileged Administrative Accounts (`SEC-Admins`)
 | User Principal Name (UPN) | Display Name | Assigned Role / Department | Security Controls |
 |---|---|---|---|
-| `adm-alex@quickheal327.onmicrosoft.com` | Alex Chen (Admin) | Security Administrator / Infosec | Mandatory MFA, 8hr Sign-in Frequency, Non-persistent browser |
-| `adm-morgan@quickheal327.onmicrosoft.com` | Morgan Vance (Admin) | IAM Administrator / Identity & Access | Mandatory MFA, 8hr Sign-in Frequency, Non-persistent browser |
+| `adm-alex@<PRIMARY_DOMAIN>` | Alex Chen (Admin) | Security Administrator / Infosec | Phishing-resistant MFA (FIDO2), 8hr Sign-in Frequency, Non-persistent browser |
+| `adm-morgan@<PRIMARY_DOMAIN>` | Morgan Vance (Admin) | Privileged Role Administrator / IAM | Phishing-resistant MFA (FIDO2), 8hr Sign-in Frequency, Non-persistent browser |
 
 ### 3.2 Standard Workforce Accounts (`SEC-StandardUsers`)
 | User Principal Name (UPN) | Display Name | Department | Role |
 |---|---|---|---|
-| `usr-jordan@quickheal327.onmicrosoft.com` | Jordan Blake | Finance | Financial Analyst |
-| `usr-taylor@quickheal327.onmicrosoft.com` | Taylor Reese | Marketing | Marketing Specialist |
-| `usr-casey@quickheal327.onmicrosoft.com` | Casey Smith | Engineering | Software Engineer |
-| `usr-riley@quickheal327.onmicrosoft.com` | Riley Evans | Human Resources | HR Coordinator |
+| `usr-jordan@<PRIMARY_DOMAIN>` | Jordan Blake | Finance | Financial Analyst |
+| `usr-taylor@<PRIMARY_DOMAIN>` | Taylor Reese | Marketing | Marketing Specialist |
+| `usr-casey@<PRIMARY_DOMAIN>` | Casey Smith | Engineering | Software Engineer |
+| `usr-riley@<PRIMARY_DOMAIN>` | Riley Evans | Human Resources | HR Coordinator |
 
 ### 3.3 Third-Party / Contractor Accounts (`SEC-Contractors`)
 | User Principal Name (UPN) | Display Name | Organization / Scope | Enforced Controls |
 |---|---|---|---|
-| `cnt-sam@quickheal327.onmicrosoft.com` | Sam Rivera (Contractor) | External Audit | 8-hour session lifetime, no persistent cookies |
-| `cnt-pat@quickheal327.onmicrosoft.com` | Pat Patel (Contractor) | DevOps Consultant | 8-hour session lifetime, no persistent cookies |
+| `cnt-sam@<PRIMARY_DOMAIN>` | Sam Rivera (Contractor) | External Audit | 8-hour session reauthentication, no persistent cookies |
+| `cnt-pat@<PRIMARY_DOMAIN>` | Pat Patel (Contractor) | DevOps Consultant | 8-hour session reauthentication, no persistent cookies |
 
-### 3.4 Emergency Break-Glass Account (Exempt Account)
-| User Principal Name (UPN) | Display Name | Purpose | Exemption Scope |
+### 3.4 Dual Emergency Break-Glass Accounts (NIST & Microsoft Best Practice)
+To prevent catastrophic administrative lockout during Conditional Access misconfiguration or federation outages, exactly two cloud-only break-glass accounts are maintained:
+
+| User Principal Name (UPN) | Display Name | Storage & Auth Mechanism | Monitoring & Governance |
 |---|---|---|---|
-| `emergency-admin@quickheal327.onmicrosoft.com` | Emergency Break-Glass Admin | Emergency tenant recovery in catastrophic CA misconfiguration | Excluded from CAP-001, CAP-002, CAP-003, CAP-004, CAP-005 |
+| `emergency-admin-01@<PRIMARY_DOMAIN>` | Emergency Break-Glass 01 | Hardware FIDO2 Security Key (Safe A); Complex 40+ char pass-phrase split in sealed tamper-evident envelope | Real-time SIEM alert on any sign-in attempt; 90-day drill; excluded via `SEC-BreakGlass-Exclusion` |
+| `emergency-admin-02@<PRIMARY_DOMAIN>` | Emergency Break-Glass 02 | Hardware FIDO2 Security Key (Safe B - secondary physical facility); Complex 40+ char pass-phrase split in sealed tamper-evident envelope | Real-time SIEM alert on any sign-in attempt; 90-day drill; excluded via `SEC-BreakGlass-Exclusion` |
+
+#### Operational Constraints for Emergency Accounts:
+1. **Cloud-Only:** Never synchronized from on-premises AD DS (resilient to on-prem / sync server outages).
+2. **Exclusion Standard:** Excluded from Conditional Access policies *only* via group assignment to `SEC-BreakGlass-Exclusion` (never hardcoded by user GUID).
+3. **No Everyday Use:** Zero mailbox or productivity license assignment; strictly used for recovery.

@@ -1,0 +1,15 @@
+{
+  "groups": {
+    "SEC-Admins": "<SEC_ADMINS_GROUP_OBJECT_ID>",
+    "SEC-StandardUsers": "<SEC_STANDARDUSERS_GROUP_OBJECT_ID>",
+    "SEC-Contractors": "<SEC_CONTRACTORS_GROUP_OBJECT_ID>",
+    "SEC-BreakGlass-Exclusion": "<SEC_BREAKGLASS_GROUP_OBJECT_ID>"
+  },
+  "users": {
+    "emergency-admin-01": "<EMERGENCY_ADMIN_01_OBJECT_ID>",
+    "emergency-admin-02": "<EMERGENCY_ADMIN_02_OBJECT_ID>"
+  },
+  "namedLocations": {
+    "Allowed-Home-Country-Id": "<NAMED_LOCATION_OBJECT_ID>"
+  }
+}

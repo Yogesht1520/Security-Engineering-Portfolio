@@ -7,8 +7,9 @@
         "SEC-Admins",
         "SEC-StandardUsers"
       ],
-      "excludeUsers": [
-        "emergency-admin-id"
+      "excludeUsers": [],
+      "excludeGroups": [
+        "SEC-BreakGlass-Exclusion"
       ]
     },
     "applications": {

@@ -1,5 +1,8 @@
-# Lab instruction / prompt file
+# Internal planning, prompt & upgrade documents
 03-hybrid-identity-lab-entra-id.md
+docs/MASTER_UPGRADE_PLAN.md
+docs/master_upgrade_plan.md
+*.plan.md
 
 # Windows & OS artifacts
 Thumbs.db
@@ -17,3 +20,13 @@ ehthumbs_vista.db
 # Local logs & temp files
 *.log
 *.tmp
+logs/
+snapshots/
+reports/
+
+# Local sensitive tenant configurations
+config/local.*.json
+config/tenant.json
+config/identity-mapping.json
+config/environment.json
+.local/

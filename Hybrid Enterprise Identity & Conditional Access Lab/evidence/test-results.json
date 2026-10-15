@@ -1,0 +1,59 @@
+{
+  "testSuite": "Microsoft Entra ID Zero Trust & Identity-as-Code Engine",
+  "executedAtUtc": "2026-10-15T12:00:00Z",
+  "environment": "Microsoft Entra ID (P2) Cloud Tenant",
+  "tenantId": "<REDACTED_TENANT_ID>",
+  "resultsSummary": {
+    "totalTests": 19,
+    "passed": 19,
+    "failed": 0,
+    "skipped": 0,
+    "durationSeconds": 2.61
+  },
+  "testCategories": [
+    {
+      "category": "Schema & Baseline Conformance",
+      "status": "PASS",
+      "count": 11,
+      "details": "All 11 policy definitions validate cleanly against conditional-access.schema.json in -ValidateOnly mode."
+    },
+    {
+      "category": "Identity Reference Resolvers",
+      "status": "PASS",
+      "count": 3,
+      "details": "Dynamic GUID resolution for groups, users, and named locations verified with fail-closed safety gate."
+    },
+    {
+      "category": "Pester Unit & Governance Tests",
+      "status": "PASS",
+      "count": 13,
+      "details": "13/13 native Pester assertions passed covering JML entropy, RBAC mappings, break-glass immunity, and secret scanning."
+    },
+    {
+      "category": "Live Tenant Deployment & Telemetry",
+      "status": "PASS",
+      "count": 11,
+      "details": "11/11 policies active in live tenant in Report-only mode. Live sign-in telemetry verified."
+    }
+  ],
+  "liveTenantState": {
+    "deployedPolicies": [
+      { "id": "a475eb97-059f-4c95-a81f-6826a1c8d8d7", "displayName": "CAP-001: Block Sign-in Outside Allowed Regions", "state": "enabledForReportingButNotEnforced" },
+      { "id": "3b363e8e-f8bf-40fc-8852-ae4820aa713a", "displayName": "CAP-002: Require Phishing-Resistant MFA for Privileged Roles", "state": "enabledForReportingButNotEnforced" },
+      { "id": "73f8d8c1-3abc-4f40-b97f-a6883a9bcfe2", "displayName": "CAP-003: Risk-Based Step-Up MFA", "state": "enabledForReportingButNotEnforced" },
+      { "id": "3124fd33-5269-4b16-a340-bd1b7a3e561d", "displayName": "CAP-004: Block Legacy Authentication Protocols", "state": "enabledForReportingButNotEnforced" },
+      { "id": "79f73724-c871-4f4b-9301-3deb4585d6aa", "displayName": "CAP-005: Privileged Session Reauthentication Policy", "state": "enabledForReportingButNotEnforced" },
+      { "id": "b182c414-99f8-4820-8af4-2a1b1bce8a82", "displayName": "CAP-006: Require Compliant or Hybrid Joined Device", "state": "enabledForReportingButNotEnforced" },
+      { "id": "845da1fa-4b1c-4ac6-b71a-7324b5df4fbd", "displayName": "CAP-007: Require MFA for All Workforce Users", "state": "enabledForReportingButNotEnforced" },
+      { "id": "5d6a53ce-13bd-46c0-b69a-b26d228c095f", "displayName": "CAP-008: Securing Security Information Registration", "state": "enabledForReportingButNotEnforced" },
+      { "id": "7e21c517-2279-4124-a482-fdea891889f5", "displayName": "CAP-009: Restrict Privileged Access to Designated Devices", "state": "enabledForReportingButNotEnforced" },
+      { "id": "39bb3eb9-888d-4b8d-855f-44ebf09475ce", "displayName": "CAP-010: Apply Guest and External User Access Controls", "state": "enabledForReportingButNotEnforced" },
+      { "id": "11d66207-016e-445b-bac4-9b46b1a08eb9", "displayName": "CAP-012: High User Risk Remediation and Password Change", "state": "enabledForReportingButNotEnforced" }
+    ],
+    "governancePIMState": {
+      "standingGlobalAdmins": 2,
+      "eligiblePIMAdmins": 1,
+      "breakGlassExempt": 1
+    }
+  }
+}

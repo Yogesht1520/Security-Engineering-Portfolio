@@ -1,0 +1,37 @@
+{
+  "displayName": "CAP-010: Apply Guest and External User Access Controls",
+  "state": "enabledForReportingButNotEnforced",
+  "conditions": {
+    "users": {
+      "includeUsers": [
+        "GuestsOrExternalUsers"
+      ],
+      "excludeUsers": [],
+      "excludeGroups": [
+        "SEC-BreakGlass-Exclusion"
+      ]
+    },
+    "applications": {
+      "includeApplications": [
+        "All"
+      ]
+    }
+  },
+  "grantControls": {
+    "operator": "OR",
+    "builtInControls": [
+      "mfa"
+    ]
+  },
+  "sessionControls": {
+    "signInFrequency": {
+      "value": 4,
+      "type": "hours",
+      "isEnabled": true
+    },
+    "persistentBrowser": {
+      "mode": "never",
+      "isEnabled": true
+    }
+  }
+}

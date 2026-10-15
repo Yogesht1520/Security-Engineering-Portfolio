@@ -1,0 +1,30 @@
+{
+  "displayName": "CAP-012: High User Risk Remediation and Password Change",
+  "state": "enabledForReportingButNotEnforced",
+  "conditions": {
+    "users": {
+      "includeUsers": [
+        "All"
+      ],
+      "excludeUsers": [],
+      "excludeGroups": [
+        "SEC-BreakGlass-Exclusion"
+      ]
+    },
+    "applications": {
+      "includeApplications": [
+        "All"
+      ]
+    },
+    "userRiskLevels": [
+      "high"
+    ]
+  },
+  "grantControls": {
+    "operator": "AND",
+    "builtInControls": [
+      "mfa",
+      "passwordChange"
+    ]
+  }
+}

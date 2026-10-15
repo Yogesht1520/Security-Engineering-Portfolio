@@ -1,0 +1,6 @@
+{
+  "tenantId": "<YOUR_TENANT_ID_GUID>",
+  "primaryDomain": "<YOUR_TENANT_NAME>.onmicrosoft.com",
+  "subscriptionId": "<YOUR_AZURE_SUBSCRIPTION_ID_OPTIONAL>",
+  "environment": "Lab"
+}

@@ -1,75 +1,85 @@
-# Enterprise Hybrid Identity & Conditional Access Security Lab
+# Enterprise Identity Security & Conditional Access Lab
 
-> **Aligned with:** Microsoft SC-300 (Identity & Access Administrator) & NIST Zero Trust Architecture (SP 800-207)  
-> **Environment:** Microsoft Entra ID (P2) Cloud Tenant *(Sanitized Lab Tenant)*  
-> **Methodology:** Declarative Identity-as-Code (IaC) & Continuous Security Staging  
+> **Framework Alignment:** NIST Zero Trust Architecture (SP 800-207) & Microsoft SC-300  
+> **Environment:** Microsoft Entra ID (P2) Cloud Tenant *(Live Verified)* + AD DS Hybrid Reference Architecture  
+> **Implementation Methodology:** Declarative Identity-as-Code (IaC), Safe Staging & Continuous Governance  
+> **Operational Verification:** 19/19 Tests Passing (Pester, Schema, Resolvers) | 11 Live Policies in Report-Only Mode  
 
 ---
 
 ## 1. Executive Summary
 
-This project delivers an enterprise-grade **Zero Trust Identity and Access Management (IAM)** framework engineered in **Microsoft Entra ID (formerly Azure AD)**. Moving away from perimeter-centric security, this architecture positions **Identity as the primary control plane**.
+This repository delivers an enterprise-grade **Zero Trust Identity and Access Management (IAM)** platform engineered in **Microsoft Entra ID**. Built on the principle that **Identity is the primary security boundary**, all authentication and authorization requests are evaluated dynamically using real-time signals, adaptive session controls, and least-privilege boundaries.
 
-Key engineering highlights of this implementation:
-- **Declarative Identity-as-Code (IaC):** Conditional Access policies managed as version-controlled JSON objects in [`policies/`](./policies/) and deployed via automated Microsoft Graph SDK scripts.
-- **Enterprise Staging Methodology:** Strict progression from `Report-only` auditing to mathematical simulation, culminating in live zero-trust enforcement.
-- **Automated Lifecycle Management:** PowerShell-driven Joiner/Mover/Leaver (JML) automation, including instant token revocation and group de-provisioning.
-- **MITRE ATT&CK Mapping:** Targeted defenses against credential stuffing, legacy protocol bypasses, privileged account takeover, and session token theft.
+### Core Implemented Capabilities:
+* **Declarative Identity-as-Code (IaC):** 11 production Conditional Access policy definitions maintained in version-controlled JSON schemas ([`policies/`](./policies/)) and deployed programmatically via the Microsoft Graph API.
+* **Zero Trust Safe Staging:** All policies deploy in `Report-only` mode (`enabledForReportingButNotEnforced`) to evaluate live sign-in telemetry without risking user disruption.
+* **Dual Break-Glass Disaster Recovery:** Two independent, cloud-only emergency accounts (`emergency-admin-01`, `emergency-admin-02`) excluded via `SEC-BreakGlass-Exclusion` to eliminate administrative lockout risk.
+* **Privileged Identity Management (PIM):** Implementation of Zero Standing Access (ZSA). Administrative roles require Just-in-Time (JIT) activation with a 4-hour max window, mandatory justification, and phishing-resistant MFA.
+* **Automated JML Lifecycle Engine:** Deterministic Joiner, Mover, and Leaver workflows ([`identity-lifecycle/`](./identity-lifecycle/)) featuring cryptographic temporary passwords, privilege creep prevention, and 5-stage offboarding with immediate session invalidation.
+* **Detection Engineering (KQL):** Production Kusto queries ([`monitoring/kql/`](./monitoring/kql/)) and incident response playbooks ([`monitoring/playbooks/`](./monitoring/playbooks/)) monitoring break-glass account sign-ins, policy drift, and MFA fatigue.
+* **Automated Testing & CI/CD:** Native Pester test suites ([`tests/`](./tests/)) and a GitHub Actions workflow ([`.github/workflows/validate.yml`](./.github/workflows/validate.yml)) enforcing schema validity, linting, and secret scanning.
 
 ---
 
-## 2. Architecture & Boundary Model
+## 2. Architecture & Boundary Specification
 
-> **Boundary Callout:** In compliance with enterprise documentation standards, components are explicitly partitioned between **[Implemented Cloud Environment]** (built and tested in Entra ID) and **[Conceptual Architecture]** (reference hybrid directory sync topology).
+To maintain engineering integrity, the platform clearly delineates between the **Live Implemented Cloud Environment** and the **Conceptual Hybrid Reference Architecture**:
 
 ```mermaid
 flowchart TB
     %% CONCEPTUAL SECTION
-    subgraph OnPrem["[CONCEPTUAL ARCHITECTURE] On-Premises Active Directory"]
-        AD[("Windows Server AD DS\n(corp.local)\n[Reference Architecture]")]
-        Connect["Microsoft Entra Connect Sync\n(Password Hash Sync / PTA)\n[Conceptual Sync Agent]"]
+    subgraph OnPrem["[CONCEPTUAL REFERENCE ARCHITECTURE] On-Premises Active Directory"]
+        AD[("Windows Server AD DS\n(corp.local)\n[Reference Design]")]
+        Connect["Microsoft Entra Connect Sync\n(Password Hash Sync / PHS)\n[Sync Engine]")]
         AD -.->|Hybrid Directory Sync| Connect
     end
 
     %% IMPLEMENTED SECTION
-    subgraph EntraCloud["[IMPLEMENTED ENVIRONMENT] Microsoft Entra ID Cloud Tenant"]
+    subgraph EntraCloud["[LIVE IMPLEMENTED ENVIRONMENT] Microsoft Entra ID Cloud Platform"]
         direction TB
         subgraph Directory["Identity Directory & Governance"]
-            Users["Cloud Identities\n(8 Synthetic Personas)"]
-            Groups["Role-Based Security Groups\n- SEC-Admins\n- SEC-StandardUsers\n- SEC-Contractors"]
-            BreakGlass["Emergency Break-Glass Account\n(Strict Exclusion & Alerting)"]
+            Users["Workforce Identities\n(SEC-StandardUsers, SEC-Contractors, SEC-Admins)"]
+            PIM["Privileged Identity Management (PIM)\n(Zero Standing Access - JIT Elevation)"]
+            BreakGlass["Dual Emergency Break-Glass Accounts\n(SEC-BreakGlass-Exclusion)"]
         end
 
         subgraph Signals["Zero Trust Real-Time Signal Assessment"]
             GeoIP["Named Locations / Geo-IP\n(Allowed-Home-Country vs Foreign)"]
-            RiskEngine["Entra ID Protection\n(Sign-in & User Risk ML)"]
-            ClientType["Client App Type\n(Modern Auth vs Legacy POP/IMAP)"]
-            DeviceTrust["Device Trust State\n(Intune Compliant / Hybrid Joined)"]
+            RiskEngine["Entra ID Protection\n(Sign-in Risk & User Risk ML)"]
+            ClientType["Client App Type\n(Modern Auth vs Legacy Protocols)"]
+            DeviceTrust["Device Trust State\n(Compliant Device / Hybrid Joined / PAW)"]
         end
 
         subgraph PolicyEngine["Declarative Conditional Access Engine (Identity-as-Code)"]
             CAP1["CAP-001: Block Foreign Geo-Locations"]
-            CAP2["CAP-002: Require MFA for Admin Roles"]
-            CAP3["CAP-003: Require MFA for Risky Sign-ins"]
-            CAP4["CAP-004: Block Legacy Authentication"]
-            CAP5["CAP-005: 8-Hour Session Lifetime (Admins/Vendors)"]
-            CAP6["CAP-006: Require Compliant / Hybrid Device"]
+            CAP2["CAP-002: Require Phishing-Resistant MFA for Privileged Roles"]
+            CAP3["CAP-003: Risk-Based Step-Up MFA"]
+            CAP4["CAP-004: Block Legacy Authentication Protocols"]
+            CAP5["CAP-005: Privileged Session Reauthentication (8h)"]
+            CAP6["CAP-006: Require Compliant or Hybrid Joined Device"]
+            CAP7["CAP-007: Require MFA for All Workforce Users"]
+            CAP8["CAP-008: Securing Security Info Registration"]
+            CAP9["CAP-009: Restrict Privileged Access to Designated Devices"]
+            CAP10["CAP-010: Apply Guest & External User Controls"]
+            CAP12["CAP-012: High User Risk Remediation & Password Reset"]
         end
 
         subgraph Controls["Enforcement & Session Controls"]
-            GrantMFA{"Grant: Require MFA\n(Number Matching / Authenticator)"}
-            GrantBlock{"Grant: Block Access\n(Immediate Deny)"}
-            SessionLimits{"Session Control:\nSign-in Frequency (8h)"}
+            GrantMFA{"Grant: Require MFA\n(Authentication Strength / Phishing-Resistant)"}
+            GrantBlock{"Grant: Block Access\n(Pre-Auth Drop)"}
+            SessionLimits{"Session Control:\nSign-in Frequency (8h) & Non-Persistent"}
         end
     end
 
     %% SIEM SECTION
-    subgraph Telemetry["[SIEM & GOVERNANCE] Audit & Telemetry Pipeline"]
-        SignInLogs[("Entra Sign-in Logs\n(Interactive & Report-Only)")]
-        Sentinel[("Microsoft Sentinel / SIEM\n(Break-Glass & Brute-Force Detection)")]
+    subgraph Telemetry["[SIEM & TELEMETRY] Telemetry & Incident Pipeline"]
+        SignInLogs[("Entra Sign-in Logs\n(Interactive & Report-Only Telemetry)")]
+        AuditLogs[("Entra Audit Logs\n(Directory & Policy Modifications)")]
+        Sentinel[("Microsoft Sentinel / SIEM\n(KQL Detection Rules: Break-Glass & Drift)")]
     end
 
-    %% Protected Assets
+    %% Target Apps
     subgraph TargetApps["Protected Corporate Cloud Resources"]
         M365Apps["Microsoft 365 Services\n(Exchange, Teams, SharePoint)"]
         AzureMgmt["Azure Management & Entra Admin Center"]
@@ -77,12 +87,12 @@ flowchart TB
 
     %% Connectors
     Connect -.->|Password Hash Sync (PHS)| Users
-    Users --> Groups
-    Groups --> Signals
+    Users --> Directory
+    Directory --> Signals
     Signals --> PolicyEngine
 
-    PolicyEngine -->|Foreign Geo / Legacy Auth| GrantBlock
-    PolicyEngine -->|Privileged Role / High Risk| GrantMFA
+    PolicyEngine -->|Foreign Geo / Legacy Auth / Non-PAW| GrantBlock
+    PolicyEngine -->|Privileged Role / High Risk / Workforce| GrantMFA
     PolicyEngine -->|Privileged User Session| SessionLimits
 
     GrantBlock -->|Denied Pre-Auth| SignInLogs
@@ -90,95 +100,172 @@ flowchart TB
     SessionLimits --> TargetApps
 
     SignInLogs --> Sentinel
-    BreakGlass -.->|Any Sign-in Trigger (P0 Alert)| Sentinel
+    AuditLogs --> Sentinel
+    BreakGlass -.->|Any Activity (CRITICAL Alert)| Sentinel
 ```
 
 ---
 
-## 3. Conditional Access Policy Catalogue
+## 3. Conditional Access Policy Baseline
 
-All policies are synchronized with the declarative templates in [`policies/`](./policies/):
+All 11 policies are deployed and active in the live tenant in **Report-only** (`enabledForReportingButNotEnforced`) mode:
 
-| Policy ID | Policy Name | Scope / Target | Conditions & Signals | Enforcement Control | Staging Lifecycle State |
-|---|---|---|---|---|---|
-| **CAP-001** | Block Sign-in Outside Allowed Regions | All Users (Excl. Break-Glass) | Location: Any, Excl. `Allowed-Home-Country` | **Block access** | **Report-only** (Validated in What-If) |
-| **CAP-002** | Require Multi-Factor Authentication for Admins | Directory Roles & `SEC-Admins` | All cloud apps, Any device | **Grant: Require MFA** | **Enforced (On)** (Live Challenge Verified) |
-| **CAP-003** | Risk-Based Step-Up MFA | All Users (Excl. Break-Glass) | Sign-in risk: Medium & High | **Grant: Require MFA** | **Report-only** (Telemetry Audited) |
-| **CAP-004** | Block Legacy Authentication | All Users (Excl. Break-Glass) | Client apps: POP3, IMAP, ActiveSync | **Block access** | **Report-only** (Validated in What-If) |
-| **CAP-005** | Privileged Session Frequency (8h) | `SEC-Admins`, `SEC-Contractors` | All cloud apps | **Session: 8hr Re-auth, Never persistent** | **Report-only** (Telemetry Audited) |
-| **CAP-006** | Require Compliant or Hybrid Joined Device | `SEC-Admins`, `SEC-StandardUsers` | Device platforms: Windows, macOS | **Grant: Require Compliant or Hybrid Joined** | **Report-only** (Staged in Entra ID) |
+| Policy ID | Policy Display Name | Scoped Target | Signals Evaluated | Grant / Session Controls | Enforcement State |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| **CAP-001** | Block Sign-in Outside Allowed Regions | All Users (Excl: `SEC-BreakGlass-Exclusion`) | Location: All locations, Exclude `Allowed-Home-Country` | **Block access** | **Report-only** |
+| **CAP-002** | Require Phishing-Resistant MFA for Privileged Roles | 5 Built-in Admin Roles + `SEC-Admins` | All cloud apps, Any device | **Grant: Phishing-Resistant MFA** (`00000000-0000-0000-0000-000000000004`) | **Report-only** |
+| **CAP-003** | Risk-Based Step-Up MFA | All Users (Excl: `SEC-BreakGlass-Exclusion`) | Sign-in risk: Medium & High | **Grant: Require MFA** | **Report-only** |
+| **CAP-004** | Block Legacy Authentication Protocols | All Users (Excl: `SEC-BreakGlass-Exclusion`) | Client apps: Exchange ActiveSync, Other clients | **Block access** | **Report-only** |
+| **CAP-005** | Privileged Session Reauthentication Policy | `SEC-Admins`, `SEC-Contractors` | All cloud apps | **Session: 8-hr Sign-in Frequency, Never Persistent** | **Report-only** |
+| **CAP-006** | Require Compliant or Hybrid Joined Device | `SEC-Admins`, `SEC-StandardUsers` | Device platforms: Windows, macOS | **Grant: Compliant Device OR Hybrid Joined** | **Report-only** |
+| **CAP-007** | Require MFA for All Workforce Users | `SEC-StandardUsers`, `SEC-Admins` | All cloud apps, All platforms | **Grant: Require MFA** | **Report-only** *(Verified: Success)* |
+| **CAP-008** | Securing Security Info Registration | All Users (Excl: `SEC-BreakGlass-Exclusion`) | User action: Register security info | **Block access** outside `Allowed-Home-Country` | **Report-only** |
+| **CAP-009** | Restrict Privileged Access to Designated Devices | `SEC-Admins` | All cloud apps | **Block access** unless device matches PAW filter | **Report-only** |
+| **CAP-010** | Apply Guest and External User Access Controls | All Guest & External Users | All cloud apps | **Grant: Require MFA + Terms of Use** | **Report-only** |
+| **CAP-012** | High User Risk Remediation & Password Change | All Users (Excl: `SEC-BreakGlass-Exclusion`) | User risk level: High | **Grant: Require MFA + Password Change** | **Report-only** |
 
 ---
 
-## 4. Identity-as-Code (IaC) & Automation Engine
-
-### 4.1 Declarative Policy Pipeline
-Rather than relying solely on manual portal changes, policies are defined declaratively as JSON schemas in [`policies/`](./policies/) and deployed using [`scripts/deploy_ca_policies.ps1`](./scripts/deploy_ca_policies.ps1):
+## 4. Repository Structure
 
 ```text
-policies/
-├── CAP-001-location.json            # Geo-blocking rule definition
-├── CAP-002-admin-mfa.json           # Privileged role MFA definition
-├── CAP-003-risk-mfa.json            # Machine-learning risk trigger
-├── CAP-004-legacy-auth.json         # Protocol deprecation rule
-├── CAP-005-session.json             # 8-hr sign-in frequency & cookie control
-└── CAP-006-device-compliance.json   # Endpoint health verification
+Hybrid Enterprise Identity & Conditional Access Lab/
+├── .github/
+│   └── workflows/
+│       └── validate.yml               # GitHub Actions CI/CD Pipeline
+├── config/
+│   ├── environment.example.json       # Environment profile abstraction template
+│   ├── identity-mapping.example.json  # Tenant identity GUID mapping template
+│   └── tenant.example.json            # Tenant configuration abstraction template
+├── diagrams/
+│   └── architecture.md                # Enterprise Zero Trust Mermaid architecture
+├── docs/
+│   ├── ARCHITECTURE.md                # Hybrid Identity Reference Architecture
+│   ├── IDENTITY_GOVERNANCE.md         # PIM & Zero Standing Access Runbook
+│   ├── INCIDENT_RESPONSE.md           # Master IR Framework & Portal Triage Guide
+│   ├── JML_WORKFLOW.md                # Identity Lifecycle State-Machine Architecture
+│   ├── MASTER_UPGRADE_PLAN.md         # 8-Phase Architectural Evolution Plan
+│   ├── POLICY_CATALOGUE.md            # Detailed Specifications for CAP-001 - CAP-012
+│   ├── PRODUCTION_READINESS.md        # Live Operational Verification & Failure Drills
+│   ├── RUNBOOK.md                     # Operational Deployment Runbook
+│   ├── THREAT_MODEL.md                # Threat Model & MITRE ATT&CK Matrix
+│   └── USER_GROUP_MODEL.md            # User, Group, and Role Architecture
+├── evidence/
+│   └── test-results.json              # Machine-readable test verification evidence
+├── identity-lifecycle/
+│   ├── common/
+│   │   ├── audit_logger.ps1           # Structured JSON Lines lifecycle audit logging
+│   │   └── identity_validation.ps1    # Password entropy & RBAC department mappings
+│   ├── joiner/
+│   │   └── onboard_user.ps1           # Automated Joiner with cryptographic credentials
+│   ├── mover/
+│   │   └── update_user.ps1            # Privilege creep remediation & session flush
+│   └── leaver/
+│       └── offboard_user.ps1          # 5-stage state-machine termination pipeline
+├── monitoring/
+│   ├── kql/
+│   │   ├── break_glass_alert.kql      # CRITICAL: Emergency break-glass sign-in detection
+│   │   ├── mfa_fatigue_alert.kql      # HIGH: Prompt bombing / MFA fatigue detection
+│   │   ├── policy_drift_alert.kql     # HIGH: Out-of-band Conditional Access modification
+│   │   └── privileged_role_change.kql # HIGH: Standing role assignment & PIM bypass
+│   └── playbooks/
+│       ├── playbook_account_compromise.md
+│       └── playbook_ca_emergency_lockout.md
+├── policies/
+│   ├── schema/
+│   │   └── conditional-access.schema.json # JSON Schema for policy definitions
+│   └── CAP-*.json                     # 11 Declarative policy definitions
+├── scripts/
+│   ├── deployment/
+│   │   ├── compare_policies.ps1       # Live vs. Desired drift detection engine
+│   │   ├── deploy_ca_policies.ps1     # Core IaC deployment orchestrator
+│   │   └── rollback_policies.ps1      # Immutable snapshot & rollback engine
+│   ├── governance/
+│   │   ├── access_review.ps1          # Privileged group attestation audit engine
+│   │   ├── configure_pim.ps1          # Programmatic PIM eligibility assignment
+│   │   └── privileged_role_audit.ps1  # Zero Standing Access compliance scanner
+│   ├── identity/
+│   │   ├── resolve_groups.ps1         # Dynamic group reference resolver
+│   │   ├── resolve_locations.ps1      # Named location reference resolver
+│   │   └── resolve_users.ps1          # User & directory keyword resolver
+│   ├── deploy_ca_policies.ps1         # Root pipeline wrapper
+│   └── seed_users.ps1                 # Synthetic persona & group provisioning
+└── tests/
+    ├── deployment/                    # Drift engine unit tests
+    ├── governance/                    # Script syntax & token validation tests
+    ├── identity/                      # Identity resolver tests
+    ├── lifecycle/                     # JML state-machine tests
+    ├── schema/                        # Policy JSON schema tests
+    ├── lifecycle.Tests.ps1            # Pester lifecycle suite
+    ├── policies.Tests.ps1             # Pester policies suite
+    ├── run_all_tests.ps1              # Unified master test runner
+    └── security_scan.Tests.ps1        # Pester secret scanning suite
 ```
 
+---
+
+## 5. Operational Commands & Quickstart
+
+### 5.1 Execute Master Test Suite (Locally)
+To run all 19 unit, schema, resolver, and Pester tests:
 ```powershell
-# Validate JSON schemas in CI/CD pipeline without pushing changes:
+powershell -ExecutionPolicy Bypass -File .\tests\run_all_tests.ps1
+```
+
+### 5.2 Plan & Deploy Conditional Access Policies
+```powershell
+# 1. Schema check only (No Graph connection needed)
 .\scripts\deploy_ca_policies.ps1 -ValidateOnly
 
-# Deploy or update policies idempotently to Entra ID:
-.\scripts\deploy_ca_policies.ps1
+# 2. Plan mode: Compare live tenant state against Git and show drift
+.\scripts\deploy_ca_policies.ps1 -Plan -DeviceCode
+
+# 3. Live deployment (Generates automatic pre-deployment rollback snapshot)
+.\scripts\deploy_ca_policies.ps1 -Deploy -DeviceCode
 ```
 
-### 4.2 Automated Lifecycle Management (JML)
-- **User Provisioning (`scripts/seed_users.ps1`):** Provisions 3 security groups and 8 synthetic personas using least-privilege Graph scopes (`User.ReadWrite.All`, `Group.ReadWrite.All`), eliminating hardcoded passwords and interactive console leakage.
-- **Automated Leaver Workflow (`scripts/offboard_user.ps1`):** Automatically revokes all active OAuth tokens/browser sessions via `Revoke-MgUserSignInSession`, disables the Entra account, and strips all group memberships to prevent session hijacking.
+### 5.3 Audit Privileged Roles & PIM Compliance
+```powershell
+# Scan tenant for standing administrative privileges
+.\scripts\governance\privileged_role_audit.ps1 -DeviceCode
 
----
+# Run access review attestation across privileged groups
+.\scripts\governance\access_review.ps1 -DeviceCode
+```
 
-## 5. Security Validation & What-If Test Matrix
+### 5.4 Execute Identity Lifecycle Actions (Joiner-Mover-Leaver)
+```powershell
+# Onboard a new employee (Joiner)
+.\identity-lifecycle\joiner\onboard_user.ps1 `
+    -GivenName "Elena" -Surname "Rostova" `
+    -UserPrincipalName "usr-elena@<DOMAIN>" `
+    -Department "Finance" -JobTitle "Financial Analyst" `
+    -DeviceCode
 
-### 5.1 Verification Test Matrix
+# Transfer an employee & purge legacy group permissions (Mover)
+.\identity-lifecycle\mover\update_user.ps1 `
+    -UserPrincipalName "usr-elena@<DOMAIN>" `
+    -NewDepartment "Information Security" -NewJobTitle "Security Analyst" `
+    -DeviceCode
 
-| Test ID | Target Policy | Test Scenario | Evaluated Conditions | Expected Verdict | Observed Outcome | Evidence Link |
-|---|---|---|---|---|---|---|
-| **TEST-01** | CAP-001 | Foreign IP Login | User: `usr-jordan`, Location: `Germany` | Block Access | Access blocked pre-auth | [`02-whatif-simulation-block.png`](./screenshots/02-whatif-simulation-block.png) |
-| **TEST-02** | CAP-004 | Legacy Protocol Auth | User: `usr-jordan`, Client: `Exchange ActiveSync` | Block Access | Access blocked pre-auth | [`02-whatif-simulation-block.png`](./screenshots/02-whatif-simulation-block.png) |
-| **TEST-03** | CAP-005 | Privileged Session Timeout | User: `adm-alex`, Group: `SEC-Admins` | Apply 8hr sign-in frequency | Sign-in logs confirm `Report-only: Success` | [`03-signin-logs-report-only.png`](./screenshots/03-signin-logs-report-only.png) |
-| **TEST-04** | CAP-002 | Enforced Admin MFA | User: `adm-alex`, Role: `SEC-Admins` | Mandatory second factor challenge | Sign-in interrupted; Authenticator required | [`04-mfa-challenge-prompt.png`](./screenshots/04-mfa-challenge-prompt.png) |
-| **TEST-05** | CAP-002 | Single-Factor Log Audit | User: `adm-alex`, Single-factor attempt | Token withheld | Enforced log recorded as `Failure` | [`05-signin-log-mfa-enforced.png`](./screenshots/05-signin-log-mfa-enforced.png) |
-
----
-
-## 6. Emergency Access & SIEM Monitoring Strategy
-
-### 6.1 Break-Glass Account Design
-- **Account:** `emergency-admin@<tenant-domain>`
-- **Role:** Assigned `Global Administrator` role.
-- **Exclusion Policy:** Explicitly excluded from all Conditional Access policies to prevent accidental lockout during policy configuration incidents.
-- **Security Controls:** Secured with a 32-character physical vault-stored passphrase and dedicated hardware FIDO2 security key.
-
-### 6.2 Break-Glass SIEM Detection Rule (KQL)
-Any sign-in from the emergency account triggers an immediate **Severity: High (P0)** alert in Microsoft Sentinel / SIEM:
-
-```kusto
-SigninLogs
-| where UserPrincipalName =~ "emergency-admin@quickheal327.onmicrosoft.com"
-| project TimeGenerated, UserPrincipalName, IPAddress, Location, AppDisplayName, Status, DeviceDetail
+# Emergency employee termination with token kill & password scramble (Leaver)
+.\identity-lifecycle\leaver\offboard_user.ps1 `
+    -UserPrincipalName "usr-elena@<DOMAIN>" `
+    -TicketId "HR-TERM-9042" `
+    -DeviceCode
 ```
 
 ---
 
-## 7. Project Documentation Index
+## 6. Project Documentation Index
 
-- [Architecture Diagram (Mermaid)](./diagrams/architecture.md)
-- [Conditional Access Policy Specifications](./docs/POLICY_CATALOGUE.md)
-- [User & Directory Governance Model](./docs/USER_GROUP_MODEL.md)
-- [Threat Model & MITRE ATT&CK Mapping](./docs/THREAT_MODEL.md)
-- [Reproduction & Operational Runbook](./docs/RUNBOOK.md)
-- [Declarative Policy Templates](./policies/)
-- [Automation & Offboarding Scripts](./scripts/)
-- [Evidence Screenshot Index](./screenshots/README.md)
+| Document | Purpose |
+| :--- | :--- |
+| [**Hybrid Architecture**](./docs/ARCHITECTURE.md) | In-depth Active Directory DS $\leftrightarrow$ Entra ID sync & authentication topologies. |
+| [**Identity Governance & PIM**](./docs/IDENTITY_GOVERNANCE.md) | Zero Standing Access, PIM role rules, and portal configuration guide. |
+| [**JML Workflow Architecture**](./docs/JML_WORKFLOW.md) | Joiner-Mover-Leaver state-machine specifications and security controls. |
+| [**Incident Response Framework**](./docs/INCIDENT_RESPONSE.md) | Master IR guide, KQL detection queries, and Entra portal triage procedures. |
+| [**Policy Catalogue**](./docs/POLICY_CATALOGUE.md) | Full technical specifications for policies CAP-001 through CAP-012. |
+| [**Threat Model & MITRE Matrix**](./docs/THREAT_MODEL.md) | STRIDE threat model and MITRE ATT&CK technique mitigations. |
+| [**Operational Runbook**](./docs/RUNBOOK.md) | Step-by-step reproduction guide and troubleshooting procedures. |
+| [**User & Group Model**](./docs/USER_GROUP_MODEL.md) | Synthetic identity directory structure and RBAC group definitions. |

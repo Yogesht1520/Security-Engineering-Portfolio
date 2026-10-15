@@ -1,0 +1,35 @@
+// ==============================================================================
+// Rule Name   : Break-Glass Emergency Account Sign-In Detected
+// Severity    : CRITICAL (Immediate Page to 24/7 SecOps)
+// MITRE ATT&CK: T1078.004 (Valid Accounts: Cloud Accounts), T1098 (Account Manipulation)
+// Description : Triggers an immediate high-priority alert whenever an emergency
+//               break-glass account (e.g. emergency-admin-01 / 02) initiates a sign-in.
+//               Break-glass accounts are excluded from CA and PIM and must ONLY
+//               be used in catastrophic disaster recovery scenarios.
+// ==============================================================================
+
+let BreakGlassAccountPatterns = dynamic(["emergency-admin", "breakglass", "break-glass"]);
+let LookbackPeriod = 1h;
+
+union isfuzzy=true SigninLogs, AADNonInteractiveUserSignInLogs
+| where TimeGenerated >= ago(LookbackPeriod)
+| extend UserPrincipalNameLower = tolower(UserPrincipalName)
+| where UserPrincipalNameLower has_any (BreakGlassAccountPatterns)
+| project
+    TimeGenerated,
+    UserPrincipalName,
+    UserId,
+    IPAddress,
+    Location = strcat(LocationDetails.city, ", ", LocationDetails.countryOrRegion),
+    AppDisplayName,
+    ResourceDisplayName,
+    ClientAppUsed,
+    DeviceDetail = strcat(DeviceDetail.operatingSystem, " / ", DeviceDetail.browser),
+    ResultType,
+    ResultDescription,
+    ConditionalAccessStatus,
+    AuthenticationRequirement,
+    Id
+| extend AlertSeverity = "CRITICAL"
+| extend AlertTitle = strcat("EMERGENCY BREAK-GLASS SIGN-IN: ", UserPrincipalName)
+| extend IncidentAction = "VERIFY PHYSICAL SAFE LOGS IMMEDIATELY. Contact Primary and Secondary Security Leads."

@@ -1,0 +1,8 @@
+{
+  "environment": "Lab",
+  "defaultUsageLocation": "US",
+  "policyStateDefault": "enabledForReportingButNotEnforced",
+  "enforceMfaRegistration": true,
+  "signIntoleranceWindowHours": 8,
+  "notificationEmail": "soc-alerts@example.com"
+}

@@ -1,0 +1,47 @@
+// ==============================================================================
+// Rule Name   : MFA Fatigue / Prompt Bombing Attack Detection
+// Severity    : HIGH
+// MITRE ATT&CK: T1621 (Multi-Factor Authentication Request Generation)
+// Description : Detects multiple rapid MFA challenge failures/denials for a user
+//               followed by a successful authentication within a narrow window.
+//               This pattern indicates an adversary flooding a user with push
+//               notifications until the victim concedes and approves.
+// ==============================================================================
+
+let LookbackPeriod = 4h;
+let FailureThreshold = 3;
+let SuccessWindow = 15m;
+
+// 1. Identify multiple MFA prompt rejections or timeouts
+let MfaFailures = SigninLogs
+| where TimeGenerated >= ago(LookbackPeriod)
+// ResultType 500121 indicates failure during strong authentication / denied MFA
+| where ResultType == 500121 or ResultDescription has "MFA"
+| summarize 
+    FailureCount = count(),
+    FirstFailure = min(TimeGenerated),
+    LastFailure = max(TimeGenerated),
+    FailureIPs = make_set(IPAddress),
+    FailureLocations = make_set(Location)
+    by UserPrincipalName, UserId
+| where FailureCount >= FailureThreshold;
+
+// 2. Correlate with subsequent successful sign-in
+SigninLogs
+| where TimeGenerated >= ago(LookbackPeriod)
+| where ResultType == 0
+| join kind=inner (MfaFailures) on UserPrincipalName
+| where TimeGenerated between (LastFailure .. (LastFailure + SuccessWindow))
+| project
+    TimeGenerated,
+    UserPrincipalName,
+    SuccessfulIP = IPAddress,
+    SuccessfulLocation = Location,
+    AppDisplayName,
+    MfaFailureCount = FailureCount,
+    FirstFailureTime = FirstFailure,
+    LastFailureTime = LastFailure,
+    SuspiciousFailureIPs = FailureIPs,
+    SuspiciousFailureLocations = FailureLocations
+| extend AlertSeverity = "HIGH"
+| extend AlertTitle = strcat("MFA FATIGUE ATTACK DETECTED: ", UserPrincipalName, " approved after ", MfaFailureCount, " rejected prompts")

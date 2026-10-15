@@ -1,5 +1,5 @@
 {
-  "displayName": "CAP-005: Privileged Session Sign-in Frequency (8 Hours)",
+  "displayName": "CAP-005: Privileged Session Reauthentication Policy",
   "state": "enabledForReportingButNotEnforced",
   "conditions": {
     "users": {
