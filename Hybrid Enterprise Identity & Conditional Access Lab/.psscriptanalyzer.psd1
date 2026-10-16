@@ -2,8 +2,9 @@
     # PSScriptAnalyzer configuration for Enterprise Identity-as-Code
     Severity = @('Error', 'Warning')
     
-    # Exclude terminal formatting rules that conflict with CLI console UX
+    # Exclude terminal formatting rules and global mock scopes for integration tests
     ExcludeRules = @(
-        'PSAvoidUsingWriteHost'
+        'PSAvoidUsingWriteHost',
+        'PSAvoidGlobalVars'
     )
 }

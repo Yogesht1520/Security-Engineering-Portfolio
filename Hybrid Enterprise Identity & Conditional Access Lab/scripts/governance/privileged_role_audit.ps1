@@ -21,6 +21,7 @@ param (
     [string]$OutputPath = "$PSScriptRoot\..\..\reports",
     [ValidateSet("Both", "Json", "Console")]
     [string]$Format = "Both",
+    [switch]$FailOnViolations,
     [switch]$DeviceCode
 )
 
@@ -230,10 +231,12 @@ if ($Format -in @("Both", "Json")) {
     $jsonFile = Join-Path $OutputPath "privileged_role_audit_$timestamp.json"
     $csvFile = Join-Path $OutputPath "privileged_role_audit_$timestamp.csv"
 
+    $auditStatus = if ($nonCompliant.Count -eq 0) { "Passed" } else { "Failed" }
     $reportPayload = @{
         TenantId           = $activeContext.TenantId
         AuditedAtUtc       = (Get-Date).ToUniversalTime().ToString("o")
         Auditor            = $activeContext.Account
+        AuditStatus        = $auditStatus
         TotalAssignments   = $auditFindings.Count
         StandingViolations = $nonCompliant.Count
         Findings           = $auditFindings
@@ -243,8 +246,14 @@ if ($Format -in @("Both", "Json")) {
     $auditFindings | Export-Csv -Path $csvFile -NoTypeInformation -Encoding utf8
 
     Write-Host "`n[Audit Evidence Exported]:" -ForegroundColor Green
-    Write-Host "  -> JSON Report: $jsonFile" -ForegroundColor Gray
-    Write-Host "  -> CSV Report : $csvFile" -ForegroundColor Gray
+    Write-Host "  -> Audit Status: $auditStatus" -ForegroundColor $(if ($auditStatus -eq "Passed") { "Green" } else { "Red" })
+    Write-Host "  -> JSON Report : $jsonFile" -ForegroundColor Gray
+    Write-Host "  -> CSV Report  : $csvFile" -ForegroundColor Gray
 }
 
 Write-Host "==========================================================" -ForegroundColor Cyan
+
+if ($FailOnViolations -and $nonCompliant.Count -gt 0) {
+    Write-Error "Audit failed with $($nonCompliant.Count) standing privilege violation(s)."
+    exit 1
+}

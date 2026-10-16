@@ -14,26 +14,30 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Validate Conditional Access Policy Schema
+      - name: Validate Conditional Access Policy Schema & Engine Pre-Flight
         shell: pwsh
         run: |
-          Write-Host "Running Schema & Baseline Pre-Flight Validation..." -ForegroundColor Cyan
-          ./scripts/deploy_ca_policies.ps1 -ValidateOnly
+          Write-Host "Running Deep Schema Validation & Baseline Pre-Flight..." -ForegroundColor Cyan
+          ./scripts/deployment/validate_schema.ps1
+          ./scripts/deployment/deploy_ca_policies.ps1 -ValidateOnly
 
-  pester-tests:
-    name: "Automated Pester Unit & Governance Tests"
+  master-test-matrix:
+    name: "Comprehensive Master Test Suite & Pester Matrix"
     runs-on: windows-latest
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Run Pester Test Suites
+      - name: Execute Master Test Runner
         shell: pwsh
         run: |
-          $pesterConfig = [PesterConfiguration]::Default
-          $pesterConfig.Run.Path = "tests"
-          $pesterConfig.Output.Verbosity = "Detailed"
-          Invoke-Pester -Configuration $pesterConfig
+          Write-Host "Executing Master Test Runner (9 Suites & Native Pester Assertions)..." -ForegroundColor Cyan
+          $result = & pwsh -NoProfile -ExecutionPolicy Bypass -File tests/run_all_tests.ps1
+          $result
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Master test runner failed with exit code $LASTEXITCODE."
+            exit $LASTEXITCODE
+          }
 
   static-analysis:
     name: "PSScriptAnalyzer Static Code Quality"
@@ -60,23 +64,31 @@ jobs:
 
   secret-scanning:
     name: "Repository Hygiene & Secret Scanning Gate"
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
 
-      - name: Verify No Secrets Committed
-        shell: pwsh
+      - name: Run Gitleaks Secret Scanner
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Verify No Sensitive Files Committed
+        shell: bash
         run: |
-          $prohibitedFiles = @(
-            "config/tenant.json",
-            "config/environment.json",
+          prohibitedFiles=(
+            "config/tenant.json"
+            "config/environment.json"
             "config/identity-mapping.json"
           )
-          foreach ($file in $prohibitedFiles) {
-            if (Test-Path $file) {
-              Write-Error "CRITICAL: Live credentials file '$file' detected in repository!"
+          for file in "${prohibitedFiles[@]}"; do
+            if [ -f "$file" ]; then
+              echo "CRITICAL: Live credentials file '$file' detected in repository!"
               exit 1
-            }
-          }
-          Write-Host "Secret scanning gate passed: No sensitive configuration files committed." -ForegroundColor Green
+            fi
+          done
+          echo "Secret scanning gate passed: No sensitive configuration files committed."

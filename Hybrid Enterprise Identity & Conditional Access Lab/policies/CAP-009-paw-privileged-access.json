@@ -19,7 +19,7 @@
     "devices": {
       "deviceFilter": {
         "mode": "exclude",
-        "rule": "device.isCompliant -eq True"
+        "rule": "device.extensionAttribute1 -eq \"PAW\" -and device.isCompliant -eq True"
       }
     }
   },

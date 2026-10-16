@@ -162,49 +162,84 @@ $newUserPayload = @{
     }
 }
 
+$createdUserId = $null
+
 try {
     $createUri = "https://graph.microsoft.com/v1.0/users"
     $jsonPayload = $newUserPayload | ConvertTo-Json -Depth 5
-    $createdUser = Invoke-MgGraphRequest -Method POST -Uri $createUri -Body $jsonPayload -ContentType "application/json" -ErrorAction Stop
 
-    Write-Host "  -> Successfully created user object (ID: $($createdUser.id))" -ForegroundColor Green
+    if ($PSCmdlet.ShouldProcess($UserPrincipalName, "Create Microsoft Entra ID user account")) {
+        $createdUser = Invoke-MgGraphRequest -Method POST -Uri $createUri -Body $jsonPayload -ContentType "application/json" -ErrorAction Stop
+        $createdUserId = $createdUser.id
+        Write-Host "  -> Successfully created user object (ID: $createdUserId)" -ForegroundColor Green
+    } else {
+        Write-Host "  [WhatIf] Would create user object for $UserPrincipalName" -ForegroundColor Yellow
+    }
 
     # Assign to Security Group
-    $addGroupMemberUri = "https://graph.microsoft.com/v1.0/groups/$targetGroupId/members/`$ref"
-    $memberPayload = @{
-        "@odata.id" = "https://graph.microsoft.com/v1.0/directoryObjects/$($createdUser.id)"
-    } | ConvertTo-Json
+    if ($createdUserId -and $PSCmdlet.ShouldProcess($UserPrincipalName, "Assign membership in security group '$assignedGroup'")) {
+        $addGroupMemberUri = "https://graph.microsoft.com/v1.0/groups/$targetGroupId/members/`$ref"
+        $memberPayload = @{
+            "@odata.id" = "https://graph.microsoft.com/v1.0/directoryObjects/$createdUserId"
+        } | ConvertTo-Json
 
-    Invoke-MgGraphRequest -Method POST -Uri $addGroupMemberUri -Body $memberPayload -ContentType "application/json" -ErrorAction Stop
-    Write-Host "  -> Assigned membership to group: $assignedGroup" -ForegroundColor Green
+        try {
+            Invoke-MgGraphRequest -Method POST -Uri $addGroupMemberUri -Body $memberPayload -ContentType "application/json" -ErrorAction Stop
+            Write-Host "  -> Assigned membership to group: $assignedGroup" -ForegroundColor Green
+        } catch {
+            # Compensating Action: Contain/Quarantine newly created account to prevent orphaned active identities (Finding 9)
+            Write-Warning "[COMPENSATING ACTION] Group assignment failed! Disabling and quarantining newly created identity '$createdUserId'..."
+            $quarantinePayload = @{
+                accountEnabled = $false
+                jobTitle       = "Quarantine - ProvisioningFailed"
+            } | ConvertTo-Json
+            Invoke-MgGraphRequest -Method PATCH -Uri "https://graph.microsoft.com/v1.0/users/$createdUserId" -Body $quarantinePayload -ContentType "application/json" -ErrorAction SilentlyContinue
 
-    # Record Audit Telemetry
+            Write-LifecycleAuditLog -EventType "JOINER" `
+                                    -TargetUserPrincipalName $UserPrincipalName `
+                                    -TargetUserId $createdUserId `
+                                    -Action "OnboardUser" `
+                                    -Status "COMPENSATED_FAILURE" `
+                                    -Details @{
+                                        Error = "GroupAssignmentFailed"
+                                        CompensatingAction = "AccountDisabledAndQuarantined"
+                                        OriginalError = $_.Exception.Message
+                                    } `
+                                    -Initiator $activeContext.Account
+            throw "Compensating action triggered: User '$UserPrincipalName' was quarantined (disabled) because group assignment failed: $($_.Exception.Message)"
+        }
+    }
+
+    # Record Audit Telemetry (Strictly omitting cleartext password - Finding 8)
     Write-LifecycleAuditLog -EventType "JOINER" `
                             -TargetUserPrincipalName $UserPrincipalName `
-                            -TargetUserId $createdUser.id `
+                            -TargetUserId $createdUserId `
                             -Action "OnboardUser" `
                             -Status "SUCCESS" `
                             -Details @{
-                                Department   = $Department
-                                JobTitle     = $JobTitle
+                                Department    = $Department
+                                JobTitle      = $JobTitle
                                 AssignedGroup = $assignedGroup
+                                CredentialPolicy = "forceChangePasswordNextSignIn"
                             } `
                             -Initiator $activeContext.Account
 
-    # Display Provisioning Credential Packet
+    # Display Provisioning Credential Packet (Zero cleartext password exposure - Finding 8)
     Write-Host "`n================ ONBOARDING CREDENTIAL PACKET ================" -ForegroundColor White
     Write-Host "User Principal Name : $UserPrincipalName" -ForegroundColor Cyan
     Write-Host "Display Name        : $displayName" -ForegroundColor Cyan
     Write-Host "Assigned RBAC Group : $assignedGroup" -ForegroundColor Cyan
-    Write-Host "Temporary Password  : $tempPassword" -ForegroundColor Yellow
+    Write-Host "Temporary Credential: [SECURELY GENERATED - Enforced forceChangePasswordNextSignIn]" -ForegroundColor Green
     Write-Host "Password Policy     : Mandatory change required on first sign-in" -ForegroundColor Gray
     Write-Host "Conditional Access  : Enforced under baseline workforce MFA (CAP-007)" -ForegroundColor Gray
+    Write-Host "Security Posture    : Zero cleartext credential exposure logged or displayed" -ForegroundColor Green
     Write-Host "==============================================================" -ForegroundColor White
 
 } catch {
     Write-Error "Failed to provision user: $($_.Exception.Message)"
     Write-LifecycleAuditLog -EventType "JOINER" `
                             -TargetUserPrincipalName $UserPrincipalName `
+                            -TargetUserId $createdUserId `
                             -Action "OnboardUser" `
                             -Status "FAILURE" `
                             -Details @{ Error = $_.Exception.Message } `

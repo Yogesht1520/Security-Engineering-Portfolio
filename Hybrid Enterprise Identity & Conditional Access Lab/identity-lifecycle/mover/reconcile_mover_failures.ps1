@@ -76,21 +76,24 @@ foreach ($entry in $groupObjects.GetEnumerator()) {
     $gId   = $entry.Value.id
 
     $memUri = "https://graph.microsoft.com/v1.0/groups/$gId/members?`$select=id,userPrincipalName,department,jobTitle"
-    $memResp = Invoke-MgGraphRequest -Method GET -Uri $memUri -ErrorAction SilentlyContinue
-    if ($memResp.value) {
-        foreach ($m in $memResp.value) {
-            $upn = $m.userPrincipalName
-            if (-not $upn) { continue }
-            if (-not $userMemberships.ContainsKey($upn)) {
-                $userMemberships[$upn] = @{
-                    Id = $m.id
-                    Department = $m.department
-                    JobTitle = $m.jobTitle
-                    Groups = [System.Collections.Generic.List[string]]::new()
+    while ($memUri) {
+        $memResp = Invoke-MgGraphRequest -Method GET -Uri $memUri -ErrorAction SilentlyContinue
+        if ($memResp.value) {
+            foreach ($m in $memResp.value) {
+                $upn = $m.userPrincipalName
+                if (-not $upn) { continue }
+                if (-not $userMemberships.ContainsKey($upn)) {
+                    $userMemberships[$upn] = @{
+                        Id = $m.id
+                        Department = $m.department
+                        JobTitle = $m.jobTitle
+                        Groups = [System.Collections.Generic.List[string]]::new()
+                    }
                 }
+                $userMemberships[$upn].Groups.Add($gName)
             }
-            $userMemberships[$upn].Groups.Add($gName)
         }
+        $memUri = $memResp.'@odata.nextLink'
     }
 }
 
@@ -131,32 +134,38 @@ if ($conflicts.Count -gt 0 -and $Fix) {
             if ($groupObjects.ContainsKey($legName)) {
                 $legId = $groupObjects[$legName].id
                 Write-Host "  [Purging] Removing '$($c.UserPrincipalName)' from legacy group '$legName'..." -ForegroundColor Yellow
-                try {
-                    $delUri = "https://graph.microsoft.com/v1.0/groups/$legId/members/$($c.UserId)/`$ref"
-                    Invoke-MgGraphRequest -Method DELETE -Uri $delUri -ErrorAction Stop
-                    Write-Host "  -> Purge complete: $legName" -ForegroundColor Green
-                } catch {
-                    Write-Error "  -> Failed purging from $($legName): $($_.Exception.Message)"
+                if ($PSCmdlet.ShouldProcess("$($c.UserPrincipalName)", "Remove from legacy group '$legName'")) {
+                    try {
+                        $delUri = "https://graph.microsoft.com/v1.0/groups/$legId/members/$($c.UserId)/`$ref"
+                        Invoke-MgGraphRequest -Method DELETE -Uri $delUri -ErrorAction Stop
+                        Write-Host "  -> Purge complete: $legName" -ForegroundColor Green
+                    } catch {
+                        Write-Error "  -> Failed purging from $($legName): $($_.Exception.Message)"
+                    }
                 }
             }
         }
 
         # Revoke tokens to ensure newly cleaned claims are evaluated immediately
         Write-Host "  [Revoking Tokens] Invalidating refresh tokens for '$($c.UserPrincipalName)'..." -ForegroundColor Cyan
-        try {
-            $revUri = "https://graph.microsoft.com/v1.0/users/$($c.UserId)/revokeSignInSessions"
-            Invoke-MgGraphRequest -Method POST -Uri $revUri -ContentType "application/json" -ErrorAction Stop | Out-Null
-            Write-Host "  -> Sessions invalidated." -ForegroundColor Green
-        } catch {
-            Write-Warning "  -> Token revocation returned: $($_.Exception.Message)"
+        if ($PSCmdlet.ShouldProcess("$($c.UserPrincipalName)", "Revoke active sign-in sessions")) {
+            try {
+                $revUri = "https://graph.microsoft.com/v1.0/users/$($c.UserId)/revokeSignInSessions"
+                Invoke-MgGraphRequest -Method POST -Uri $revUri -ContentType "application/json" -ErrorAction Stop | Out-Null
+                Write-Host "  -> Sessions invalidated." -ForegroundColor Green
+            } catch {
+                Write-Warning "  -> Token revocation returned: $($_.Exception.Message)"
+            }
         }
 
         # Write audit log
-        Write-LifecycleAuditLog -EventType "RECONCILIATION" `
-                                -TargetUserPrincipalName $c.UserPrincipalName `
-                                -TargetUserId $c.UserId `
-                                -Details "Reconciled multi-group mover conflict. Stripped legacy groups: $($c.LegacyGroups). Preserved target: $($c.ExpectedGroup)." `
-                                -TransactionState "Completed"
+        if ($PSCmdlet.ShouldProcess("$($c.UserPrincipalName)", "Write reconciliation audit log")) {
+            Write-LifecycleAuditLog -EventType "RECONCILIATION" `
+                                    -TargetUserPrincipalName $c.UserPrincipalName `
+                                    -TargetUserId $c.UserId `
+                                    -Details "Reconciled multi-group mover conflict. Stripped legacy groups: $($c.LegacyGroups). Preserved target: $($c.ExpectedGroup)." `
+                                    -TransactionState "Completed"
+        }
     }
     Write-Host "`nReconciliation run complete. All identified privilege creep states resolved." -ForegroundColor Green
 } elseif ($conflicts.Count -gt 0) {

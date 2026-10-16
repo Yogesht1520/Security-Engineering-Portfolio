@@ -26,26 +26,85 @@ New-Item -ItemType Directory -Path $tempTestDir -Force | Out-Null
 
 try {
     # 1. Establish Initial Baseline State (Snapshot Baseline)
-    $baselinePolicies = @{
-        "CAP-001" = @{ id = "pol-001"; displayName = "CAP-001-location"; state = "disabled" }
-        "CAP-002" = @{ id = "pol-002"; displayName = "CAP-002-admin-mfa"; state = "enabledForReportingButNotEnforced" }
-        "CAP-003" = @{ id = "pol-003"; displayName = "CAP-003-risk-mfa"; state = "disabled" }
-        "CAP-004" = @{ id = "pol-004"; displayName = "CAP-004-legacy-auth"; state = "disabled" }
-        "CAP-005" = @{ id = "pol-005"; displayName = "CAP-005-session-controls"; state = "disabled" }
+    $baselinePolicies = [ordered]@{
+        "pol-001" = [PSCustomObject]@{ id = "pol-001"; displayName = "CAP-001-location"; state = "disabled" }
+        "pol-002" = [PSCustomObject]@{ id = "pol-002"; displayName = "CAP-002-admin-mfa"; state = "enabledForReportingButNotEnforced" }
+        "pol-003" = [PSCustomObject]@{ id = "pol-003"; displayName = "CAP-003-risk-mfa"; state = "disabled" }
+        "pol-004" = [PSCustomObject]@{ id = "pol-004"; displayName = "CAP-004-legacy-auth"; state = "disabled" }
+        "pol-005" = [PSCustomObject]@{ id = "pol-005"; displayName = "CAP-005-session-controls"; state = "disabled" }
     }
 
-    # Simulate Live Tenant In-Memory Store
-    $liveTenantPolicies = [ordered]@{}
+    # Live Mock Tenant State Store (Global for child script access)
+    $global:LiveMockPolicies = @{}
     foreach ($k in $baselinePolicies.Keys) {
-        $liveTenantPolicies[$k] = @{
-            id          = $baselinePolicies[$k].id
-            displayName = $baselinePolicies[$k].displayName
-            state       = $baselinePolicies[$k].state
+        $b = $baselinePolicies[$k]
+        $global:LiveMockPolicies[$k] = [PSCustomObject]@{
+            id          = $b.id
+            displayName = $b.displayName
+            state       = $b.state
+        }
+    }
+
+    # Mock Graph API Command Handler
+    function global:Invoke-MgGraphRequest {
+        [CmdletBinding()]
+        param (
+            [string]$Method = "GET",
+            [string]$Uri,
+            [string]$Body,
+            [string]$ContentType,
+            [string]$OutputType = "PSObject"
+        )
+        [void]$ContentType
+        [void]$OutputType
+
+        if ($Method -eq "GET" -and $Uri -match "/identity/conditionalAccess/policies") {
+            $pList = [System.Collections.Generic.List[PSObject]]::new()
+            foreach ($v in $global:LiveMockPolicies.Values) {
+                $pList.Add([PSCustomObject]@{
+                    id          = $v.id
+                    displayName = $v.displayName
+                    state       = $v.state
+                })
+            }
+            return [PSCustomObject]@{
+                value = $pList
+                '@odata.nextLink' = $null
+            }
+        }
+        elseif ($Method -eq "PATCH" -and $Uri -match "/policies/([^/]+)$") {
+            $polId = $Matches[1]
+            if (-not $global:LiveMockPolicies.ContainsKey($polId)) {
+                throw "Policy '$polId' not found in live mock tenant."
+            }
+            $bodyObj = $Body | ConvertFrom-Json
+            $global:LiveMockPolicies[$polId].state = $bodyObj.state
+            return [PSCustomObject]@{ id = $polId; state = $bodyObj.state }
+        }
+        elseif ($Method -eq "POST" -and $Uri -match "/identity/conditionalAccess/policies") {
+            $bodyObj = $Body | ConvertFrom-Json
+            $newId = "pol-" + [Guid]::NewGuid().ToString("N").Substring(0, 8)
+            $newPol = [PSCustomObject]@{
+                id          = $newId
+                displayName = $bodyObj.displayName
+                state       = $bodyObj.state
+            }
+            $global:LiveMockPolicies[$newId] = $newPol
+            return $newPol
+        }
+        elseif ($Method -eq "DELETE" -and $Uri -match "/policies/([^/]+)$") {
+            $polId = $Matches[1]
+            if ($global:LiveMockPolicies.ContainsKey($polId)) {
+                $global:LiveMockPolicies.Remove($polId)
+            }
+            return $null
         }
     }
 
     # 2. Generate Pre-Deployment Snapshot
-    $snapshotDir = Join-Path $tempTestDir "snapshots\20261016-120000"
+    $snapshotsBaseDir = Join-Path $tempTestDir "snapshots"
+    $snapshotTimestamp = "20261016-120000"
+    $snapshotDir = Join-Path $snapshotsBaseDir $snapshotTimestamp
     New-Item -ItemType Directory -Path $snapshotDir -Force | Out-Null
 
     $fileIntegrity = @()
@@ -62,24 +121,24 @@ try {
         $checksumLines += "$hash  $fileName"
     }
 
-    $manifest = @{
-        Timestamp     = "20261016-120000"
+    $manifest = [PSCustomObject]@{
+        Timestamp     = $snapshotTimestamp
         PolicyCount   = 5
         Operator      = "secops-runner@tenant.onmicrosoft.com"
         FileIntegrity = $fileIntegrity
-    } | ConvertTo-Json -Depth 5
-    $manifest | Out-File -FilePath (Join-Path $snapshotDir "manifest.json") -Encoding utf8
+    }
+    $manifest | ConvertTo-Json -Depth 5 | Out-File -FilePath (Join-Path $snapshotDir "manifest.json") -Encoding utf8
     $checksumLines | Out-File -FilePath (Join-Path $snapshotDir "checksums.sha256") -Encoding utf8
 
     Write-Host "[Step 1] Pre-deployment baseline snapshot generated and cryptographically sealed." -ForegroundColor Green
 
     # 3. Simulate 5-Policy Deployment Transaction
     $desiredTargets = @(
-        @{ Key = "CAP-001"; NewState = "enabledForReportingButNotEnforced"; SimulateFail = $false }
-        @{ Key = "CAP-002"; NewState = "enabled";                           SimulateFail = $false }
-        @{ Key = "CAP-003"; NewState = "enabledForReportingButNotEnforced"; SimulateFail = $false }
-        @{ Key = "CAP-004"; NewState = "enabled";                           SimulateFail = $true  } # Graph API 400 Error
-        @{ Key = "CAP-005"; NewState = "enabled";                           SimulateFail = $false }
+        @{ Key = "pol-001"; NewState = "enabledForReportingButNotEnforced"; SimulateFail = $false }
+        @{ Key = "pol-002"; NewState = "enabled";                           SimulateFail = $false }
+        @{ Key = "pol-003"; NewState = "enabledForReportingButNotEnforced"; SimulateFail = $false }
+        @{ Key = "pol-004"; NewState = "enabled";                           SimulateFail = $true  } # Graph API 400 Error
+        @{ Key = "pol-005"; NewState = "enabled";                           SimulateFail = $false }
     )
 
     $transactionResults = [System.Collections.Generic.List[PSCustomObject]]::new()
@@ -90,12 +149,12 @@ try {
 
     foreach ($t in $desiredTargets) {
         $key = $t.Key
-        $pol = $liveTenantPolicies[$key]
+        $pol = $global:LiveMockPolicies[$key]
 
         if ($deploymentFailed) {
-            Write-Host "  [SKIPPED] $key : Deployment transaction halted due to prior step failure." -ForegroundColor DarkGray
+            Write-Host "  [SKIPPED] $($pol.displayName) : Deployment transaction halted due to prior step failure." -ForegroundColor DarkGray
             $transactionResults.Add([PSCustomObject]@{
-                Policy  = $key
+                Policy  = $pol.displayName
                 Action  = "Update"
                 Status  = "Skipped"
                 Message = "Halted: Prior step failed ($failureError)"
@@ -106,19 +165,19 @@ try {
         if ($t.SimulateFail) {
             $deploymentFailed = $true
             $failureError = "Microsoft Graph API: 400 Bad Request (Invalid condition combination in conditions.applications)"
-            Write-Host "  [FAILED] $key : $failureError" -ForegroundColor Red
+            Write-Host "  [FAILED] $($pol.displayName) : $failureError" -ForegroundColor Red
             $transactionResults.Add([PSCustomObject]@{
-                Policy  = $key
+                Policy  = $pol.displayName
                 Action  = "Update"
                 Status  = "Failed"
                 Message = $failureError
             })
         } else {
-            # Apply update
+            # Apply mutation to mock tenant
             $pol.state = $t.NewState
-            Write-Host "  [SUCCESS] $key : Updated state -> $($t.NewState)" -ForegroundColor Green
+            Write-Host "  [SUCCESS] $($pol.displayName) : Updated state -> $($t.NewState)" -ForegroundColor Green
             $transactionResults.Add([PSCustomObject]@{
-                Policy  = $key
+                Policy  = $pol.displayName
                 Action  = "Update"
                 Status  = "Success"
                 Message = "OK"
@@ -139,27 +198,26 @@ try {
     Write-Host "  [PASS] Per-policy outcomes verified: 3 Success, 1 Failed, 1 Skipped." -ForegroundColor Green
     Write-Host "  [PASS] Policy 5 was NOT deployed. Fail-closed halt asserted." -ForegroundColor Green
 
-    # 5. Execute Rollback to Snapshot Baseline
-    Write-Host "`n[Step 4] Initiating automated rollback to pre-deployment snapshot..." -ForegroundColor Yellow
-    foreach ($k in $baselinePolicies.Keys) {
-        $file = Join-Path $snapshotDir "$($baselinePolicies[$k].displayName).json"
-        $snapObj = Get-Content -Path $file -Raw | ConvertFrom-Json
-        # Restore live state from snapshot
-        $liveTenantPolicies[$k].state = $snapObj.state
-        Write-Host "  [RESTORED] $k -> baseline state: '$($snapObj.state)'" -ForegroundColor White
+    # 5. Execute Rollback via Production rollback_policies.ps1 Engine
+    Write-Host "`n[Step 4] Initiating automated rollback via production rollback engine..." -ForegroundColor Yellow
+    $rollbackScript = Join-Path $PSScriptRoot "..\..\scripts\deployment\rollback_policies.ps1"
+    
+    $rollbackSuccess = & $rollbackScript -Action Restore -SnapshotId $snapshotTimestamp -SnapshotsDir $snapshotsBaseDir
+    if (-not $rollbackSuccess) {
+        throw "Assertion Failed: Production Restore-Snapshot did not complete successfully."
     }
 
-    # 6. Post-Rollback Verification Gate
+    # 6. Post-Rollback Live Verification Gate
     Write-Host "`n[Step 5] Post-rollback live verification against baseline..." -ForegroundColor Cyan
     $parityMaintained = $true
     foreach ($k in $baselinePolicies.Keys) {
         $expected = $baselinePolicies[$k].state
-        $actual = $liveTenantPolicies[$k].state
+        $actual = $global:LiveMockPolicies[$k].state
         if ($expected -ne $actual) {
             Write-Error "State mismatch on $k! Expected: $expected, Actual: $actual"
             $parityMaintained = $false
         } else {
-            Write-Host "  [VERIFIED] $k reconciled: $actual == $expected" -ForegroundColor Green
+            Write-Host "  [VERIFIED] $($baselinePolicies[$k].displayName) reconciled: $actual == $expected" -ForegroundColor Green
         }
     }
 
@@ -193,7 +251,11 @@ try {
     Write-Error "Deployment Failure Recovery Test Failed: $($_.Exception.Message)"
     exit 1
 } finally {
+    Remove-Variable -Name LiveMockPolicies -Scope Global -ErrorAction SilentlyContinue
     if (Test-Path $tempTestDir) {
+        Get-ChildItem -Path $tempTestDir -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
+            Set-ItemProperty -Path $_.FullName -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
+        }
         Remove-Item -Path $tempTestDir -Recurse -Force -ErrorAction SilentlyContinue
     }
 }

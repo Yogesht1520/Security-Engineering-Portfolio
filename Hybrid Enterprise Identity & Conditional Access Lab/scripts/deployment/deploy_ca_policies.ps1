@@ -35,6 +35,7 @@ param (
 
     [switch]$Deploy,
 
+    [ValidateSet("Lab", "Staging", "Production")]
     [string]$Environment = "Lab",
 
     [string]$PolicyId,
@@ -156,6 +157,18 @@ if (-not $hasRequiredScopes) {
 $activeContext = Get-MgContext
 Write-Host "Connected to Tenant ID: $($activeContext.TenantId) as $($activeContext.Account)" -ForegroundColor Green
 
+# Environment Isolation & Multi-Tenant Safety Gate
+$tenantConfigFile = Join-Path $PSScriptRoot "..\..\config\tenant.json"
+$expectedTenantId = if (Test-Path $tenantConfigFile) {
+    (Get-Content $tenantConfigFile -Raw | ConvertFrom-Json).tenantId
+} else {
+    $env:EXPECTED_ENTRA_TENANT_ID
+}
+
+if ($expectedTenantId -and ($activeContext.TenantId -ne $expectedTenantId)) {
+    throw "[FAIL-CLOSED ENVIRONMENT GATE] Connected tenant ID '$($activeContext.TenantId)' does not match expected target tenant ID '$expectedTenantId' for environment '$Environment'! Deployment halted to prevent unintended cross-tenant modification."
+}
+
 # 4. Reference Resolution (Groups, Users, Named Locations)
 Write-Host "`n[Step 4/5] Resolving Identity References against Tenant State..." -ForegroundColor Cyan
 $groupResolver    = Join-Path $PSScriptRoot "..\identity\resolve_groups.ps1"
@@ -204,7 +217,7 @@ foreach ($p in $parsedPolicies) {
 }
 Write-Host "  -> All identity references successfully resolved to active tenant GUIDs." -ForegroundColor Green
 
-# 4.5. Fail-Closed Break-Glass Group & Account Integrity Gate (Finding B)
+# 4.5. Fail-Closed Break-Glass Group & Account Integrity Gate (Finding 1)
 Write-Host "`n[Safety Gate] Verifying live emergency break-glass exclusion group & account integrity..." -ForegroundColor Cyan
 $bgGroupName = "SEC-BreakGlass-Exclusion"
 try {
@@ -213,24 +226,35 @@ try {
     if (-not $bgResp.value -or $bgResp.value.Count -eq 0) {
         throw "[FAIL-CLOSED GATE] Required break-glass exclusion group '$bgGroupName' was not found in live tenant. Deployment aborted to prevent tenant lockout."
     }
+    if ($bgResp.value.Count -gt 1) {
+        throw "[FAIL-CLOSED GATE] Ambiguity conflict: Multiple groups found with name '$bgGroupName'. Deployment aborted."
+    }
+
     $bgGroupId = $bgResp.value[0].id
+
+    # Implement pagination for break-glass group membership
+    $bgMembers = @()
     $membersUri = "https://graph.microsoft.com/v1.0/groups/$bgGroupId/members"
-    $membersResp = Invoke-MgGraphRequest -Method GET -Uri $membersUri -ErrorAction Stop
-    if (-not $membersResp.value -or $membersResp.value.Count -eq 0) {
+    do {
+        $membersResp = Invoke-MgGraphRequest -Method GET -Uri $membersUri -ErrorAction Stop
+        if ($membersResp.value) { $bgMembers += $membersResp.value }
+        $membersUri = $membersResp.'@odata.nextLink'
+    } while ($membersUri)
+
+    if ($bgMembers.Count -eq 0) {
         throw "[FAIL-CLOSED GATE] Break-glass exclusion group '$bgGroupName' has 0 members in live tenant! Cannot safely enforce conditional access without active emergency accounts."
     }
 
-    $bgMembers = $membersResp.value
-    Write-Host "  [AUDIT] Group '$bgGroupName' contains $($bgMembers.Count) member(s)." -ForegroundColor Gray
+    Write-Host "  [AUDIT] Group '$bgGroupName' (ID: $bgGroupId) contains $($bgMembers.Count) member(s)." -ForegroundColor Gray
 
-    # 1. Verify expected emergency accounts exist and are enabled & cloud-only
+    # 1. Verify expected emergency accounts exist, are enabled, and cloud-only
     $expectedAccounts = @("emergency-admin-01", "emergency-admin-02")
     foreach ($accPrefix in $expectedAccounts) {
         $foundMember = $bgMembers | Where-Object { $_.userPrincipalName -like "$accPrefix@*" }
         if (-not $foundMember) {
             # Check if user exists anywhere in tenant
             $usrCheckUri = "https://graph.microsoft.com/v1.0/users?`$filter=startswith(userPrincipalName,'$accPrefix@')&`$select=id,userPrincipalName,accountEnabled,onPremisesSyncEnabled"
-            $usrCheck = Invoke-MgGraphRequest -Method GET -Uri $usrCheckUri -ErrorAction SilentlyContinue
+            $usrCheck = Invoke-MgGraphRequest -Method GET -Uri $usrCheckUri -ErrorAction Stop
             if (-not $usrCheck.value -or $usrCheck.value.Count -eq 0) {
                 throw "[FAIL-CLOSED GATE] Expected emergency account '$accPrefix' does NOT exist in tenant!"
             }
@@ -250,7 +274,7 @@ try {
         Write-Host "  [PASS] Verified '$($memberDetail.userPrincipalName)' is Active, Cloud-Only, and in '$bgGroupName'." -ForegroundColor Green
     }
 
-    # 2. Verify no unauthorized/unexpected members exist in SEC-BreakGlass-Exclusion
+    # 2. Purity check: Verify no unauthorized/unexpected members exist in SEC-BreakGlass-Exclusion
     foreach ($m in $bgMembers) {
         $upn = $m.userPrincipalName
         $isExpected = $false
@@ -264,12 +288,10 @@ try {
     Write-Host "  [PASS] Exclusion group purity verified: zero unauthorized members present." -ForegroundColor Green
     Write-Host "  [PASS] Break-glass safety gate PASSED. Dual emergency accounts verified safe." -ForegroundColor Green
 } catch {
-    if ($_ -match "\[FAIL-CLOSED GATE\]") {
-        Write-Error $_
-        exit 1
-    } else {
-        Write-Warning "Could not verify live break-glass accounts: $($_.Exception.Message)"
-    }
+    # Every inability to verify emergency accounts aborts deployment unconditionally (Finding 1)
+    Write-Error "[FAIL-CLOSED BREAK-GLASS GATE] Emergency recovery access verification FAILED: $($_.Exception.Message)"
+    Write-Error "Deployment ABORTED to protect tenant recovery capability. (Every inability to verify emergency accounts fails closed)."
+    exit 1
 }
 
 # 5. Query Live Policies with Pagination Support
@@ -285,22 +307,45 @@ do {
 $compareScript = Join-Path $PSScriptRoot "compare_policies.ps1"
 $actionsToTake = @()
 
+# 5.1. Tri-State Idempotent Action Planner with Ambiguity Detection (Finding 3)
 foreach ($p in $parsedPolicies) {
     $displayName = $p.DisplayName
     $policyPrefix = if ($displayName -match "^(CAP-[0-9]{3})") { $Matches[1] } else { $null }
-    $existing = $livePolicies | Where-Object { 
+
+    $matchingPolicies = @($livePolicies | Where-Object { 
         $_.displayName -eq $displayName -or ($policyPrefix -and $_.displayName -like "$policyPrefix*") 
-    } | Select-Object -First 1
+    })
+
+    if ($matchingPolicies.Count -gt 1) {
+        Write-Error "[AMBIGUITY CONFLICT] Multiple tenant policies match target '$displayName' (Found $($matchingPolicies.Count) matches). Deployment aborted to prevent arbitrary overwrites."
+        exit 1
+    }
+
+    $existing = if ($matchingPolicies.Count -eq 1) { $matchingPolicies[0] } else { $null }
 
     if ($existing) {
         # Check for drift
         $driftResult = & $compareScript -LocalPolicy $p.Policy -LivePolicy $existing
-        $actionsToTake += [PSCustomObject]@{
-            Action      = "Update"
-            DisplayName = $displayName
-            PolicyId    = $existing.id
-            Payload     = $p.Policy
-            HasDrift    = $driftResult.HasDrift
+        if ($driftResult.HasDrift) {
+            Write-Host "  [DRIFT DETECTED] '$displayName' differs from desired state." -ForegroundColor Yellow
+            $actionsToTake += [PSCustomObject]@{
+                Action      = "Update"
+                DisplayName = $displayName
+                PolicyId    = $existing.id
+                Payload     = $p.Policy
+                HasDrift    = $true
+                DriftFields = $driftResult.DriftFields
+            }
+        } else {
+            Write-Host "  [IDENTICAL / IN SYNC] '$displayName' has ZERO drift. (Will be skipped during deployment)." -ForegroundColor DarkGray
+            $actionsToTake += [PSCustomObject]@{
+                Action      = "Skip"
+                DisplayName = $displayName
+                PolicyId    = $existing.id
+                Payload     = $p.Policy
+                HasDrift    = $false
+                DriftFields = @()
+            }
         }
     } else {
         Write-Host "  [NEW POLICY] '$displayName' will be CREATED in tenant." -ForegroundColor Cyan
@@ -310,18 +355,37 @@ foreach ($p in $parsedPolicies) {
             PolicyId    = $null
             Payload     = $p.Policy
             HasDrift    = $true
+            DriftFields = @("NewPolicy")
         }
     }
 }
+
+$policiesToCreate = @($actionsToTake | Where-Object { $_.Action -eq "Create" })
+$policiesToUpdate = @($actionsToTake | Where-Object { $_.Action -eq "Update" })
+$policiesToSkip   = @($actionsToTake | Where-Object { $_.Action -eq "Skip" })
 
 # 6. Execution Gate (Plan vs Deploy)
 if (-not $Deploy -or $Plan) {
     Write-Host "`n==========================================================" -ForegroundColor Yellow
     Write-Host "  [PLAN COMPLETE] Execution Summary:                    " -ForegroundColor Yellow
-    Write-Host "  Policies to Create: $(($actionsToTake | Where-Object { $_.Action -eq 'Create' }).Count)" -ForegroundColor White
-    Write-Host "  Policies to Update: $(($actionsToTake | Where-Object { $_.Action -eq 'Update' }).Count)" -ForegroundColor White
-    Write-Host "  Run with -Deploy to apply these changes to Microsoft Entra ID." -ForegroundColor Yellow
+    Write-Host "  Policies to Create       : $($policiesToCreate.Count)" -ForegroundColor White
+    Write-Host "  Policies to Update (Drift): $($policiesToUpdate.Count)" -ForegroundColor White
+    Write-Host "  Policies to Skip (In Sync): $($policiesToSkip.Count)" -ForegroundColor White
+    if ($policiesToCreate.Count -eq 0 -and $policiesToUpdate.Count -eq 0) {
+        Write-Host "  -> Tenant state is in 100% parity with desired state. Zero mutations required." -ForegroundColor Green
+    } else {
+        Write-Host "  Run with -Deploy to apply these changes to Microsoft Entra ID." -ForegroundColor Yellow
+    }
     Write-Host "==========================================================" -ForegroundColor Yellow
+    exit 0
+}
+
+# If in Deploy mode and no drift exists, complete immediately without redundant mutations
+if ($policiesToCreate.Count -eq 0 -and $policiesToUpdate.Count -eq 0) {
+    Write-Host "`n==========================================================" -ForegroundColor Green
+    Write-Host "  [IDEMPOTENT DEPLOY] Live tenant is already in 100% parity! " -ForegroundColor Green
+    Write-Host "  Zero PATCH or POST requests required. System in desired state." -ForegroundColor Green
+    Write-Host "==========================================================" -ForegroundColor Green
     exit 0
 }
 
@@ -352,6 +416,7 @@ $transactionResults = [System.Collections.Generic.List[PSCustomObject]]::new()
 $deploymentFailed = $false
 $failureReason = $null
 $newlyCreatedPolicyIds = [System.Collections.Generic.List[string]]::new()
+$mutationsApplied = 0
 
 foreach ($item in $actionsToTake) {
     if ($deploymentFailed) {
@@ -366,6 +431,18 @@ foreach ($item in $actionsToTake) {
         continue
     }
 
+    if ($item.Action -eq "Skip") {
+        Write-Host "  [In Sync] $($item.DisplayName) - Zero drift. Skipped mutation." -ForegroundColor Gray
+        $transactionResults.Add([PSCustomObject]@{
+            DisplayName = $item.DisplayName
+            Action      = "Skip"
+            Status      = "SkippedNoDrift"
+            PolicyId    = $item.PolicyId
+            Message     = "In parity with desired state"
+        })
+        continue
+    }
+
     $jsonBody = $item.Payload | ConvertTo-Json -Depth 10
 
     if ($item.Action -eq "Update") {
@@ -374,6 +451,7 @@ foreach ($item in $actionsToTake) {
         try {
             Invoke-MgGraphRequest -Method PATCH -Uri $patchUri -Body $jsonBody -ContentType "application/json" -ErrorAction Stop | Out-Null
             Write-Host "  -> Successfully updated." -ForegroundColor Green
+            $mutationsApplied++
             $transactionResults.Add([PSCustomObject]@{
                 DisplayName = $item.DisplayName
                 Action      = "Update"
@@ -400,6 +478,7 @@ foreach ($item in $actionsToTake) {
             $created = Invoke-MgGraphRequest -Method POST -Uri $postUri -Body $jsonBody -ContentType "application/json" -ErrorAction Stop
             $createdId = $created.id
             $newlyCreatedPolicyIds.Add($createdId)
+            $mutationsApplied++
             Write-Host "  -> Successfully created (ID: $createdId)." -ForegroundColor Green
             $transactionResults.Add([PSCustomObject]@{
                 DisplayName = $item.DisplayName
@@ -426,12 +505,69 @@ foreach ($item in $actionsToTake) {
 Write-Host "`n================ PER-POLICY TRANSACTION SUMMARY ================" -ForegroundColor Cyan
 $transactionResults | Format-Table -Property DisplayName, Action, Status, Message -AutoSize
 
+# 8. Automatic In-Flight Rollback & Transaction State Machine (Finding 2)
+$transactionState = "Completed"
+$rollbackExecuted = $false
+$rollbackVerified = $false
+
 if ($deploymentFailed) {
     Write-Host "`n[DEPLOYMENT FAILED] One or more policies encountered errors during deployment!" -ForegroundColor Red
-    Write-Host "Transaction halted immediately to prevent partial state divergence." -ForegroundColor Red
-    Write-Host "`nRecommended Remediation:" -ForegroundColor Yellow
-    Write-Host "  Execute rollback to restore pre-deployment snapshot '$snapshotId':" -ForegroundColor White
-    Write-Host "  .\rollback_policies.ps1 -Action Restore -SnapshotId $snapshotId" -ForegroundColor Yellow
+    Write-Host "Transaction halted immediately. Beginning automatic in-flight rollback..." -ForegroundColor Red
+
+    if ($mutationsApplied -gt 0) {
+        $rollbackExecuted = $true
+        Write-Host "`n[AUTOMATIC ROLLBACK TRIGGERED] Restoring tenant to pre-deployment snapshot '$snapshotId'..." -ForegroundColor Yellow
+        try {
+            $rollbackResult = & $rollbackScript -Action Restore -SnapshotId $snapshotId -SessionCreatedPolicyIds $newlyCreatedPolicyIds
+            if ($rollbackResult -eq $true) {
+                $rollbackVerified = $true
+                $transactionState = "FailedAndRolledBack"
+                Write-Host "`n[ROLLBACK SUCCESS] Automatic rollback completed and live state verified restored!" -ForegroundColor Green
+            } else {
+                $transactionState = "PendingVerification"
+                Write-Warning "`n[ROLLBACK WARNING] Rollback completed but live verification returned warnings."
+            }
+        } catch {
+            $transactionState = "RollbackFailed"
+            Write-Error "`n[CRITICAL ROLLBACK FAILURE] Automatic rollback encountered an error: $($_.Exception.Message)"
+        }
+    } else {
+        $transactionState = "FailedAndRolledBack"
+        Write-Host "Zero tenant mutations were applied prior to failure. Snapshot baseline is intact." -ForegroundColor Green
+    }
+}
+
+# 9. Persist Formal Deployment Transaction Receipt
+$receiptsDir = Join-Path $PSScriptRoot "..\..\reports"
+if (-not (Test-Path $receiptsDir)) { New-Item -ItemType Directory -Path $receiptsDir -Force | Out-Null }
+
+$receiptTimestamp = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
+$receiptFile = Join-Path $receiptsDir "deployment_receipt_$receiptTimestamp.json"
+
+$receipt = [PSCustomObject]@{
+    TransactionId            = [Guid]::NewGuid().ToString()
+    TimestampUtc             = (Get-Date).ToUniversalTime().ToString("o")
+    TenantId                 = $activeContext.TenantId
+    Operator                 = $activeContext.Account
+    OverallTransactionState  = $transactionState
+    SnapshotId               = $snapshotId
+    MutationsAttempted       = $actionsToTake.Count
+    MutationsApplied         = $mutationsApplied
+    CreatedPolicyIds         = $newlyCreatedPolicyIds
+    RollbackExecuted         = $rollbackExecuted
+    RollbackVerified         = $rollbackVerified
+    FailureReason            = $failureReason
+    PolicyTransactions       = $transactionResults
+}
+
+$receipt | ConvertTo-Json -Depth 5 | Out-File -FilePath $receiptFile -Encoding utf8
+Write-Host "`n[TRANSACTION RECEIPT] Audit receipt saved: $receiptFile" -ForegroundColor Cyan
+
+if ($transactionState -ne "Completed") {
+    Write-Host "`n==========================================================" -ForegroundColor Red
+    Write-Host "  DEPLOYMENT TRANSACTION RESULT: $transactionState        " -ForegroundColor Red
+    Write-Host "  Snapshot Baseline: $snapshotId                         " -ForegroundColor White
+    Write-Host "==========================================================" -ForegroundColor Red
     exit 1
 }
 

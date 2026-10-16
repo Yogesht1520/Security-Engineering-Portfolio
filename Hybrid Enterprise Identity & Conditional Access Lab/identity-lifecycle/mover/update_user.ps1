@@ -147,25 +147,33 @@ try {
 
 # 5. Privilege Creep Remediation: Remove Legacy RBAC Groups
 Write-Host "`n[Step 3/5] Inspecting memberships to strip legacy role privileges..." -ForegroundColor Cyan
-$memberOfUri = "https://graph.microsoft.com/v1.0/users/$($user.id)/memberOf"
 $managedRbacGroups = @("SEC-StandardUsers", "SEC-Admins", "SEC-Contractors")
 $removedGroups = @()
 $purgeFailed = $false
+$allUserGroups = @()
 
 try {
-    $memberOfResp = Invoke-MgGraphRequest -Method GET -Uri $memberOfUri -ErrorAction Stop
-    foreach ($grp in $memberOfResp.value) {
+    $memberOfUri = "https://graph.microsoft.com/v1.0/users/$($user.id)/memberOf"
+    do {
+        $memberOfResp = Invoke-MgGraphRequest -Method GET -Uri $memberOfUri -ErrorAction Stop
+        if ($memberOfResp.value) { $allUserGroups += $memberOfResp.value }
+        $memberOfUri = $memberOfResp.'@odata.nextLink'
+    } while ($memberOfUri)
+
+    foreach ($grp in $allUserGroups) {
         $grpName = $grp.displayName
         if ($grpName -in $managedRbacGroups -and $grpName -ne $targetGroup) {
             Write-Host "  [Revoking Legacy Group] Removing user from '$grpName'..." -ForegroundColor Yellow
             $removeMemberUri = "https://graph.microsoft.com/v1.0/groups/$($grp.id)/members/$($user.id)/`$ref"
-            try {
-                Invoke-MgGraphRequest -Method DELETE -Uri $removeMemberUri -ErrorAction Stop
-                Write-Host "  -> Stripped legacy membership: $grpName" -ForegroundColor Green
-                $removedGroups += $grpName
-            } catch {
-                Write-Warning "Failed removing from group $grpName : $($_.Exception.Message)"
-                $purgeFailed = $true
+            if ($PSCmdlet.ShouldProcess($UserPrincipalName, "Revoke membership in legacy group '$grpName'")) {
+                try {
+                    Invoke-MgGraphRequest -Method DELETE -Uri $removeMemberUri -ErrorAction Stop
+                    Write-Host "  -> Stripped legacy membership: $grpName" -ForegroundColor Green
+                    $removedGroups += $grpName
+                } catch {
+                    Write-Warning "Failed removing from group $grpName : $($_.Exception.Message)"
+                    $purgeFailed = $true
+                }
             }
         }
     }
@@ -181,20 +189,22 @@ if ($TransactionPolicy -eq "FailClosedOnPrivilegePurge" -and ($stageResults["Sta
     Write-Host "  Prevents user from retaining both legacy and target permissions concurrently." -ForegroundColor Red
     $stageResults["Stage3_TargetGroupAssignment"] = "Blocked: PrivilegePurgeIncomplete"
 } else {
-    $isAlreadyMember = $memberOfResp.value | Where-Object { $_.displayName -eq $targetGroup }
+    $isAlreadyMember = $allUserGroups | Where-Object { $_.displayName -eq $targetGroup }
     if (-not $isAlreadyMember) {
         Write-Host "  [Granting Target Group] Adding user to '$targetGroup'..." -ForegroundColor Cyan
         $addMemberUri = "https://graph.microsoft.com/v1.0/groups/$targetGroupId/members/`$ref"
         $addMemberPayload = @{
             "@odata.id" = "https://graph.microsoft.com/v1.0/directoryObjects/$($user.id)"
         } | ConvertTo-Json
-        try {
-            Invoke-MgGraphRequest -Method POST -Uri $addMemberUri -Body $addMemberPayload -ContentType "application/json" -ErrorAction Stop
-            Write-Host "  -> Added to new group: $targetGroup" -ForegroundColor Green
-            $stageResults["Stage3_TargetGroupAssignment"] = "Completed"
-        } catch {
-            Write-Warning "Failed adding user to target group $targetGroup : $($_.Exception.Message)"
-            $stageResults["Stage3_TargetGroupAssignment"] = "Failed: $($_.Exception.Message)"
+        if ($PSCmdlet.ShouldProcess($UserPrincipalName, "Assign membership in target group '$targetGroup'")) {
+            try {
+                Invoke-MgGraphRequest -Method POST -Uri $addMemberUri -Body $addMemberPayload -ContentType "application/json" -ErrorAction Stop
+                Write-Host "  -> Added to new group: $targetGroup" -ForegroundColor Green
+                $stageResults["Stage3_TargetGroupAssignment"] = "Completed"
+            } catch {
+                Write-Warning "Failed adding user to target group $targetGroup : $($_.Exception.Message)"
+                $stageResults["Stage3_TargetGroupAssignment"] = "Failed: $($_.Exception.Message)"
+            }
         }
     } else {
         Write-Host "  -> User already member of target group: $targetGroup" -ForegroundColor Gray

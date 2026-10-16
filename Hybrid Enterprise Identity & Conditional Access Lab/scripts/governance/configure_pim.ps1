@@ -30,6 +30,7 @@ param (
     [string]$EligibilityExpirationType = "noExpiration",
     [string]$EligibilityDuration = "P365D",
     [switch]$ListRoles,
+    [switch]$VerifyPolicyRules,
     [switch]$DeviceCode
 )
 
@@ -44,6 +45,7 @@ $activeContext = Get-MgContext -ErrorAction SilentlyContinue
 $requiredScopes = @(
     "RoleManagement.ReadWrite.Directory",
     "RoleEligibilitySchedule.ReadWrite.Directory",
+    "RoleManagementPolicy.Read.Directory",
     "User.Read.All"
 )
 
@@ -95,6 +97,113 @@ if ($ListRoles) {
     $allRolesUri = "https://graph.microsoft.com/v1.0/roleManagement/directory/roleDefinitions"
     $allRolesResp = Invoke-MgGraphRequest -Method GET -Uri $allRolesUri
     $allRolesResp.value | Select-Object displayName, id, templateId | Format-Table -AutoSize
+    exit 0
+}
+
+function Test-PimRoleActivationRule {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$RoleDefinitionId,
+        [Parameter(Mandatory=$true)]
+        [string]$RoleDisplayName
+    )
+
+    Write-Host "`n[PIM Rule Verification] Inspecting activation policy constraints for '$RoleDisplayName'..." -ForegroundColor Cyan
+    try {
+        $assignUri = "https://graph.microsoft.com/v1.0/policies/roleManagementPolicyAssignments?`$filter=scopeId eq '/' and scopeType eq 'DirectoryRole' and roleDefinitionId eq '$RoleDefinitionId'"
+        $assignResp = Invoke-MgGraphRequest -Method GET -Uri $assignUri -ErrorAction Stop
+
+        if (-not $assignResp.value -or @($assignResp.value).Count -eq 0) {
+            Write-Warning "No roleManagementPolicyAssignment discovered for role '$RoleDisplayName'."
+            return $null
+        }
+
+        $policyId = $assignResp.value[0].policyId
+        Write-Host "  -> Discovered Unified Role Management Policy ID: $policyId" -ForegroundColor Gray
+
+        $rulesUri = "https://graph.microsoft.com/v1.0/policies/roleManagementPolicies/$policyId/rules"
+        $rulesResp = Invoke-MgGraphRequest -Method GET -Uri $rulesUri -ErrorAction Stop
+
+        $rules = @($rulesResp.value)
+        $complianceResults = @{
+            MaxActivationDurationHours = $null
+            MfaRequiredOnActivation    = $false
+            JustificationRequired      = $false
+            ApprovalRequired           = $false
+            IsCompliant                = $true
+            Findings                   = [System.Collections.Generic.List[string]]::new()
+        }
+
+        foreach ($rule in $rules) {
+            $ruleType = $rule.'@odata.type'
+
+            # 1. Check Expiration Rule for EndUser activation
+            if ($ruleType -eq "#microsoft.graph.unifiedRoleManagementPolicyExpirationRule" -and $rule.target.caller -eq "EndUser") {
+                $durationStr = $rule.maximumDuration
+                if ($durationStr -match "PT(\d+)H") {
+                    $hours = [int]$matches[1]
+                    $complianceResults.MaxActivationDurationHours = $hours
+                    if ($hours -gt 4) {
+                        $complianceResults.IsCompliant = $false
+                        $complianceResults.Findings.Add("Max activation duration ($hours hours) exceeds Zero Standing Access benchmark of 4 hours.")
+                    }
+                } else {
+                    $complianceResults.Findings.Add("Non-standard expiration duration string: $durationStr")
+                }
+            }
+
+            # 2. Check Enablement Rule for MFA and Justification
+            if ($ruleType -eq "#microsoft.graph.unifiedRoleManagementPolicyEnablementRule" -and $rule.target.caller -eq "EndUser") {
+                $enabled = @($rule.enabledRules)
+                if ($enabled -contains "MultiFactorAuthentication") {
+                    $complianceResults.MfaRequiredOnActivation = $true
+                } else {
+                    $complianceResults.IsCompliant = $false
+                    $complianceResults.Findings.Add("MFA is not enforced upon role activation in PIM role settings.")
+                }
+
+                if ($enabled -contains "Justification") {
+                    $complianceResults.JustificationRequired = $true
+                } else {
+                    $complianceResults.IsCompliant = $false
+                    $complianceResults.Findings.Add("Business justification is not mandatory upon role activation.")
+                }
+            }
+
+            # 3. Check Approval Rule
+            if ($ruleType -eq "#microsoft.graph.unifiedRoleManagementPolicyApprovalRule" -and $rule.target.caller -eq "EndUser") {
+                if ($rule.setting -and $rule.setting.isApprovalRequired) {
+                    $complianceResults.ApprovalRequired = $true
+                }
+            }
+        }
+
+        Write-Host "  -> Max Activation Duration: $(if ($complianceResults.MaxActivationDurationHours) { "$($complianceResults.MaxActivationDurationHours) Hours" } else { "Not explicitly configured" })" -ForegroundColor White
+        Write-Host "  -> MFA on Activation      : $($complianceResults.MfaRequiredOnActivation)" -ForegroundColor White
+        Write-Host "  -> Justification Required : $($complianceResults.JustificationRequired)" -ForegroundColor White
+        Write-Host "  -> Approver Sign-Off      : $($complianceResults.ApprovalRequired)" -ForegroundColor White
+
+        if ($complianceResults.IsCompliant -and $complianceResults.Findings.Count -eq 0) {
+            Write-Host "  [VERIFIED] Role activation settings comply with Zero Standing Access standards." -ForegroundColor Green
+        } else {
+            Write-Warning "  [COMPLIANCE AUDIT] Role activation policy findings:"
+            foreach ($finding in $complianceResults.Findings) {
+                Write-Warning "    * $finding"
+            }
+            Write-Host "  -> Portal Path: Microsoft Entra Admin Center > Identity Governance > Privileged Identity Management > Microsoft Entra roles > Roles > '$RoleDisplayName' > Role settings > Edit" -ForegroundColor Yellow
+        }
+
+        return $complianceResults
+    } catch {
+        Write-Host "  -> Note: Querying roleManagementPolicies returned: $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Host "  -> Ensure RoleManagementPolicy.Read.Directory permission is granted and Entra ID P2 license is active." -ForegroundColor Yellow
+        return $null
+    }
+}
+
+if ($VerifyPolicyRules) {
+    Test-PimRoleActivationRule -RoleDefinitionId $targetRole.id -RoleDisplayName $targetRole.displayName | Out-Null
     exit 0
 }
 
@@ -161,6 +270,9 @@ if ($AssignEligible) {
         } else {
             Write-Warning "Schedule instance verification returned pending or requires directory propagation delay."
         }
+
+        # Step 4: Audit role activation constraints
+        Test-PimRoleActivationRule -RoleDefinitionId $targetRole.id -RoleDisplayName $targetRole.displayName | Out-Null
     } catch {
         Write-Host "  -> PIM Graph Request returned: $($_.Exception.Message)" -ForegroundColor Yellow
         Write-Host "  -> Note: Interactive Portal assignment or Entra ID P2 license required." -ForegroundColor Yellow

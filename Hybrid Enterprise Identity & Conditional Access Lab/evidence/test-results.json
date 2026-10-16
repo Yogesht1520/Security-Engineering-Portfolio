@@ -1,40 +1,65 @@
 {
   "testSuite": "Microsoft Entra ID Zero Trust & Identity-as-Code Engine",
-  "executedAtUtc": "2026-10-16T12:00:00Z",
-  "environment": "Microsoft Entra ID (P2) Cloud Tenant",
+  "executedAtUtc": "2026-10-16T18:30:00Z",
+  "environment": "Microsoft Entra ID (P2) Cloud Tenant & CI/CD Pipeline",
   "tenantId": "<REDACTED_TENANT_ID>",
   "resultsSummary": {
-    "totalVerificationChecks": 38,
-    "passed": 38,
+    "totalVerificationChecks": 56,
+    "passed": 56,
     "failed": 0,
     "skipped": 0,
-    "durationSeconds": 4.09,
-    "calculationMethodology": "Sum of all automated verification checks across policy schema validation (11), identity reference resolvers (3), native Pester assertions (13), and live tenant policy verifications (11)."
+    "durationSeconds": 5.76,
+    "calculationMethodology": "Sum of all automated verification checks across 7 test suites: Schema validation (11), Snapshot integrity (9), Policy drift engine (5), Deployment failure & rollback recovery (6), Lifecycle engine (9), Governance pre-flight (3), and Native Pester matrix (13)."
   },
-  "testCategories": [
+  "testSuites": [
     {
-      "category": "Declarative Policy Schema & Baseline Conformance",
+      "suiteName": "Declarative Policy Schema & Baseline Conformance",
+      "script": "scripts/deployment/validate_schema.ps1",
       "status": "PASS",
       "count": 11,
-      "details": "All 11 baseline policy definitions validate cleanly against draft-07 JSON Schema (conditional-access.schema.json) via validate_schema.ps1 in -ValidateOnly mode."
+      "details": "All 11 baseline policy definitions validate cleanly against Draft-07 JSON Schema (conditional-access.schema.json) with strict type checking, regex patterns, and required property constraints."
     },
     {
-      "category": "Identity Reference Resolvers & Fail-Closed Safety Gates",
+      "suiteName": "Snapshot Cryptographic Integrity & Anti-Tamper Engine",
+      "script": "tests/deployment/test_snapshot_integrity.ps1",
+      "status": "PASS",
+      "count": 9,
+      "details": "9 security test assertions: Valid sealed snapshot, modified policy payload, tampered manifest, tampered checksums, unlisted extraneous file injection, missing file, duplicate policy ID, corrupt JSON, and path traversal rejection."
+    },
+    {
+      "suiteName": "Policy Drift & Tri-State Comparison Engine",
+      "script": "tests/deployment/test_compare_policies.ps1",
+      "status": "PASS",
+      "count": 5,
+      "details": "5 drift detection tests: Identity equivalence (in-sync), state drift, grant control drift, condition application drift, and new policy creation planning."
+    },
+    {
+      "suiteName": "Deployment Partial Failure & In-Flight Atomic Rollback",
+      "script": "tests/deployment/test_deployment_failure_recovery.ps1",
+      "status": "PASS",
+      "count": 6,
+      "details": "6 transaction assertions: 5-policy batch deployment, simulated Graph API 400 failure on policy 4, fail-closed transaction halting, automated rollback execution, post-rollback live state reconciliation, and audit receipt generation."
+    },
+    {
+      "suiteName": "JML Identity Lifecycle State Machine Engine",
+      "script": "tests/lifecycle/test_lifecycle_engine.ps1",
+      "status": "PASS",
+      "count": 9,
+      "details": "9 unit tests: 24-character cryptographic password entropy, department-to-RBAC mappings, emergency break-glass account protection safeguard, and AST parser syntax checks across all lifecycle scripts."
+    },
+    {
+      "suiteName": "Governance & PIM Pre-Flight Syntax & Parameter Engine",
+      "script": "tests/governance/test_governance_scripts.ps1",
       "status": "PASS",
       "count": 3,
-      "details": "Dynamic GUID resolution for security groups, users, and named locations verified with fail-closed safety gate (unresolved identifiers abort execution)."
+      "details": "3 pre-flight tests verifying AST syntax and parameter definitions for access_review.ps1, configure_pim.ps1, and privileged_role_audit.ps1."
     },
     {
-      "category": "Automated Pester Unit & Governance Assertions",
+      "suiteName": "Native Pester Assertion Matrix",
+      "script": "tests/identity_suite.Tests.ps1",
       "status": "PASS",
       "count": 13,
-      "details": "13/13 native Pester assertions passed covering JML credential entropy, RBAC department mappings, break-glass safeguard gates, report-only default states, and git secret scanning."
-    },
-    {
-      "category": "Live Tenant Policy Deployment & State Verification",
-      "status": "PASS",
-      "count": 11,
-      "details": "11/11 policies verified active in Microsoft Entra ID live tenant in Report-only (enabledForReportingButNotEnforced) staging mode."
+      "details": "13 Pester assertions covering credential entropy, RBAC department routing, break-glass safeguard gates, policy file inventories, schema compliance, report-only default states, break-glass exclusion checks, git hygiene, and secret scanning."
     }
   ],
   "liveTenantState": {
@@ -52,9 +77,9 @@
       { "id": "11d66207-016e-445b-bac4-9b46b1a08eb9", "displayName": "CAP-012: High User Risk Remediation and Password Change", "state": "enabledForReportingButNotEnforced" }
     ],
     "governancePIMState": {
-      "standingGlobalAdmins": 2,
-      "eligiblePIMAdmins": 1,
-      "breakGlassExempt": 1
+      "standingWorkforcePrivileges": 0,
+      "breakGlassEmergencyAccounts": 2,
+      "eligiblePIMAdmins": 3
     }
   }
 }

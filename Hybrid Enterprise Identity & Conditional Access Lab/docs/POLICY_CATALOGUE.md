@@ -104,16 +104,16 @@
 - **Assignment:** Group `SEC-Admins`
 - **Exclusion:** Group `SEC-BreakGlass-Exclusion`
 - **Target Resources:** All cloud apps
-- **Conditions:** Filter for devices: Exclude compliant devices (`device.isCompliant -eq True`)
+- **Conditions:** Filter for devices: Exclude designated PAW devices (`device.extensionAttribute1 -eq "PAW" -and device.isCompliant -eq True`)
 - **Grant Controls:** Block access
-- **Real-World Threat Mitigated:** Enforces Privileged Access Workstation (PAW) discipline, blocking administrators from accessing the Entra Admin Center from personal BYOD devices (MITRE ATT&CK T1078.004).
+- **Real-World Threat Mitigated:** Enforces Privileged Access Workstation (PAW) discipline, blocking administrative access from ordinary user laptops or personal BYOD devices (MITRE ATT&CK T1078.004).
 - **Deployment State:** Deployed in **Report-only** mode.
 
 ### CAP-010: Apply Guest and External User Access Controls
 - **Assignment:** Users: `GuestsOrExternalUsers`
-- **Exclusion:** None
+- **Exclusion:** Group `SEC-BreakGlass-Exclusion`
 - **Target Resources:** All cloud apps
-- **Grant Controls:** Require multifactor authentication
+- **Grant Controls:** Require multifactor authentication (Terms of Use optional extension requiring tenant agreement object)
 - **Session Controls:** Sign-in frequency: `4 Hours`, Persistent browser session: `Never persistent`
 - **Real-World Threat Mitigated:** Isolates external vendor and partner access with tighter session boundaries and mandatory multi-factor validation (MITRE ATT&CK T1078.001).
 - **Deployment State:** Deployed in **Report-only** mode.

@@ -169,27 +169,35 @@ try {
 }
 
 # -------------------------------------------------------------
-# STAGE 3: Strip All Security Groups & Entitlements
+# STAGE 3: Strip All Security Groups & Entitlements (with Pagination & Verification)
 # -------------------------------------------------------------
 Write-Host "`n[Stage 3/5] Stripping all security group memberships..." -ForegroundColor Yellow
-$memberOfUri = "https://graph.microsoft.com/v1.0/users/$($user.id)/memberOf"
-$groupsStripped = @()
+$allGroups = @()
 $stripFailed = $false
+$groupsStripped = @()
 
 try {
-    $memberOfResp = Invoke-MgGraphRequest -Method GET -Uri $memberOfUri
-    foreach ($grp in $memberOfResp.value) {
+    $memberOfUri = "https://graph.microsoft.com/v1.0/users/$($user.id)/memberOf"
+    do {
+        $memberOfResp = Invoke-MgGraphRequest -Method GET -Uri $memberOfUri -ErrorAction Stop
+        if ($memberOfResp.value) { $allGroups += $memberOfResp.value }
+        $memberOfUri = $memberOfResp.'@odata.nextLink'
+    } while ($memberOfUri)
+
+    foreach ($grp in $allGroups) {
         if ($grp.'@odata.type' -eq "#microsoft.graph.group") {
             $grpId = $grp.id
             $grpName = $grp.displayName
             $removeMemberUri = "https://graph.microsoft.com/v1.0/groups/$grpId/members/$($user.id)/`$ref"
-            try {
-                Invoke-MgGraphRequest -Method DELETE -Uri $removeMemberUri -ErrorAction Stop
-                Write-Host "  -> Stripped membership: $grpName ($grpId)" -ForegroundColor Gray
-                $groupsStripped += $grpName
-            } catch {
-                Write-Warning "  -> Could not remove from group $grpName : $($_.Exception.Message)"
-                $stripFailed = $true
+            if ($PSCmdlet.ShouldProcess($UserPrincipalName, "Remove membership from security group '$grpName' ($grpId)")) {
+                try {
+                    Invoke-MgGraphRequest -Method DELETE -Uri $removeMemberUri -ErrorAction Stop
+                    Write-Host "  -> Stripped membership: $grpName ($grpId)" -ForegroundColor Gray
+                    $groupsStripped += $grpName
+                } catch {
+                    Write-Warning "  -> Could not remove from group $grpName : $($_.Exception.Message)"
+                    $stripFailed = $true
+                }
             }
         }
     }
@@ -200,30 +208,71 @@ try {
 }
 
 # -------------------------------------------------------------
-# STAGE 4: Strip Directory Role Assignments (PIM & Standing)
+# STAGE 4: Strip Directory Role Assignments (Standing Active & PIM Eligible - Finding 12)
 # -------------------------------------------------------------
-Write-Host "`n[Stage 4/5] Checking and stripping administrative directory roles..." -ForegroundColor Yellow
+Write-Host "`n[Stage 4/5] Checking and stripping administrative directory roles (Active & PIM Eligible)..." -ForegroundColor Yellow
 $rolesStripped = @()
 $rolesFailed = $false
 
 try {
+    # 4.1. Strip Active Standing Directory Roles
     $rolesUri = "https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments?`$filter=principalId eq '$($user.id)'"
-    $rolesResp = Invoke-MgGraphRequest -Method GET -Uri $rolesUri
-    foreach ($roleAssign in $rolesResp.value) {
-        $roleAssignId = $roleAssign.id
-        $deleteRoleUri = "https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments/$roleAssignId"
-        try {
-            Invoke-MgGraphRequest -Method DELETE -Uri $deleteRoleUri -ErrorAction Stop
-            Write-Host "  -> Revoked active directory role: $($roleAssign.roleDefinitionId)" -ForegroundColor Green
-            $rolesStripped += $roleAssign.roleDefinitionId
-        } catch {
-            Write-Warning "  -> Could not remove role assignment $($roleAssignId): $($_.Exception.Message)"
-            $rolesFailed = $true
+    do {
+        $rolesResp = Invoke-MgGraphRequest -Method GET -Uri $rolesUri -ErrorAction Stop
+        if ($rolesResp.value) {
+            foreach ($roleAssign in $rolesResp.value) {
+                $roleAssignId = $roleAssign.id
+                $deleteRoleUri = "https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments/$roleAssignId"
+                if ($PSCmdlet.ShouldProcess($UserPrincipalName, "Revoke active directory role assignment $($roleAssign.roleDefinitionId)")) {
+                    try {
+                        Invoke-MgGraphRequest -Method DELETE -Uri $deleteRoleUri -ErrorAction Stop
+                        Write-Host "  -> Revoked active directory role: $($roleAssign.roleDefinitionId)" -ForegroundColor Green
+                        $rolesStripped += "Active-$($roleAssign.roleDefinitionId)"
+                    } catch {
+                        Write-Warning "  -> Could not remove active role assignment $($roleAssignId): $($_.Exception.Message)"
+                        $rolesFailed = $true
+                    }
+                }
+            }
         }
-    }
+        $rolesUri = $rolesResp.'@odata.nextLink'
+    } while ($rolesUri)
+
+    # 4.2. Revoke Eligible PIM Role Assignments (Finding 12)
+    Write-Host "  Auditing PIM eligible role schedules..." -ForegroundColor Gray
+    $pimSchedUri = "https://graph.microsoft.com/v1.0/roleManagement/directory/roleEligibilityScheduleInstances?`$filter=principalId eq '$($user.id)'"
+    do {
+        $pimSchedResp = Invoke-MgGraphRequest -Method GET -Uri $pimSchedUri -ErrorAction SilentlyContinue
+        if ($pimSchedResp.value) {
+            foreach ($sched in $pimSchedResp.value) {
+                $roleDefId = $sched.roleDefinitionId
+                if ($PSCmdlet.ShouldProcess($UserPrincipalName, "Revoke PIM eligible role schedule $roleDefId")) {
+                    Write-Host "  -> Revoking PIM eligible role schedule: $roleDefId (Schedule ID: $($sched.id))..." -ForegroundColor Yellow
+                    $removePimPayload = @{
+                        action           = "adminRemove"
+                        justification    = "Automated Leaver Offboarding - Ticket: $TicketId"
+                        roleDefinitionId = $roleDefId
+                        directoryScopeId = "/"
+                        principalId      = $user.id
+                    } | ConvertTo-Json
+                    try {
+                        $reqUri = "https://graph.microsoft.com/v1.0/roleManagement/directory/roleEligibilityScheduleRequests"
+                        Invoke-MgGraphRequest -Method POST -Uri $reqUri -Body $removePimPayload -ContentType "application/json" -ErrorAction Stop | Out-Null
+                        Write-Host "  -> Successfully revoked PIM eligible role: $roleDefId" -ForegroundColor Green
+                        $rolesStripped += "PIM-Eligible-$roleDefId"
+                    } catch {
+                        Write-Warning "  -> Failed removing PIM eligible schedule $($sched.id): $($_.Exception.Message)"
+                        $rolesFailed = $true
+                    }
+                }
+            }
+        }
+        $pimSchedUri = $pimSchedResp.'@odata.nextLink'
+    } while ($pimSchedUri)
+
     $stageResults["Stage4_RolesStripped"] = if ($rolesFailed) { "PartiallyCompleted" } else { "Completed" }
 } catch {
-    Write-Warning "  -> Role check failed or requires PIM module: $($_.Exception.Message)"
+    Write-Warning "  -> Role check failed or requires Governance PIM module: $($_.Exception.Message)"
     $stageResults["Stage4_RolesStripped"] = "Failed: $($_.Exception.Message)"
 }
 

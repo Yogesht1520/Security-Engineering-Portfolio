@@ -3,7 +3,7 @@
 > **Framework Alignment:** NIST Zero Trust Architecture (SP 800-207) & Microsoft SC-300  
 > **Environment:** Microsoft Entra ID (P2) Cloud Tenant *(Live Verified)* + AD DS Hybrid Reference Architecture  
 > **Implementation Methodology:** Declarative Identity-as-Code (IaC), Safe Staging & Continuous Governance  
-> **Operational Verification:** 19/19 Tests Passing (Pester, Schema, Resolvers) | 11 Live Policies in Report-Only Mode  
+> **Operational Verification:** 56/56 Automated Verification Checks Passing Across 7 Test Suites (including 13 Native Pester Assertions) | 11 Live Policies in Report-Only Mode | Cryptographically Sealed Snapshots  
 
 ---
 
@@ -12,13 +12,14 @@
 This repository delivers an enterprise-grade **Zero Trust Identity and Access Management (IAM)** platform engineered in **Microsoft Entra ID**. Built on the principle that **Identity is the primary security boundary**, all authentication and authorization requests are evaluated dynamically using real-time signals, adaptive session controls, and least-privilege boundaries.
 
 ### Core Implemented Capabilities:
-* **Declarative Identity-as-Code (IaC):** 11 production Conditional Access policy definitions maintained in version-controlled JSON schemas ([`policies/`](./policies/)) and deployed programmatically via the Microsoft Graph API.
+* **Declarative Identity-as-Code (IaC):** 11 production Conditional Access policy definitions maintained in version-controlled JSON schemas ([`policies/`](./policies/)) and deployed programmatically via the Microsoft Graph API with pre-flight schema validation ([`validate_schema.ps1`](./scripts/deployment/validate_schema.ps1)).
 * **Zero Trust Safe Staging:** All policies deploy in `Report-only` mode (`enabledForReportingButNotEnforced`) to evaluate live sign-in telemetry without risking user disruption.
-* **Dual Break-Glass Disaster Recovery:** Two independent, cloud-only emergency accounts (`emergency-admin-01`, `emergency-admin-02`) excluded via `SEC-BreakGlass-Exclusion` to eliminate administrative lockout risk.
-* **Privileged Identity Management (PIM):** Implementation of Zero Standing Access (ZSA). Administrative roles require Just-in-Time (JIT) activation with a 4-hour max window, mandatory justification, and phishing-resistant MFA.
-* **Automated JML Lifecycle Engine:** Deterministic Joiner, Mover, and Leaver workflows ([`identity-lifecycle/`](./identity-lifecycle/)) featuring cryptographic temporary passwords, privilege creep prevention, and 5-stage offboarding with immediate session invalidation.
+* **Dual Break-Glass Disaster Recovery:** Two independent, cloud-only emergency accounts (`emergency-admin-01`, `emergency-admin-02`) excluded via `SEC-BreakGlass-Exclusion` with fail-closed programmatic verification to eliminate administrative lockout risk.
+* **Privileged Identity Management (PIM):** Implementation of Zero Standing Access (ZSA). Administrative roles require Just-in-Time (JIT) activation with a 4-hour max window, mandatory justification, and phishing-resistant MFA (itemized in [`privileged-role-inventory.md`](./evidence/live-tenant-state/privileged-role-inventory.md)).
+* **Cryptographic Snapshot Rollback Engine:** Pre-deployment state captures with SHA-256 checksums and authoritative manifests ([`rollback_policies.ps1`](./scripts/deployment/rollback_policies.ps1)), providing atomic rollback upon mid-flight deployment failures.
+* **Automated JML Lifecycle Engine:** Deterministic Joiner, Mover, and Leaver workflows ([`identity-lifecycle/`](./identity-lifecycle/)) featuring cryptographic temporary passwords, privilege creep prevention, compensating quarantine actions, and 5-stage offboarding with immediate session invalidation.
 * **Detection Engineering (KQL):** Production Kusto queries ([`monitoring/kql/`](./monitoring/kql/)) and incident response playbooks ([`monitoring/playbooks/`](./monitoring/playbooks/)) monitoring break-glass account sign-ins, policy drift, and MFA fatigue.
-* **Automated Testing & CI/CD:** Native Pester test suites ([`tests/`](./tests/)) and a GitHub Actions workflow ([`.github/workflows/validate.yml`](./.github/workflows/validate.yml)) enforcing schema validity, linting, and secret scanning.
+* **Automated Testing & CI/CD:** Unified master test runner ([`tests/run_all_tests.ps1`](./tests/run_all_tests.ps1)) executing 56 assertions across 7 test suites, supported by a GitHub Actions workflow ([`.github/workflows/validate.yml`](./.github/workflows/validate.yml)) enforcing schema validity, linting, and secret scanning.
 
 ---
 
@@ -206,21 +207,21 @@ Hybrid Enterprise Identity & Conditional Access Lab/
 ## 5. Operational Commands & Quickstart
 
 ### 5.1 Execute Master Test Suite (Locally)
-To run all 19 unit, schema, resolver, and Pester tests:
+To run all 56 automated verification checks across the 7 specialized suites (including 13 Native Pester Assertions):
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tests\run_all_tests.ps1
 ```
 
 ### 5.2 Plan & Deploy Conditional Access Policies
 ```powershell
-# 1. Schema check only (No Graph connection needed)
+# 1. Deep schema validation & pre-flight check (No Graph connection needed)
 .\scripts\deploy_ca_policies.ps1 -ValidateOnly
 
-# 2. Plan mode: Compare live tenant state against Git and show drift
+# 2. Plan mode: Compare live tenant state against Git and calculate drift
 .\scripts\deploy_ca_policies.ps1 -Plan -DeviceCode
 
-# 3. Live deployment (Generates automatic pre-deployment rollback snapshot)
-.\scripts\deploy_ca_policies.ps1 -Deploy -DeviceCode
+# 3. Live deployment (Generates cryptographically sealed pre-deployment rollback snapshot)
+.\scripts\deploy_ca_policies.ps1 -Deploy -Environment Lab -DeviceCode
 ```
 
 ### 5.3 Audit Privileged Roles & PIM Compliance
