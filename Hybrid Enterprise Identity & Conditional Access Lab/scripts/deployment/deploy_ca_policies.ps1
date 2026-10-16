@@ -97,6 +97,15 @@ foreach ($file in $policyFiles) {
             }
         }
 
+        # Emergency Account Direct Inclusion Check
+        if ($content.conditions.users.includeUsers) {
+            foreach ($u in $content.conditions.users.includeUsers) {
+                if ($u -like "*emergency-admin*" -or $u -like "*breakglass*") {
+                    throw "[FAIL-CLOSED GATE] Policy '$($content.displayName)' directly includes emergency account '$u' in includeUsers! Emergency accounts must never be directly targeted."
+                }
+            }
+        }
+
         $parsedPolicies += [PSCustomObject]@{
             File        = $file.Name
             FilePath    = $file.FullName
@@ -195,8 +204,8 @@ foreach ($p in $parsedPolicies) {
 }
 Write-Host "  -> All identity references successfully resolved to active tenant GUIDs." -ForegroundColor Green
 
-# 4.5. Fail-Closed Break-Glass Group Integrity Gate
-Write-Host "`n[Safety Gate] Verifying live emergency break-glass exclusion group integrity..." -ForegroundColor Cyan
+# 4.5. Fail-Closed Break-Glass Group & Account Integrity Gate (Finding B)
+Write-Host "`n[Safety Gate] Verifying live emergency break-glass exclusion group & account integrity..." -ForegroundColor Cyan
 $bgGroupName = "SEC-BreakGlass-Exclusion"
 try {
     $bgSearchUri = "https://graph.microsoft.com/v1.0/groups?`$filter=displayName eq '$bgGroupName'"
@@ -210,13 +219,56 @@ try {
     if (-not $membersResp.value -or $membersResp.value.Count -eq 0) {
         throw "[FAIL-CLOSED GATE] Break-glass exclusion group '$bgGroupName' has 0 members in live tenant! Cannot safely enforce conditional access without active emergency accounts."
     }
-    Write-Host "  [PASS] Verified '$bgGroupName' (ID: $bgGroupId) contains $($membersResp.value.Count) active emergency member(s)." -ForegroundColor Green
+
+    $bgMembers = $membersResp.value
+    Write-Host "  [AUDIT] Group '$bgGroupName' contains $($bgMembers.Count) member(s)." -ForegroundColor Gray
+
+    # 1. Verify expected emergency accounts exist and are enabled & cloud-only
+    $expectedAccounts = @("emergency-admin-01", "emergency-admin-02")
+    foreach ($accPrefix in $expectedAccounts) {
+        $foundMember = $bgMembers | Where-Object { $_.userPrincipalName -like "$accPrefix@*" }
+        if (-not $foundMember) {
+            # Check if user exists anywhere in tenant
+            $usrCheckUri = "https://graph.microsoft.com/v1.0/users?`$filter=startswith(userPrincipalName,'$accPrefix@')&`$select=id,userPrincipalName,accountEnabled,onPremisesSyncEnabled"
+            $usrCheck = Invoke-MgGraphRequest -Method GET -Uri $usrCheckUri -ErrorAction SilentlyContinue
+            if (-not $usrCheck.value -or $usrCheck.value.Count -eq 0) {
+                throw "[FAIL-CLOSED GATE] Expected emergency account '$accPrefix' does NOT exist in tenant!"
+            }
+            throw "[FAIL-CLOSED GATE] Emergency account '$accPrefix' exists but is NOT a member of '$bgGroupName'!"
+        }
+
+        # Query user attributes to verify cloud-only and enabled state
+        $memberDetailUri = "https://graph.microsoft.com/v1.0/users/$($foundMember.id)?`$select=id,userPrincipalName,accountEnabled,onPremisesSyncEnabled"
+        $memberDetail = Invoke-MgGraphRequest -Method GET -Uri $memberDetailUri -ErrorAction Stop
+
+        if ($memberDetail.accountEnabled -ne $true) {
+            throw "[FAIL-CLOSED GATE] Emergency account '$($memberDetail.userPrincipalName)' is DISABLED in Entra ID! Emergency recovery accounts must be enabled."
+        }
+        if ($memberDetail.onPremisesSyncEnabled -eq $true) {
+            throw "[FAIL-CLOSED GATE] Emergency account '$($memberDetail.userPrincipalName)' is synced from on-premises AD! Emergency accounts must be 100% cloud-only to survive hybrid outages."
+        }
+        Write-Host "  [PASS] Verified '$($memberDetail.userPrincipalName)' is Active, Cloud-Only, and in '$bgGroupName'." -ForegroundColor Green
+    }
+
+    # 2. Verify no unauthorized/unexpected members exist in SEC-BreakGlass-Exclusion
+    foreach ($m in $bgMembers) {
+        $upn = $m.userPrincipalName
+        $isExpected = $false
+        foreach ($exp in $expectedAccounts) {
+            if ($upn -like "$exp@*") { $isExpected = $true; break }
+        }
+        if (-not $isExpected) {
+            throw "[FAIL-CLOSED GATE] Unauthorized user '$upn' discovered in '$bgGroupName'! Only designated emergency accounts may reside in this bypass group."
+        }
+    }
+    Write-Host "  [PASS] Exclusion group purity verified: zero unauthorized members present." -ForegroundColor Green
+    Write-Host "  [PASS] Break-glass safety gate PASSED. Dual emergency accounts verified safe." -ForegroundColor Green
 } catch {
     if ($_ -match "\[FAIL-CLOSED GATE\]") {
         Write-Error $_
         exit 1
     } else {
-        Write-Warning "Could not verify live break-glass group members: $($_.Exception.Message)"
+        Write-Warning "Could not verify live break-glass accounts: $($_.Exception.Message)"
     }
 }
 
@@ -282,13 +334,38 @@ if (-not $Force) {
     }
 }
 
-# Create Safety Snapshot before applying changes
+# Create Mandatory Safety Snapshot before applying changes
 $rollbackScript = Join-Path $PSScriptRoot "rollback_policies.ps1"
 Write-Host "`nGenerating pre-deployment rollback snapshot..." -ForegroundColor Cyan
-$snapshotId = & $rollbackScript -Action Snapshot
+try {
+    $snapshotId = & $rollbackScript -Action Snapshot
+    if (-not $snapshotId) {
+        throw "Snapshot execution failed to return a valid snapshot identifier."
+    }
+} catch {
+    Write-Error "[ABORT] Pre-deployment snapshot generation failed: $($_.Exception.Message). Deployment halted to protect tenant."
+    exit 1
+}
 
-Write-Host "`nExecuting Live Policy Deployment..." -ForegroundColor Cyan
+Write-Host "`nExecuting Live Policy Deployment with Per-Policy Transaction Tracking..." -ForegroundColor Cyan
+$transactionResults = [System.Collections.Generic.List[PSCustomObject]]::new()
+$deploymentFailed = $false
+$failureReason = $null
+$newlyCreatedPolicyIds = [System.Collections.Generic.List[string]]::new()
+
 foreach ($item in $actionsToTake) {
+    if ($deploymentFailed) {
+        Write-Host "  [SKIPPING] $($item.DisplayName) (Action: $($item.Action)) - Transaction halted due to preceding failure." -ForegroundColor DarkGray
+        $transactionResults.Add([PSCustomObject]@{
+            DisplayName = $item.DisplayName
+            Action      = $item.Action
+            Status      = "Skipped"
+            PolicyId    = $item.PolicyId
+            Message     = "Halted: Prior step failed ($failureReason)"
+        })
+        continue
+    }
+
     $jsonBody = $item.Payload | ConvertTo-Json -Depth 10
 
     if ($item.Action -eq "Update") {
@@ -297,19 +374,65 @@ foreach ($item in $actionsToTake) {
         try {
             Invoke-MgGraphRequest -Method PATCH -Uri $patchUri -Body $jsonBody -ContentType "application/json" -ErrorAction Stop | Out-Null
             Write-Host "  -> Successfully updated." -ForegroundColor Green
+            $transactionResults.Add([PSCustomObject]@{
+                DisplayName = $item.DisplayName
+                Action      = "Update"
+                Status      = "Success"
+                PolicyId    = $item.PolicyId
+                Message     = "OK"
+            })
         } catch {
-            Write-Host "  -> FAILED to update: $_" -ForegroundColor Red
+            $deploymentFailed = $true
+            $failureReason = $_.Exception.Message
+            Write-Host "  -> FAILED to update: $failureReason" -ForegroundColor Red
+            $transactionResults.Add([PSCustomObject]@{
+                DisplayName = $item.DisplayName
+                Action      = "Update"
+                Status      = "Failed"
+                PolicyId    = $item.PolicyId
+                Message     = $failureReason
+            })
         }
     } else {
         Write-Host "  [Creating] $($item.DisplayName)..." -ForegroundColor Cyan
         $postUri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies"
         try {
             $created = Invoke-MgGraphRequest -Method POST -Uri $postUri -Body $jsonBody -ContentType "application/json" -ErrorAction Stop
-            Write-Host "  -> Successfully created (ID: $($created.id))." -ForegroundColor Green
+            $createdId = $created.id
+            $newlyCreatedPolicyIds.Add($createdId)
+            Write-Host "  -> Successfully created (ID: $createdId)." -ForegroundColor Green
+            $transactionResults.Add([PSCustomObject]@{
+                DisplayName = $item.DisplayName
+                Action      = "Create"
+                Status      = "Success"
+                PolicyId    = $createdId
+                Message     = "Created successfully"
+            })
         } catch {
-            Write-Host "  -> FAILED to create: $_" -ForegroundColor Red
+            $deploymentFailed = $true
+            $failureReason = $_.Exception.Message
+            Write-Host "  -> FAILED to create: $failureReason" -ForegroundColor Red
+            $transactionResults.Add([PSCustomObject]@{
+                DisplayName = $item.DisplayName
+                Action      = "Create"
+                Status      = "Failed"
+                PolicyId    = $null
+                Message     = $failureReason
+            })
         }
     }
+}
+
+Write-Host "`n================ PER-POLICY TRANSACTION SUMMARY ================" -ForegroundColor Cyan
+$transactionResults | Format-Table -Property DisplayName, Action, Status, Message -AutoSize
+
+if ($deploymentFailed) {
+    Write-Host "`n[DEPLOYMENT FAILED] One or more policies encountered errors during deployment!" -ForegroundColor Red
+    Write-Host "Transaction halted immediately to prevent partial state divergence." -ForegroundColor Red
+    Write-Host "`nRecommended Remediation:" -ForegroundColor Yellow
+    Write-Host "  Execute rollback to restore pre-deployment snapshot '$snapshotId':" -ForegroundColor White
+    Write-Host "  .\rollback_policies.ps1 -Action Restore -SnapshotId $snapshotId" -ForegroundColor Yellow
+    exit 1
 }
 
 Write-Host "`n==========================================================" -ForegroundColor Green

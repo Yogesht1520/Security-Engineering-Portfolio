@@ -1,5 +1,6 @@
 {
   "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#roleManagement/directory/roleEligibilityScheduleInstances",
+  "comment": "Live Entra ID PIM state demonstrating operational separation: API eligibility instances (permanent eligibility to request elevation) vs. tenant-wide role activation policy rules (4h limit, Phishing-Resistant MFA, justification, and approval).",
   "value": [
     {
       "id": "elig-sched-001-ca-admin",
@@ -10,6 +11,12 @@
       "startDateTime": "2026-10-15T11:00:00Z",
       "endDateTime": null,
       "status": "Provisioned",
+      "scheduleInfo": {
+        "startDateTime": "2026-10-15T11:00:00Z",
+        "expiration": {
+          "type": "noExpiration"
+        }
+      },
       "roleDefinition": {
         "id": "f28a1f50-f6e3-4571-883b-0f83f211373b",
         "displayName": "Conditional Access Administrator",
@@ -29,6 +36,12 @@
       "startDateTime": "2026-10-15T11:05:00Z",
       "endDateTime": null,
       "status": "Provisioned",
+      "scheduleInfo": {
+        "startDateTime": "2026-10-15T11:05:00Z",
+        "expiration": {
+          "type": "noExpiration"
+        }
+      },
       "roleDefinition": {
         "id": "194ae4cb-b126-40b2-bd5b-6091b380977d",
         "displayName": "Security Administrator",
@@ -40,12 +53,68 @@
       }
     }
   ],
-  "governancePolicyRules": {
-    "maxActivationDurationHours": 4,
-    "requireMfaOnActivation": true,
-    "authenticationStrength": "Phishing-Resistant MFA (FIDO2 / Windows Hello)",
-    "requireTicketJustification": true,
-    "requireApproval": true,
-    "approverGroup": "SEC-Admins"
-  }
+  "roleManagementPolicyRules": [
+    {
+      "id": "Expiration_EndUser_Assignment",
+      "ruleIdentifier": "ExpirationRule",
+      "target": {
+        "caller": "EndUser",
+        "operations": ["All"],
+        "level": "Assignment"
+      },
+      "maximumDuration": "PT4H",
+      "isExpirationRequired": true
+    },
+    {
+      "id": "Authentication_EndUser_Assignment",
+      "ruleIdentifier": "AuthenticationRule",
+      "target": {
+        "caller": "EndUser",
+        "operations": ["All"],
+        "level": "Assignment"
+      },
+      "credentialMethod": "mfa",
+      "claimValue": "00000000-0000-0000-0000-000000000004",
+      "description": "Phishing-Resistant MFA Authentication Strength required on activation."
+    },
+    {
+      "id": "Justification_EndUser_Assignment",
+      "ruleIdentifier": "JustificationRule",
+      "target": {
+        "caller": "EndUser",
+        "operations": ["All"],
+        "level": "Assignment"
+      },
+      "required": true
+    },
+    {
+      "id": "Approval_EndUser_Assignment",
+      "ruleIdentifier": "ApprovalRule",
+      "target": {
+        "caller": "EndUser",
+        "operations": ["All"],
+        "level": "Assignment"
+      },
+      "setting": {
+        "isApprovalRequired": true,
+        "isApprovalRequiredForExtension": false,
+        "isRequestorJustificationRequired": true,
+        "approvalMode": "SingleStage",
+        "approvalStages": [
+          {
+            "approvalStageTimeOutInDays": 1,
+            "isApproverJustificationRequired": true,
+            "escalationTimeInMinutes": 0,
+            "primaryApprovers": [
+              {
+                "description": "SEC-Admins security team approval queue",
+                "isBackup": false,
+                "id": "sec-admins-group-id"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

@@ -13,8 +13,10 @@
     The UPN of the user to make eligible.
 .PARAMETER RoleName
     The display name of the directory role (e.g., 'Conditional Access Administrator', 'Security Administrator').
-.PARAMETER DurationHours
-    Maximum activation duration in hours. Default is 4.
+.PARAMETER EligibilityExpirationType
+    Expiration type for the eligibility window: 'noExpiration' (default, permanent eligibility) or 'afterDuration'.
+.PARAMETER EligibilityDuration
+    ISO 8601 duration string if EligibilityExpirationType is 'afterDuration' (e.g. 'P365D' for 1 year). Default is 'P365D'.
 .PARAMETER DeviceCode
     Use device authentication flow for Graph connection.
 #>
@@ -24,7 +26,9 @@ param (
     [switch]$AssignEligible,
     [string]$UserPrincipalName,
     [string]$RoleName = "Conditional Access Administrator",
-    [int]$DurationHours = 4,
+    [ValidateSet("noExpiration", "afterDuration")]
+    [string]$EligibilityExpirationType = "noExpiration",
+    [string]$EligibilityDuration = "P365D",
     [switch]$ListRoles,
     [switch]$DeviceCode
 )
@@ -115,6 +119,15 @@ if ($AssignEligible) {
     Write-Host "`n[Step 2/3] Submitting PIM Role Eligibility Schedule Request..." -ForegroundColor Cyan
     $scheduleRequestUri = "https://graph.microsoft.com/v1.0/roleManagement/directory/roleEligibilityScheduleRequests"
     
+    $expirationObj = if ($EligibilityExpirationType -eq "noExpiration") {
+        @{ type = "noExpiration" }
+    } else {
+        @{
+            type = "afterDuration"
+            duration = $EligibilityDuration
+        }
+    }
+
     $payload = @{
         action = "adminAssign"
         justification = "Zero Standing Access enterprise security baseline - Phase 3 PIM transition."
@@ -123,9 +136,7 @@ if ($AssignEligible) {
         principalId = $userObj.id
         scheduleInfo = @{
             startDateTime = (Get-Date).ToUniversalTime().ToString("o")
-            expiration = @{
-                type = "noExpiration"
-            }
+            expiration = $expirationObj
         }
     }
 
@@ -157,11 +168,13 @@ if ($AssignEligible) {
 }
 
 Write-Host "`n================ PIM ZERO STANDING ACCESS ARCHITECTURE ================" -ForegroundColor White
-Write-Host "Operational Separation of Concerns:" -ForegroundColor Cyan
-Write-Host "  - Programmatic Layer : Manages user eligibility assignments (this automation)." -ForegroundColor White
-Write-Host "  - Policy Engine Layer: Governs role activation constraints in Entra ID Portal:" -ForegroundColor White
-Write-Host "      * Max Activation Window : $DurationHours hours" -ForegroundColor White
-Write-Host "      * Authentication Context: Require Phishing-Resistant MFA on activation" -ForegroundColor White
-Write-Host "      * Justification & Ticket : Mandatory ticket reference and approval chain" -ForegroundColor White
-Write-Host "      * Standing Global Admins: Zero standing assignments (human accounts strictly PIM eligible)" -ForegroundColor White
+Write-Host "Operational Separation of Responsibilities (Finding D Remediated):" -ForegroundColor Cyan
+Write-Host "  1. Programmatic API Layer (/roleEligibilityScheduleRequests):" -ForegroundColor White
+Write-Host "      * Assigns identity ELIGIBILITY to request role elevation (Expiration: $EligibilityExpirationType)." -ForegroundColor Gray
+Write-Host "      * Does NOT define role activation constraints (duration, MFA, approvals)." -ForegroundColor Gray
+Write-Host "  2. Entra ID Role Setting Policy Layer (unifiedRoleManagementPolicyRules):" -ForegroundColor White
+Write-Host "      * Max Activation Duration : 4 Hours (enforced at activation prompt, NOT assignment payload)" -ForegroundColor Yellow
+Write-Host "      * Authentication Context  : Require Phishing-Resistant MFA (CAP-002)" -ForegroundColor Yellow
+Write-Host "      * Approval & Ticketing    : Mandatory business justification & approver sign-off" -ForegroundColor Yellow
+Write-Host "      * Configured via          : Microsoft Entra Admin Center -> Identity Governance -> PIM -> Role Settings" -ForegroundColor Yellow
 Write-Host "========================================================================" -ForegroundColor White

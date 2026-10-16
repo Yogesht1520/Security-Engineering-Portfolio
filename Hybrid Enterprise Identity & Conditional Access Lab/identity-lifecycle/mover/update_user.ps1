@@ -17,6 +17,8 @@
     Target corporate job title.
 .PARAMETER GroupNameOverride
     Optional manual override for new security group.
+.PARAMETER TransactionPolicy
+    Failure policy for mover transitions: 'FailClosedOnPrivilegePurge' (default, blocks new group assignment if legacy group removal fails) or 'Permissive'.
 .PARAMETER DeviceCode
     Use device authentication flow for Graph connection.
 .PARAMETER WhatIf
@@ -35,6 +37,10 @@ param (
     [string]$NewJobTitle,
 
     [string]$GroupNameOverride,
+
+    [Parameter(Mandatory=$false)]
+    [ValidateSet("FailClosedOnPrivilegePurge", "Permissive")]
+    [string]$TransactionPolicy = "FailClosedOnPrivilegePurge",
 
     [switch]$DeviceCode
 )
@@ -170,40 +176,51 @@ try {
 }
 
 # Add to New Target Group (if not already member)
-$isAlreadyMember = $memberOfResp.value | Where-Object { $_.displayName -eq $targetGroup }
-if (-not $isAlreadyMember) {
-    Write-Host "  [Granting Target Group] Adding user to '$targetGroup'..." -ForegroundColor Cyan
-    $addMemberUri = "https://graph.microsoft.com/v1.0/groups/$targetGroupId/members/`$ref"
-    $addMemberPayload = @{
-        "@odata.id" = "https://graph.microsoft.com/v1.0/directoryObjects/$($user.id)"
-    } | ConvertTo-Json
-    try {
-        Invoke-MgGraphRequest -Method POST -Uri $addMemberUri -Body $addMemberPayload -ContentType "application/json" -ErrorAction Stop
-        Write-Host "  -> Added to new group: $targetGroup" -ForegroundColor Green
-        $stageResults["Stage3_TargetGroupAssignment"] = "Completed"
-    } catch {
-        Write-Warning "Failed adding user to target group $targetGroup : $($_.Exception.Message)"
-        $stageResults["Stage3_TargetGroupAssignment"] = "Failed: $($_.Exception.Message)"
-    }
+if ($TransactionPolicy -eq "FailClosedOnPrivilegePurge" -and ($stageResults["Stage2_LegacyPrivilegePurge"] -ne "Completed")) {
+    Write-Host "  [PRIVILEGE CREEP SAFEGUARD] Aborting target group assignment because Stage 2 (Legacy Privilege Purge) did not complete cleanly." -ForegroundColor Red
+    Write-Host "  Prevents user from retaining both legacy and target permissions concurrently." -ForegroundColor Red
+    $stageResults["Stage3_TargetGroupAssignment"] = "Blocked: PrivilegePurgeIncomplete"
 } else {
-    Write-Host "  -> User already member of target group: $targetGroup" -ForegroundColor Gray
-    $stageResults["Stage3_TargetGroupAssignment"] = "Completed"
+    $isAlreadyMember = $memberOfResp.value | Where-Object { $_.displayName -eq $targetGroup }
+    if (-not $isAlreadyMember) {
+        Write-Host "  [Granting Target Group] Adding user to '$targetGroup'..." -ForegroundColor Cyan
+        $addMemberUri = "https://graph.microsoft.com/v1.0/groups/$targetGroupId/members/`$ref"
+        $addMemberPayload = @{
+            "@odata.id" = "https://graph.microsoft.com/v1.0/directoryObjects/$($user.id)"
+        } | ConvertTo-Json
+        try {
+            Invoke-MgGraphRequest -Method POST -Uri $addMemberUri -Body $addMemberPayload -ContentType "application/json" -ErrorAction Stop
+            Write-Host "  -> Added to new group: $targetGroup" -ForegroundColor Green
+            $stageResults["Stage3_TargetGroupAssignment"] = "Completed"
+        } catch {
+            Write-Warning "Failed adding user to target group $targetGroup : $($_.Exception.Message)"
+            $stageResults["Stage3_TargetGroupAssignment"] = "Failed: $($_.Exception.Message)"
+        }
+    } else {
+        Write-Host "  -> User already member of target group: $targetGroup" -ForegroundColor Gray
+        $stageResults["Stage3_TargetGroupAssignment"] = "Completed"
+    }
 }
 
 # 6. Update User Profile Attributes
 Write-Host "`n[Step 4/5] Updating user directory profile..." -ForegroundColor Cyan
-$updatePayload = @{
-    department = $NewDepartment
-    jobTitle   = $NewJobTitle
-} | ConvertTo-Json
+if ($stageResults["Stage3_TargetGroupAssignment"] -like "Blocked*") {
+    Write-Host "  [Profile Update Suspended] User profile change skipped until group transition is cleanly reconciled." -ForegroundColor Yellow
+    $stageResults["Stage4_ProfileUpdate"] = "Blocked: PrerequisiteFailed"
+} else {
+    $updatePayload = @{
+        department = $NewDepartment
+        jobTitle   = $NewJobTitle
+    } | ConvertTo-Json
 
-try {
-    Invoke-MgGraphRequest -Method PATCH -Uri $userUri -Body $updatePayload -ContentType "application/json" -ErrorAction Stop
-    Write-Host "  -> Profile updated: Department='$NewDepartment', JobTitle='$NewJobTitle'" -ForegroundColor Green
-    $stageResults["Stage4_ProfileUpdate"] = "Completed"
-} catch {
-    Write-Warning "Failed updating profile attributes: $($_.Exception.Message)"
-    $stageResults["Stage4_ProfileUpdate"] = "Failed: $($_.Exception.Message)"
+    try {
+        Invoke-MgGraphRequest -Method PATCH -Uri $userUri -Body $updatePayload -ContentType "application/json" -ErrorAction Stop
+        Write-Host "  -> Profile updated: Department='$NewDepartment', JobTitle='$NewJobTitle'" -ForegroundColor Green
+        $stageResults["Stage4_ProfileUpdate"] = "Completed"
+    } catch {
+        Write-Warning "Failed updating profile attributes: $($_.Exception.Message)"
+        $stageResults["Stage4_ProfileUpdate"] = "Failed: $($_.Exception.Message)"
+    }
 }
 
 # 7. Invalidate Active Sessions (Mitigate Stolen PRT & Stale Group Token Claims)

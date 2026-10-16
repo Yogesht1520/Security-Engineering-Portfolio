@@ -211,28 +211,105 @@ function Restore-Snapshot {
     Write-Host "`n[ROLLBACK INITIATED] Restoring Entra ID CA state from Verified Snapshot: $TargetSnapshotId..." -ForegroundColor Yellow
     $policyFiles = Get-ChildItem -Path $sourceDir -Filter "*.json" | Where-Object { $_.Name -ne "manifest.json" }
 
+    $snapshotPolicies = @()
     foreach ($file in $policyFiles) {
-        $policy = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
+        $snapshotPolicies += Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
+    }
+    $snapshotPolicyIds = $snapshotPolicies | ForEach-Object { $_.id }
+
+    # Query current live policies to identify any newly created policies that must be removed
+    Write-Host "Querying current live tenant policies..." -ForegroundColor Cyan
+    $livePolicies = @()
+    $uri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies"
+    do {
+        $response = Invoke-MgGraphRequest -Method GET -Uri $uri -OutputType PSObject
+        if ($response.value) { $livePolicies += $response.value }
+        $uri = $response.'@odata.nextLink'
+    } while ($uri)
+
+    # 1. Orphan Cleanup: Delete policies created during failed deployment that were not in snapshot
+    $orphanPolicies = $livePolicies | Where-Object { 
+        $_.id -notin $snapshotPolicyIds -and ($_.displayName -match "^(CAP-[0-9]{3})" -or $_.displayName -match "Zero Trust")
+    }
+    if ($orphanPolicies -and $orphanPolicies.Count -gt 0) {
+        Write-Host "`n[ORPHAN CLEANUP] Detected $($orphanPolicies.Count) policy(ies) created after snapshot. Deleting to restore exact baseline..." -ForegroundColor Yellow
+        foreach ($orphan in $orphanPolicies) {
+            Write-Host "  [Deleting] $($orphan.displayName) (ID: $($orphan.id))..." -ForegroundColor DarkYellow
+            try {
+                $delUri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies/$($orphan.id)"
+                Invoke-MgGraphRequest -Method DELETE -Uri $delUri -ErrorAction Stop
+                Write-Host "  -> Successfully deleted orphan policy." -ForegroundColor Green
+            } catch {
+                Write-Error "  -> Failed to delete orphan policy $($orphan.displayName): $($_.Exception.Message)"
+            }
+        }
+    }
+
+    # 2. Restore/Reconcile all snapshot policies
+    Write-Host "`nRestoring snapshot policy states..." -ForegroundColor Cyan
+    foreach ($policy in $snapshotPolicies) {
         $policyId = $policy.id
         $displayName = $policy.displayName
 
-        # Strip read-only properties before patching
+        # Strip read-only properties before payload submission
         $body = $policy | ConvertTo-Json -Depth 10 | ConvertFrom-Json
         $body.PSObject.Properties.Remove("id")
         $body.PSObject.Properties.Remove("createdDateTime")
         $body.PSObject.Properties.Remove("modifiedDateTime")
         $jsonPayload = $body | ConvertTo-Json -Depth 10
 
-        Write-Host "  Restoring '$displayName' (ID: $policyId)..." -ForegroundColor White
-        try {
-            $uri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies/$policyId"
-            Invoke-MgGraphRequest -Method PATCH -Uri $uri -Body $jsonPayload -ContentType "application/json" | Out-Null
-            Write-Host "  -> Successfully restored." -ForegroundColor Green
-        } catch {
-            Write-Error "  -> Failed to restore $displayName : $($_.Exception.Message)"
+        $existingLive = $livePolicies | Where-Object { $_.id -eq $policyId -or $_.displayName -eq $displayName } | Select-Object -First 1
+
+        if ($existingLive) {
+            Write-Host "  [Restoring Existing] '$displayName' (ID: $($existingLive.id))..." -ForegroundColor White
+            try {
+                $patchUri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies/$($existingLive.id)"
+                Invoke-MgGraphRequest -Method PATCH -Uri $patchUri -Body $jsonPayload -ContentType "application/json" -ErrorAction Stop | Out-Null
+                Write-Host "  -> Successfully restored." -ForegroundColor Green
+            } catch {
+                Write-Error "  -> Failed to restore $displayName : $($_.Exception.Message)"
+            }
+        } else {
+            Write-Host "  [Re-creating Missing] '$displayName'..." -ForegroundColor Cyan
+            try {
+                $postUri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies"
+                Invoke-MgGraphRequest -Method POST -Uri $postUri -Body $jsonPayload -ContentType "application/json" -ErrorAction Stop | Out-Null
+                Write-Host "  -> Successfully re-created." -ForegroundColor Green
+            } catch {
+                Write-Error "  -> Failed to re-create $displayName : $($_.Exception.Message)"
+            }
         }
     }
-    Write-Host "`nRollback complete. Policies restored to state at $TargetSnapshotId." -ForegroundColor Green
+
+    # 3. Post-Rollback Live Graph Verification Gate
+    Write-Host "`n[POST-ROLLBACK VERIFICATION] Querying Graph to verify live tenant state against snapshot..." -ForegroundColor Cyan
+    $verifyPolicies = @()
+    $verifyUri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies"
+    do {
+        $resp = Invoke-MgGraphRequest -Method GET -Uri $verifyUri -OutputType PSObject
+        if ($resp.value) { $verifyPolicies += $resp.value }
+        $verifyUri = $resp.'@odata.nextLink'
+    } while ($verifyUri)
+
+    $allVerified = $true
+    foreach ($sp in $snapshotPolicies) {
+        $match = $verifyPolicies | Where-Object { $_.displayName -eq $sp.displayName }
+        if (-not $match) {
+            Write-Error "  [VERIFY FAIL] Restored policy '$($sp.displayName)' not found in live tenant!"
+            $allVerified = $false
+        } elseif ($match.state -ne $sp.state) {
+            Write-Warning "  [VERIFY DRIFT] Policy '$($sp.displayName)' state mismatch! Expected: $($sp.state), Actual: $($match.state)"
+            $allVerified = $false
+        } else {
+            Write-Host "  [VERIFY PASS] '$($sp.displayName)' active state confirmed ($($match.state))." -ForegroundColor Green
+        }
+    }
+
+    if ($allVerified) {
+        Write-Host "`n[ROLLBACK SUCCESS] All $($snapshotPolicies.Count) policy(ies) cryptographically and operationally reconciled with snapshot $TargetSnapshotId." -ForegroundColor Green
+    } else {
+        Write-Warning "`n[ROLLBACK WARNING] Discrepancies detected during post-rollback verification. Check above logs."
+    }
 }
 
 switch ($Action) {

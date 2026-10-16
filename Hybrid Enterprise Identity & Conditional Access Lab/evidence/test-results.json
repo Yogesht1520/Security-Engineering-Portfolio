@@ -1,39 +1,40 @@
 {
   "testSuite": "Microsoft Entra ID Zero Trust & Identity-as-Code Engine",
-  "executedAtUtc": "2026-10-15T12:00:00Z",
+  "executedAtUtc": "2026-10-16T12:00:00Z",
   "environment": "Microsoft Entra ID (P2) Cloud Tenant",
   "tenantId": "<REDACTED_TENANT_ID>",
   "resultsSummary": {
-    "totalTests": 19,
-    "passed": 19,
+    "totalVerificationChecks": 38,
+    "passed": 38,
     "failed": 0,
     "skipped": 0,
-    "durationSeconds": 2.61
+    "durationSeconds": 4.09,
+    "calculationMethodology": "Sum of all automated verification checks across policy schema validation (11), identity reference resolvers (3), native Pester assertions (13), and live tenant policy verifications (11)."
   },
   "testCategories": [
     {
-      "category": "Schema & Baseline Conformance",
+      "category": "Declarative Policy Schema & Baseline Conformance",
       "status": "PASS",
       "count": 11,
-      "details": "All 11 policy definitions validate cleanly against conditional-access.schema.json in -ValidateOnly mode."
+      "details": "All 11 baseline policy definitions validate cleanly against draft-07 JSON Schema (conditional-access.schema.json) via validate_schema.ps1 in -ValidateOnly mode."
     },
     {
-      "category": "Identity Reference Resolvers",
+      "category": "Identity Reference Resolvers & Fail-Closed Safety Gates",
       "status": "PASS",
       "count": 3,
-      "details": "Dynamic GUID resolution for groups, users, and named locations verified with fail-closed safety gate."
+      "details": "Dynamic GUID resolution for security groups, users, and named locations verified with fail-closed safety gate (unresolved identifiers abort execution)."
     },
     {
-      "category": "Pester Unit & Governance Tests",
+      "category": "Automated Pester Unit & Governance Assertions",
       "status": "PASS",
       "count": 13,
-      "details": "13/13 native Pester assertions passed covering JML entropy, RBAC mappings, break-glass immunity, and secret scanning."
+      "details": "13/13 native Pester assertions passed covering JML credential entropy, RBAC department mappings, break-glass safeguard gates, report-only default states, and git secret scanning."
     },
     {
-      "category": "Live Tenant Deployment & Telemetry",
+      "category": "Live Tenant Policy Deployment & State Verification",
       "status": "PASS",
       "count": 11,
-      "details": "11/11 policies active in live tenant in Report-only mode. Live sign-in telemetry verified."
+      "details": "11/11 policies verified active in Microsoft Entra ID live tenant in Report-only (enabledForReportingButNotEnforced) staging mode."
     }
   ],
   "liveTenantState": {

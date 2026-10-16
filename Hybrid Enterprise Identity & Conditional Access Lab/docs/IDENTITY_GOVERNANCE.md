@@ -120,11 +120,27 @@ Automates periodic access attestation for security groups (`SEC-Admins`, `SEC-Br
 - Verifies that only designated break-glass accounts exist in `SEC-BreakGlass-Exclusion`.
 
 ### 3. Programmatic PIM Assignment Engine (`configure_pim.ps1`)
-Assigns PIM Eligible roles programmatically via Microsoft Graph:
 
+In Microsoft Entra ID PIM, role governance is architecturally divided into two distinct planes:
+1. **API Eligibility Plane (`/roleEligibilityScheduleRequests`)**: Governs *who* is eligible to elevate and *how long* they retain eligibility (e.g. permanent `noExpiration` or bounded duration `P365D`).
+2. **Directory Role Setting Policy Plane (`unifiedRoleManagementPolicyRules`)**: Governs *activation constraints* tenant-wide when a user requests elevation (max 4-hour window, phishing-resistant MFA, ticket justification, and approval workflows). These constraints cannot be weakened by programmatic assignment payloads.
+
+**Assigning PIM Eligibility via Graph Automation:**
 ```powershell
-.\scripts\governance\configure_pim.ps1 -AssignEligible -UserPrincipalName "admin.user@company.com" -RoleName "Conditional Access Administrator" -DurationHours 4 -DeviceCode
+# Assign permanent eligibility (activation duration and controls governed by role policy)
+.\scripts\governance\configure_pim.ps1 -AssignEligible -UserPrincipalName "adm-alex@<LAB_DOMAIN>" -RoleName "Conditional Access Administrator" -EligibilityExpirationType "noExpiration" -DeviceCode
+
+# Or assign 1-year bounded eligibility
+.\scripts\governance\configure_pim.ps1 -AssignEligible -UserPrincipalName "adm-alex@<LAB_DOMAIN>" -RoleName "Security Administrator" -EligibilityExpirationType "afterDuration" -EligibilityDuration "P365D" -DeviceCode
 ```
+
+**Verifying Role Activation Settings in Microsoft Entra Admin Center:**
+- Navigate to: **Microsoft Entra ID** &rarr; **Identity Governance** &rarr; **Privileged Identity Management** &rarr; **Entra roles** &rarr; **Settings**.
+- Select target role (`Conditional Access Administrator` or `Security Administrator`).
+- Confirm **Activation maximum duration (hours)** = `4`.
+- Confirm **On activation, require Azure MFA / Authentication Strength** = `Phishing-Resistant MFA`.
+- Confirm **Require justification on activation** = `Yes`.
+- Confirm **Require ticket information on activation** = `Yes`.
 
 ---
 
