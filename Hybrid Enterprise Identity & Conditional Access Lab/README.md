@@ -86,21 +86,21 @@ flowchart TB
     end
 
     %% Connectors
-    Connect -.->|Password Hash Sync (PHS)| Users
+    Connect -.->|"Password Hash Sync"| Users
     Users --> Signals
     Signals --> PolicyEngine
 
-    PolicyEngine -->|Foreign Geo / Legacy Auth / Non-PAW| GrantBlock
-    PolicyEngine -->|Privileged Role / High Risk / Workforce| GrantMFA
-    PolicyEngine -->|Privileged User Session| SessionLimits
+    PolicyEngine -->|"Foreign Geo / Legacy Auth / Non-PAW"| GrantBlock
+    PolicyEngine -->|"Privileged Role / High Risk / Workforce"| GrantMFA
+    PolicyEngine -->|"Privileged User Session"| SessionLimits
 
-    GrantBlock -->|Denied Pre-Auth| SignInLogs
-    GrantMFA -->|Challenge Satisfied| TargetApps
+    GrantBlock -->|"Denied Pre-Auth"| SignInLogs
+    GrantMFA -->|"Challenge Satisfied"| TargetApps
     SessionLimits --> TargetApps
 
     SignInLogs --> Sentinel
     AuditLogs --> Sentinel
-    BreakGlass -.->|Any Activity (CRITICAL Alert)| Sentinel
+    BreakGlass -.->|"Any Activity - CRITICAL Alert"| Sentinel
 ```
 
 ---

@@ -60,7 +60,7 @@ flowchart TB
     end
 
     %% Conceptual link
-    Connect -.->|Password Hash Sync (PHS)| Users
+    Connect -.->|"Password Hash Sync"| Users
 
     %% Signal evaluation flow
     Users --> Groups
@@ -68,17 +68,17 @@ flowchart TB
     Signals --> PolicyEngine
 
     %% Policy Decisions
-    PolicyEngine -->|Foreign IP / Legacy Protocol| GrantBlock
-    PolicyEngine -->|Privileged Role / High Risk| GrantMFA
-    PolicyEngine -->|Privileged User Session| SessionControl
+    PolicyEngine -->|"Foreign IP / Legacy Protocol"| GrantBlock
+    PolicyEngine -->|"Privileged Role / High Risk"| GrantMFA
+    PolicyEngine -->|"Privileged User Session"| SessionControl
 
     %% Outcomes
-    GrantBlock -->|Pre-Auth Termination| SignInLogs
-    GrantMFA -->|Challenge Satisfied| TargetApps
+    GrantBlock -->|"Pre-Auth Termination"| SignInLogs
+    GrantMFA -->|"Challenge Satisfied"| TargetApps
     SessionControl --> TargetApps
 
     %% Telemetry Stream
     SignInLogs --> Sentinel
     AuditLogs --> Sentinel
-    BreakGlass -.->|Any Sign-in Trigger| Sentinel
+    BreakGlass -.->|"Any Sign-in Trigger"| Sentinel
 ```
