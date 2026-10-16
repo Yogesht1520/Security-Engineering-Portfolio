@@ -1,85 +1,161 @@
-{
-  "testSuite": "Microsoft Entra ID Zero Trust & Identity-as-Code Engine",
-  "executedAtUtc": "2026-10-16T18:30:00Z",
-  "environment": "Microsoft Entra ID (P2) Cloud Tenant & CI/CD Pipeline",
-  "tenantId": "<REDACTED_TENANT_ID>",
-  "resultsSummary": {
-    "totalVerificationChecks": 56,
-    "passed": 56,
-    "failed": 0,
-    "skipped": 0,
-    "durationSeconds": 5.76,
-    "calculationMethodology": "Sum of all automated verification checks across 7 test suites: Schema validation (11), Snapshot integrity (9), Policy drift engine (5), Deployment failure & rollback recovery (6), Lifecycle engine (9), Governance pre-flight (3), and Native Pester matrix (13)."
-  },
-  "testSuites": [
-    {
-      "suiteName": "Declarative Policy Schema & Baseline Conformance",
-      "script": "scripts/deployment/validate_schema.ps1",
-      "status": "PASS",
-      "count": 11,
-      "details": "All 11 baseline policy definitions validate cleanly against Draft-07 JSON Schema (conditional-access.schema.json) with strict type checking, regex patterns, and required property constraints."
-    },
-    {
-      "suiteName": "Snapshot Cryptographic Integrity & Anti-Tamper Engine",
-      "script": "tests/deployment/test_snapshot_integrity.ps1",
-      "status": "PASS",
-      "count": 9,
-      "details": "9 security test assertions: Valid sealed snapshot, modified policy payload, tampered manifest, tampered checksums, unlisted extraneous file injection, missing file, duplicate policy ID, corrupt JSON, and path traversal rejection."
-    },
-    {
-      "suiteName": "Policy Drift & Tri-State Comparison Engine",
-      "script": "tests/deployment/test_compare_policies.ps1",
-      "status": "PASS",
-      "count": 5,
-      "details": "5 drift detection tests: Identity equivalence (in-sync), state drift, grant control drift, condition application drift, and new policy creation planning."
-    },
-    {
-      "suiteName": "Deployment Partial Failure & In-Flight Atomic Rollback",
-      "script": "tests/deployment/test_deployment_failure_recovery.ps1",
-      "status": "PASS",
-      "count": 6,
-      "details": "6 transaction assertions: 5-policy batch deployment, simulated Graph API 400 failure on policy 4, fail-closed transaction halting, automated rollback execution, post-rollback live state reconciliation, and audit receipt generation."
-    },
-    {
-      "suiteName": "JML Identity Lifecycle State Machine Engine",
-      "script": "tests/lifecycle/test_lifecycle_engine.ps1",
-      "status": "PASS",
-      "count": 9,
-      "details": "9 unit tests: 24-character cryptographic password entropy, department-to-RBAC mappings, emergency break-glass account protection safeguard, and AST parser syntax checks across all lifecycle scripts."
-    },
-    {
-      "suiteName": "Governance & PIM Pre-Flight Syntax & Parameter Engine",
-      "script": "tests/governance/test_governance_scripts.ps1",
-      "status": "PASS",
-      "count": 3,
-      "details": "3 pre-flight tests verifying AST syntax and parameter definitions for access_review.ps1, configure_pim.ps1, and privileged_role_audit.ps1."
-    },
-    {
-      "suiteName": "Native Pester Assertion Matrix",
-      "script": "tests/identity_suite.Tests.ps1",
-      "status": "PASS",
-      "count": 13,
-      "details": "13 Pester assertions covering credential entropy, RBAC department routing, break-glass safeguard gates, policy file inventories, schema compliance, report-only default states, break-glass exclusion checks, git hygiene, and secret scanning."
-    }
-  ],
-  "liveTenantState": {
-    "deployedPolicies": [
-      { "id": "a475eb97-059f-4c95-a81f-6826a1c8d8d7", "displayName": "CAP-001: Block Sign-in Outside Allowed Regions", "state": "enabledForReportingButNotEnforced" },
-      { "id": "3b363e8e-f8bf-40fc-8852-ae4820aa713a", "displayName": "CAP-002: Require Phishing-Resistant MFA for Privileged Roles", "state": "enabledForReportingButNotEnforced" },
-      { "id": "73f8d8c1-3abc-4f40-b97f-a6883a9bcfe2", "displayName": "CAP-003: Risk-Based Step-Up MFA", "state": "enabledForReportingButNotEnforced" },
-      { "id": "3124fd33-5269-4b16-a340-bd1b7a3e561d", "displayName": "CAP-004: Block Legacy Authentication Protocols", "state": "enabledForReportingButNotEnforced" },
-      { "id": "79f73724-c871-4f4b-9301-3deb4585d6aa", "displayName": "CAP-005: Privileged Session Reauthentication Policy", "state": "enabledForReportingButNotEnforced" },
-      { "id": "b182c414-99f8-4820-8af4-2a1b1bce8a82", "displayName": "CAP-006: Require Compliant or Hybrid Joined Device", "state": "enabledForReportingButNotEnforced" },
-      { "id": "845da1fa-4b1c-4ac6-b71a-7324b5df4fbd", "displayName": "CAP-007: Require MFA for All Workforce Users", "state": "enabledForReportingButNotEnforced" },
-      { "id": "5d6a53ce-13bd-46c0-b69a-b26d228c095f", "displayName": "CAP-008: Securing Security Information Registration", "state": "enabledForReportingButNotEnforced" },
-      { "id": "7e21c517-2279-4124-a482-fdea891889f5", "displayName": "CAP-009: Restrict Privileged Access to Designated Devices", "state": "enabledForReportingButNotEnforced" },
-      { "id": "39bb3eb9-888d-4b8d-855f-44ebf09475ce", "displayName": "CAP-010: Apply Guest and External User Access Controls", "state": "enabledForReportingButNotEnforced" },
-      { "id": "11d66207-016e-445b-bac4-9b46b1a08eb9", "displayName": "CAP-012: High User Risk Remediation and Password Change", "state": "enabledForReportingButNotEnforced" }
-    ],
-    "governancePIMState": {
-      "standingWorkforcePrivileges": 0,
-      "breakGlassEmergencyAccounts": 2,
-      "eligiblePIMAdmins": 3
-    }
-  }
+﻿{
+    "testSuite":  "Microsoft Entra ID Zero Trust \u0026 Identity-as-Code Engine",
+    "executedAtUtc":  "2026-10-16T20:00:38Z",
+    "gitCommitSha":  "c7dc59645aad8c794c400fc3da06bf4d973cde34",
+    "gitHubActionsRunId":  "local-dev-execution",
+    "gitHubActionsRunUrl":  "local://workstation/test-execution",
+    "environment":  "Microsoft Entra ID (P2) Staging/Lab Tenant \u0026 GitHub Actions CI/CD",
+    "tenantId":  "\u003cREDACTED_TENANT_ID\u003e",
+    "resultsSummary":  {
+                           "totalVerificationChecks":  58,
+                           "passed":  58,
+                           "failed":  0,
+                           "skipped":  0,
+                           "durationSeconds":  13.54,
+                           "calculationMethodology":  "Sum of all automated verification checks across 9 test suites: Schema validation (11), Group resolution (1), User resolution (1), Drift engine (5), Snapshot integrity (9), Deployment failure \u0026 rollback recovery (6), Lifecycle engine (9), Governance pre-flight (3), and Native Pester matrix (13).",
+                           "testTiersBreakdown":  {
+                                                      "localUnitTestsChecks":  38,
+                                                      "mockedGraphApiIntegrationChecks":  20,
+                                                      "liveTenantReadOnlyVerificationChecks":  11
+                                                  }
+                       },
+    "testSuites":  [
+                       {
+                           "suiteName":  "Declarative Policy Schema \u0026 Baseline Conformance",
+                           "category":  "Local Unit Test",
+                           "script":  "tests/schema/test_policy_schema.ps1",
+                           "status":  "PASS",
+                           "count":  11,
+                           "details":  "All 11 baseline policy definitions validate cleanly against Draft-07 JSON Schema (conditional-access.schema.json) with strict type checking, regex patterns, and required property constraints."
+                       },
+                       {
+                           "suiteName":  "Group Reference Resolution Gate",
+                           "category":  "Local Unit Test",
+                           "script":  "tests/identity/test_group_resolution.ps1",
+                           "status":  "PASS",
+                           "count":  1,
+                           "details":  "Resolves declarative security group display names to tenant object IDs and validates group existence."
+                       },
+                       {
+                           "suiteName":  "User Reference Resolution Gate",
+                           "category":  "Local Unit Test",
+                           "script":  "tests/identity/test_user_resolution.ps1",
+                           "status":  "PASS",
+                           "count":  1,
+                           "details":  "Resolves break-glass user identities and emergency exclusion references to directory object IDs."
+                       },
+                       {
+                           "suiteName":  "Declarative Policy Drift Detection Engine",
+                           "category":  "Mocked Graph API Integration Test",
+                           "script":  "tests/deployment/test_compare_policies.ps1",
+                           "status":  "PASS",
+                           "count":  5,
+                           "details":  "5 drift detection tests: Identity equivalence (in-sync), state drift, grant control drift, condition application drift, and new policy creation planning."
+                       },
+                       {
+                           "suiteName":  "Snapshot Cryptographic Integrity \u0026 Anti-Tamper Engine",
+                           "category":  "Mocked Graph API Integration Test",
+                           "script":  "tests/deployment/test_snapshot_integrity.ps1",
+                           "status":  "PASS",
+                           "count":  9,
+                           "details":  "9 security test assertions: Valid sealed snapshot, modified policy payload, tampered manifest, tampered checksums, unlisted extraneous file injection, missing file, duplicate policy ID, corrupt JSON, and path traversal rejection."
+                       },
+                       {
+                           "suiteName":  "Deployment Failure \u0026 In-Flight Atomic Rollback",
+                           "category":  "Mocked Graph API Integration Test",
+                           "script":  "tests/deployment/test_deployment_failure_recovery.ps1",
+                           "status":  "PASS",
+                           "count":  6,
+                           "details":  "6 transaction assertions: 5-policy batch deployment, simulated Graph API 400 failure on policy 4, fail-closed transaction halting, automated rollback execution, post-rollback live state reconciliation, and ambiguous write timeout recovery."
+                       },
+                       {
+                           "suiteName":  "JML Identity Lifecycle State Machine Engine",
+                           "category":  "Local Unit Test",
+                           "script":  "tests/lifecycle/test_lifecycle_engine.ps1",
+                           "status":  "PASS",
+                           "count":  9,
+                           "details":  "9 unit tests: 24-character cryptographic password entropy, department-to-RBAC mappings, emergency break-glass account protection safeguard, and AST parser syntax checks across all lifecycle scripts."
+                       },
+                       {
+                           "suiteName":  "Governance \u0026 PIM Pre-Flight Syntax \u0026 Parameter Engine",
+                           "category":  "Local Unit Test",
+                           "script":  "tests/governance/test_governance_scripts.ps1",
+                           "status":  "PASS",
+                           "count":  3,
+                           "details":  "3 pre-flight tests verifying AST syntax and parameter definitions for access_review.ps1, configure_pim.ps1, and privileged_role_audit.ps1."
+                       },
+                       {
+                           "suiteName":  "Native Pester Assertion Matrix",
+                           "category":  "Local Unit Test",
+                           "script":  "tests/identity_suite.Tests.ps1",
+                           "status":  "PASS",
+                           "count":  13,
+                           "details":  "13 Pester assertions covering credential entropy, RBAC department routing, break-glass safeguard gates, policy file inventories, schema compliance, report-only default states, break-glass exclusion checks, git hygiene, and secret scanning."
+                       }
+                   ],
+    "liveTenantState":  {
+                            "provenance":  "Tier 3: Captured via read-only Microsoft Graph API export from live Microsoft Entra ID tenant. Strictly distinguished from Tier 1 local unit tests and Tier 2 simulated/mocked integration tests.",
+                            "deployedReportOnlyPolicies":  [
+                                                               {
+                                                                   "displayName":  "CAP-001: Block Sign-in Outside Allowed Regions",
+                                                                   "id":  "a475eb97-059f-4c95-a81f-6826a1c8d8d7",
+                                                                   "state":  "enabledForReportingButNotEnforced"
+                                                               },
+                                                               {
+                                                                   "displayName":  "CAP-002: Require Phishing-Resistant MFA for Privileged Roles",
+                                                                   "id":  "3b363e8e-f8bf-40fc-8852-ae4820aa713a",
+                                                                   "state":  "enabledForReportingButNotEnforced"
+                                                               },
+                                                               {
+                                                                   "displayName":  "CAP-003: Risk-Based Step-Up MFA",
+                                                                   "id":  "73f8d8c1-3abc-4f40-b97f-a6883a9bcfe2",
+                                                                   "state":  "enabledForReportingButNotEnforced"
+                                                               },
+                                                               {
+                                                                   "displayName":  "CAP-004: Block Legacy Authentication Protocols",
+                                                                   "id":  "3124fd33-5269-4b16-a340-bd1b7a3e561d",
+                                                                   "state":  "enabledForReportingButNotEnforced"
+                                                               },
+                                                               {
+                                                                   "displayName":  "CAP-005: Privileged Session Reauthentication Policy",
+                                                                   "id":  "79f73724-c871-4f4b-9301-3deb4585d6aa",
+                                                                   "state":  "enabledForReportingButNotEnforced"
+                                                               },
+                                                               {
+                                                                   "displayName":  "CAP-006: Require Compliant or Hybrid Joined Device",
+                                                                   "id":  "b182c414-99f8-4820-8af4-2a1b1bce8a82",
+                                                                   "state":  "enabledForReportingButNotEnforced"
+                                                               },
+                                                               {
+                                                                   "displayName":  "CAP-007: Require MFA for All Workforce Users",
+                                                                   "id":  "845da1fa-4b1c-4ac6-b71a-7324b5df4fbd",
+                                                                   "state":  "enabledForReportingButNotEnforced"
+                                                               },
+                                                               {
+                                                                   "displayName":  "CAP-008: Securing Security Information Registration",
+                                                                   "id":  "5d6a53ce-13bd-46c0-b69a-b26d228c095f",
+                                                                   "state":  "enabledForReportingButNotEnforced"
+                                                               },
+                                                               {
+                                                                   "displayName":  "CAP-009: Restrict Privileged Access to Designated Devices",
+                                                                   "id":  "7e21c517-2279-4124-a482-fdea891889f5",
+                                                                   "state":  "enabledForReportingButNotEnforced"
+                                                               },
+                                                               {
+                                                                   "displayName":  "CAP-010: Apply Guest and External User Access Controls",
+                                                                   "id":  "39bb3eb9-888d-4b8d-855f-44ebf09475ce",
+                                                                   "state":  "enabledForReportingButNotEnforced"
+                                                               },
+                                                               {
+                                                                   "displayName":  "CAP-012: High User Risk Remediation and Password Change",
+                                                                   "id":  "11d66207-016e-445b-bac4-9b46b1a08eb9",
+                                                                   "state":  "enabledForReportingButNotEnforced"
+                                                               }
+                                                           ],
+                            "governancePIMState":  {
+                                                       "standingWorkforcePrivileges":  0,
+                                                       "breakGlassEmergencyAccounts":  2,
+                                                       "eligiblePIMAdmins":  3
+                                                   }
+                        }
 }

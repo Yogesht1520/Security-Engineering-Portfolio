@@ -129,12 +129,13 @@ $stageResults = [ordered]@{
 # -------------------------------------------------------------
 # STAGE 1: Immediate Session & Token Revocation
 # -------------------------------------------------------------
-Write-Host "`n[Stage 1/5] Revoking active refresh tokens and browser sessions..." -ForegroundColor Yellow
+Write-Host "`n[Stage 1/5] Requesting revocation of active refresh tokens and browser sessions..." -ForegroundColor Yellow
 $revokeUri = "https://graph.microsoft.com/v1.0/users/$($user.id)/revokeSignInSessions"
 try {
     Invoke-MgGraphRequest -Method POST -Uri $revokeUri -ContentType "application/json" -ErrorAction Stop | Out-Null
-    Write-Host "  -> Active refresh tokens successfully revoked (PRT invalidated)." -ForegroundColor Green
-    $stageResults["Stage1_SessionRevocation"] = "Completed"
+    Write-Host "  -> Refresh token revocation requested (PRT invalidated)." -ForegroundColor Green
+    Write-Host "     [Boundary Note] Access tokens remain valid until expiration (~60-90m) unless Continuous Access Evaluation (CAE) applies." -ForegroundColor Gray
+    $stageResults["Stage1_SessionRevocation"] = "Completed: RevocationRequested"
 } catch {
     Write-Warning "  -> Session revocation failed: $($_.Exception.Message)"
     $stageResults["Stage1_SessionRevocation"] = "Failed: $($_.Exception.Message)"
@@ -208,11 +209,11 @@ try {
 }
 
 # -------------------------------------------------------------
-# STAGE 4: Strip Directory Role Assignments (Standing Active & PIM Eligible - Finding 12)
+# STAGE 4: Strip Directory Role Assignments (Standing Active & PIM Eligible - Item 11)
 # -------------------------------------------------------------
 Write-Host "`n[Stage 4/5] Checking and stripping administrative directory roles (Active & PIM Eligible)..." -ForegroundColor Yellow
 $rolesStripped = @()
-$rolesFailed = $false
+$failedRoleRemovals = [System.Collections.Generic.List[string]]::new()
 
 try {
     # 4.1. Strip Active Standing Directory Roles
@@ -230,7 +231,7 @@ try {
                         $rolesStripped += "Active-$($roleAssign.roleDefinitionId)"
                     } catch {
                         Write-Warning "  -> Could not remove active role assignment $($roleAssignId): $($_.Exception.Message)"
-                        $rolesFailed = $true
+                        $failedRoleRemovals.Add("Active-$($roleAssignId): $($_.Exception.Message)")
                     }
                 }
             }
@@ -238,11 +239,11 @@ try {
         $rolesUri = $rolesResp.'@odata.nextLink'
     } while ($rolesUri)
 
-    # 4.2. Revoke Eligible PIM Role Assignments (Finding 12)
+    # 4.2. Revoke Eligible PIM Role Assignments (Item 11: Fail-closed query and individual tracking)
     Write-Host "  Auditing PIM eligible role schedules..." -ForegroundColor Gray
     $pimSchedUri = "https://graph.microsoft.com/v1.0/roleManagement/directory/roleEligibilityScheduleInstances?`$filter=principalId eq '$($user.id)'"
     do {
-        $pimSchedResp = Invoke-MgGraphRequest -Method GET -Uri $pimSchedUri -ErrorAction SilentlyContinue
+        $pimSchedResp = Invoke-MgGraphRequest -Method GET -Uri $pimSchedUri -ErrorAction Stop
         if ($pimSchedResp.value) {
             foreach ($sched in $pimSchedResp.value) {
                 $roleDefId = $sched.roleDefinitionId
@@ -262,7 +263,7 @@ try {
                         $rolesStripped += "PIM-Eligible-$roleDefId"
                     } catch {
                         Write-Warning "  -> Failed removing PIM eligible schedule $($sched.id): $($_.Exception.Message)"
-                        $rolesFailed = $true
+                        $failedRoleRemovals.Add("PIM-Eligible-$($roleDefId): $($_.Exception.Message)")
                     }
                 }
             }
@@ -270,9 +271,27 @@ try {
         $pimSchedUri = $pimSchedResp.'@odata.nextLink'
     } while ($pimSchedUri)
 
-    $stageResults["Stage4_RolesStripped"] = if ($rolesFailed) { "PartiallyCompleted" } else { "Completed" }
+    # 4.3. Independent Post-Removal Verification Gate (Item 11)
+    Write-Host "  Verifying active and eligible role assignments are completely purged..." -ForegroundColor Gray
+    $remainingActive = @()
+    $checkActiveUri = "https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments?`$filter=principalId eq '$($user.id)'"
+    $checkActiveResp = Invoke-MgGraphRequest -Method GET -Uri $checkActiveUri -ErrorAction Stop
+    if ($checkActiveResp.value) { $remainingActive = @($checkActiveResp.value) }
+
+    $remainingEligible = @()
+    $checkEligibleUri = "https://graph.microsoft.com/v1.0/roleManagement/directory/roleEligibilityScheduleInstances?`$filter=principalId eq '$($user.id)'"
+    $checkEligibleResp = Invoke-MgGraphRequest -Method GET -Uri $checkEligibleUri -ErrorAction Stop
+    if ($checkEligibleResp.value) { $remainingEligible = @($checkEligibleResp.value) }
+
+    if ($remainingActive.Count -gt 0 -or $remainingEligible.Count -gt 0 -or $failedRoleRemovals.Count -gt 0) {
+        $stageResults["Stage4_RolesStripped"] = "PartiallyCompleted: RemainingActive=$($remainingActive.Count), RemainingEligible=$($remainingEligible.Count), Failures=$($failedRoleRemovals.Count)"
+        Write-Warning "  -> [WARNING] Role purge incomplete! Active remaining: $($remainingActive.Count), Eligible remaining: $($remainingEligible.Count)"
+    } else {
+        $stageResults["Stage4_RolesStripped"] = "Completed"
+        Write-Host "  -> [VERIFIED] All administrative directory roles confirmed purged from tenant." -ForegroundColor Green
+    }
 } catch {
-    Write-Warning "  -> Role check failed or requires Governance PIM module: $($_.Exception.Message)"
+    Write-Warning "  -> Role query failed: $($_.Exception.Message)"
     $stageResults["Stage4_RolesStripped"] = "Failed: $($_.Exception.Message)"
 }
 

@@ -113,7 +113,7 @@
 - **Assignment:** Users: `GuestsOrExternalUsers`
 - **Exclusion:** Group `SEC-BreakGlass-Exclusion`
 - **Target Resources:** All cloud apps
-- **Grant Controls:** Require multifactor authentication (Terms of Use optional extension requiring tenant agreement object)
+- **Grant Controls:** Require multifactor authentication (*Terms of Use is a planned tenant extension requiring an uploaded tenant agreement object GUID*)
 - **Session Controls:** Sign-in frequency: `4 Hours`, Persistent browser session: `Never persistent`
 - **Real-World Threat Mitigated:** Isolates external vendor and partner access with tighter session boundaries and mandatory multi-factor validation (MITRE ATT&CK T1078.001).
 - **Deployment State:** Deployed in **Report-only** mode.

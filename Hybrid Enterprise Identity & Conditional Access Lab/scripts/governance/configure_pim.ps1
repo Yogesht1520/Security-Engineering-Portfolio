@@ -26,9 +26,10 @@ param (
     [switch]$AssignEligible,
     [string]$UserPrincipalName,
     [string]$RoleName = "Conditional Access Administrator",
-    [ValidateSet("noExpiration", "afterDuration")]
-    [string]$EligibilityExpirationType = "noExpiration",
-    [string]$EligibilityDuration = "P365D",
+    [ValidateSet("afterDuration", "noExpiration")]
+    [string]$EligibilityExpirationType = "afterDuration",
+    [string]$EligibilityDuration = "P90D",
+    [string]$PermanentJustification,
     [switch]$ListRoles,
     [switch]$VerifyPolicyRules,
     [switch]$DeviceCode
@@ -116,7 +117,11 @@ function Test-PimRoleActivationRule {
 
         if (-not $assignResp.value -or @($assignResp.value).Count -eq 0) {
             Write-Warning "No roleManagementPolicyAssignment discovered for role '$RoleDisplayName'."
-            return $null
+            return [PSCustomObject]@{
+                Status      = "Failed"
+                IsCompliant = $false
+                Findings    = @("No roleManagementPolicyAssignment discovered for role '$RoleDisplayName'.")
+            }
         }
 
         $policyId = $assignResp.value[0].policyId
@@ -126,19 +131,24 @@ function Test-PimRoleActivationRule {
         $rulesResp = Invoke-MgGraphRequest -Method GET -Uri $rulesUri -ErrorAction Stop
 
         $rules = @($rulesResp.value)
-        $complianceResults = @{
+        $complianceResults = [PSCustomObject]@{
+            Status                     = "Complete"
             MaxActivationDurationHours = $null
             MfaRequiredOnActivation    = $false
             JustificationRequired      = $false
+            TicketRequired             = $false
             ApprovalRequired           = $false
+            NotificationsConfigured    = $false
             IsCompliant                = $true
             Findings                   = [System.Collections.Generic.List[string]]::new()
         }
 
+        $tier0Roles = @("Global Administrator", "Conditional Access Administrator", "Privileged Role Administrator", "Security Administrator")
+
         foreach ($rule in $rules) {
             $ruleType = $rule.'@odata.type'
 
-            # 1. Check Expiration Rule for EndUser activation
+            # 1. Check Expiration Rule for EndUser activation (Max 4h)
             if ($ruleType -eq "#microsoft.graph.unifiedRoleManagementPolicyExpirationRule" -and $rule.target.caller -eq "EndUser") {
                 $durationStr = $rule.maximumDuration
                 if ($durationStr -match "PT(\d+)H") {
@@ -153,7 +163,7 @@ function Test-PimRoleActivationRule {
                 }
             }
 
-            # 2. Check Enablement Rule for MFA and Justification
+            # 2. Check Enablement Rule for MFA, Justification, and Ticketing
             if ($ruleType -eq "#microsoft.graph.unifiedRoleManagementPolicyEnablementRule" -and $rule.target.caller -eq "EndUser") {
                 $enabled = @($rule.enabledRules)
                 if ($enabled -contains "MultiFactorAuthentication") {
@@ -169,6 +179,10 @@ function Test-PimRoleActivationRule {
                     $complianceResults.IsCompliant = $false
                     $complianceResults.Findings.Add("Business justification is not mandatory upon role activation.")
                 }
+
+                if ($enabled -contains "Ticketing") {
+                    $complianceResults.TicketRequired = $true
+                }
             }
 
             # 3. Check Approval Rule
@@ -177,12 +191,25 @@ function Test-PimRoleActivationRule {
                     $complianceResults.ApprovalRequired = $true
                 }
             }
+
+            # 4. Check Notification Rule
+            if ($ruleType -eq "#microsoft.graph.unifiedRoleManagementPolicyNotificationRule") {
+                $complianceResults.NotificationsConfigured = $true
+            }
+        }
+
+        # Assert Tier-0 approval requirements
+        if ($RoleDisplayName -in $tier0Roles -and -not $complianceResults.ApprovalRequired) {
+            $complianceResults.IsCompliant = $false
+            $complianceResults.Findings.Add("Approval sign-off is mandatory for Tier-0 privileged role '$RoleDisplayName' under Zero Standing Access rules.")
         }
 
         Write-Host "  -> Max Activation Duration: $(if ($complianceResults.MaxActivationDurationHours) { "$($complianceResults.MaxActivationDurationHours) Hours" } else { "Not explicitly configured" })" -ForegroundColor White
         Write-Host "  -> MFA on Activation      : $($complianceResults.MfaRequiredOnActivation)" -ForegroundColor White
         Write-Host "  -> Justification Required : $($complianceResults.JustificationRequired)" -ForegroundColor White
+        Write-Host "  -> Ticket Required        : $($complianceResults.TicketRequired)" -ForegroundColor White
         Write-Host "  -> Approver Sign-Off      : $($complianceResults.ApprovalRequired)" -ForegroundColor White
+        Write-Host "  -> Notifications Active   : $($complianceResults.NotificationsConfigured)" -ForegroundColor White
 
         if ($complianceResults.IsCompliant -and $complianceResults.Findings.Count -eq 0) {
             Write-Host "  [VERIFIED] Role activation settings comply with Zero Standing Access standards." -ForegroundColor Green
@@ -196,9 +223,13 @@ function Test-PimRoleActivationRule {
 
         return $complianceResults
     } catch {
-        Write-Host "  -> Note: Querying roleManagementPolicies returned: $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Warning "  -> [UNKNOWN/FAILED] Querying roleManagementPolicies failed: $($_.Exception.Message)"
         Write-Host "  -> Ensure RoleManagementPolicy.Read.Directory permission is granted and Entra ID P2 license is active." -ForegroundColor Yellow
-        return $null
+        return [PSCustomObject]@{
+            Status      = "Unknown"
+            IsCompliant = $false
+            Findings    = @("Graph lookup failed or role policy assignment missing: $($_.Exception.Message)")
+        }
     }
 }
 
@@ -211,6 +242,11 @@ if ($VerifyPolicyRules) {
 if ($AssignEligible) {
     if (-not $UserPrincipalName) {
         Write-Error "Parameter -UserPrincipalName is required when using -AssignEligible."
+        exit 1
+    }
+
+    if ($EligibilityExpirationType -eq "noExpiration" -and [string]::IsNullOrWhiteSpace($PermanentJustification)) {
+        Write-Error "[SECURITY POLICY GATE] Permanent PIM eligibility ('noExpiration') requires an explicit -PermanentJustification. Default to bounded eligibility ('afterDuration', default P90D) or provide formal business justification."
         exit 1
     }
 

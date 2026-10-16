@@ -1,7 +1,7 @@
 # Privileged Role Inventory & Zero Standing Access (ZSA) Audit Breakdown
 
-**Tenant ID:** `464a788a-fba5-4e94-9b06-a6359091ad74`  
-**Tenant Domain:** `quickheal327.onmicrosoft.com`  
+**Tenant ID:** `<TENANT_ID_REDACTED>`  
+**Tenant Domain:** `lab-entra-domain.onmicrosoft.com`  
 **Standard:** NIST SP 800-207 (Zero Trust Architecture) / Microsoft Entra Privileged Access Benchmark  
 **Last Verified:** October 16, 2026  
 
@@ -31,10 +31,10 @@ pie title Directory Role Assignment Classification
 
 | Principal | UPN | Role | Assignment Type | Max Duration | Step-Up Control | ZSA Compliance |
 |---|---|---|---|---|---|---|
-| **Alex Rivera** | `adm-alex@quickheal327.onmicrosoft.com` | Conditional Access Administrator | **Eligible (PIM JIT)** | 4 Hours | Phishing-Resistant MFA (CAP-002) + Justification | **Compliant** |
-| **Alex Rivera** | `adm-alex@quickheal327.onmicrosoft.com` | Security Administrator | **Eligible (PIM JIT)** | 4 Hours | Phishing-Resistant MFA (CAP-002) + Justification | **Compliant** |
-| **Yogesh Thakur** | `YogeshThakur@quickheal327.onmicrosoft.com` | Security Operator / Auditor | **Eligible (PIM JIT)** | 4 Hours | Phishing-Resistant MFA (CAP-002) + Justification | **Compliant** |
-| *All Other Workforce Users* | `@quickheal327.onmicrosoft.com` | None (Standard User) | **None** | N/A | Baseline MFA (CAP-007) | **Compliant** |
+| **Alex Rivera** | `adm-alex@lab-entra-domain.onmicrosoft.com` | Conditional Access Administrator | **Eligible (PIM JIT)** | 4 Hours | Phishing-Resistant MFA (CAP-002) + Justification | **Compliant** |
+| **Alex Rivera** | `adm-alex@lab-entra-domain.onmicrosoft.com` | Security Administrator | **Eligible (PIM JIT)** | 4 Hours | Phishing-Resistant MFA (CAP-002) + Justification | **Compliant** |
+| **Lead Security Engineer** | `secops-lead@lab-entra-domain.onmicrosoft.com` | Security Operator / Auditor | **Eligible (PIM JIT)** | 4 Hours | Phishing-Resistant MFA (CAP-002) + Justification | **Compliant** |
+| *All Other Workforce Users* | `@lab-entra-domain.onmicrosoft.com` | None (Standard User) | **None** | N/A | Baseline MFA (CAP-007) | **Compliant** |
 
 > **Standing Workforce Roles Total: 0**  
 > No engineer, developer, or IT administrator possesses permanent standing privileges on any directory role.
@@ -45,8 +45,8 @@ pie title Directory Role Assignment Classification
 
 | Account Name | UPN | Role | Assignment Type | Isolation & Storage | PIM Status | Security Controls |
 |---|---|---|---|---|---|---|
-| **Emergency Admin 01** | `emergency-admin-01@quickheal327.onmicrosoft.com` | Global Administrator | **Permanent Active** | Physical Safe (Split Credential) | **Excluded by Design** | FIDO2 Hardware Key, Sentinel Alerting |
-| **Emergency Admin 02** | `emergency-admin-02@quickheal327.onmicrosoft.com` | Global Administrator | **Permanent Active** | Physical Safe (Split Credential) | **Excluded by Design** | FIDO2 Hardware Key, Sentinel Alerting |
+| **Emergency Admin 01** | `emergency-admin-01@lab-entra-domain.onmicrosoft.com` | Global Administrator | **Permanent Active** | Physical Safe (Split Credential) | **Excluded by Design** | FIDO2 Hardware Key, Sentinel Alerting |
+| **Emergency Admin 02** | `emergency-admin-02@lab-entra-domain.onmicrosoft.com` | Global Administrator | **Permanent Active** | Physical Safe (Split Credential) | **Excluded by Design** | FIDO2 Hardware Key, Sentinel Alerting |
 
 > [!IMPORTANT]
 > **Why Break-Glass Accounts Are Excluded From PIM:**  

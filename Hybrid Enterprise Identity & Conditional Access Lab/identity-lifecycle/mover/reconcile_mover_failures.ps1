@@ -70,57 +70,72 @@ foreach ($gName in $managedGroups) {
 
 # 3. Query Members of All Managed Groups
 $userMemberships = @{} # UPN -> list of group names
+$failedGroupQueries = [System.Collections.Generic.List[string]]::new()
 
 foreach ($entry in $groupObjects.GetEnumerator()) {
     $gName = $entry.Key
     $gId   = $entry.Value.id
 
     $memUri = "https://graph.microsoft.com/v1.0/groups/$gId/members?`$select=id,userPrincipalName,department,jobTitle"
-    while ($memUri) {
-        $memResp = Invoke-MgGraphRequest -Method GET -Uri $memUri -ErrorAction SilentlyContinue
-        if ($memResp.value) {
-            foreach ($m in $memResp.value) {
-                $upn = $m.userPrincipalName
-                if (-not $upn) { continue }
-                if (-not $userMemberships.ContainsKey($upn)) {
-                    $userMemberships[$upn] = @{
-                        Id = $m.id
-                        Department = $m.department
-                        JobTitle = $m.jobTitle
-                        Groups = [System.Collections.Generic.List[string]]::new()
+    try {
+        while ($memUri) {
+            $memResp = Invoke-MgGraphRequest -Method GET -Uri $memUri -ErrorAction Stop
+            if ($memResp.value) {
+                foreach ($m in $memResp.value) {
+                    $upn = $m.userPrincipalName
+                    if (-not $upn) { continue }
+                    if (-not $userMemberships.ContainsKey($upn)) {
+                        $userMemberships[$upn] = @{
+                            Id         = $m.id
+                            Department = $m.department
+                            JobTitle   = $m.jobTitle
+                            Groups     = [System.Collections.Generic.List[string]]::new()
+                        }
                     }
+                    $userMemberships[$upn].Groups.Add($gName)
                 }
-                $userMemberships[$upn].Groups.Add($gName)
             }
+            $memUri = $memResp.'@odata.nextLink'
         }
-        $memUri = $memResp.'@odata.nextLink'
+    } catch {
+        Write-Warning "  -> [QUERY FAILED] Could not enumerate group '$gName' ($gId): $($_.Exception.Message)"
+        $failedGroupQueries.Add($gName)
     }
 }
 
-# 4. Evaluate Conflicts
-$conflicts = @()
+# 4. Evaluate Conflicts with Explicit States
+$reconciliationRecords = @()
 
 foreach ($entry in $userMemberships.GetEnumerator()) {
     $upn  = $entry.Key
     $data = $entry.Value
     $grps = $data.Groups
 
-    # Multi-group conflict check
-    if ($grps.Count -gt 1) {
-        $expectedGroup = Get-RbacGroupForDepartment -Department $data.Department
-        $conflicts += [PSCustomObject]@{
-            UserPrincipalName = $upn
-            UserId            = $data.Id
-            Department        = $data.Department
-            ActiveGroups      = ($grps -join ", ")
-            ExpectedGroup     = $expectedGroup
-            LegacyGroups      = ($grps | Where-Object { $_ -ne $expectedGroup }) -join ", "
-            Status            = "Conflict: MultiGroupMembership"
-        }
+    $expectedGroup = Get-RbacGroupForDepartment -Department $data.Department
+    $legacyList = @($grps | Where-Object { $_ -ne $expectedGroup })
+
+    $status = if ($failedGroupQueries.Count -gt 0) {
+        "VerificationIncomplete"
+    } elseif ($grps.Count -gt 1) {
+        if ($Fix) { "RemediationPending" } else { "ConflictDetected" }
+    } else {
+        "Clean"
+    }
+
+    $reconciliationRecords += [PSCustomObject]@{
+        UserPrincipalName = $upn
+        UserId            = $data.Id
+        Department        = $data.Department
+        ActiveGroups      = ($grps -join ", ")
+        ExpectedGroup     = $expectedGroup
+        LegacyGroups      = ($legacyList -join ", ")
+        Status            = $status
     }
 }
 
-Write-Host "`nDiscovered $($conflicts.Count) identity entitlement conflict(s):" -ForegroundColor $(if ($conflicts.Count -gt 0) { "Yellow" } else { "Green" })
+$conflicts = @($reconciliationRecords | Where-Object { $_.Status -in @("ConflictDetected", "RemediationPending", "VerificationIncomplete") })
+
+Write-Host "`nDiscovered $($conflicts.Count) identity entitlement record(s) requiring attention:" -ForegroundColor $(if ($conflicts.Count -gt 0) { "Yellow" } else { "Green" })
 if ($conflicts.Count -gt 0) {
     $conflicts | Format-Table -Property UserPrincipalName, Department, ActiveGroups, ExpectedGroup, LegacyGroups, Status -AutoSize
 }
@@ -128,8 +143,16 @@ if ($conflicts.Count -gt 0) {
 # 5. Remediation Pass
 if ($conflicts.Count -gt 0 -and $Fix) {
     Write-Host "`n[REMEDIATING CONFLICTS] Executing purge of residual legacy memberships..." -ForegroundColor Cyan
+    $allRemediated = $true
     foreach ($c in $conflicts) {
-        $legacyList = $c.LegacyGroups.Split(",") | ForEach-Object { $_.Trim() }
+        if ($c.Status -eq "VerificationIncomplete") {
+            Write-Warning "  [SKIPPING] '$($c.UserPrincipalName)' cannot be remediated while directory query is incomplete."
+            $allRemediated = $false
+            continue
+        }
+
+        $cFailed = $false
+        $legacyList = $c.LegacyGroups.Split(",") | ForEach-Object { $_.Trim() } | Where-Object { $_ }
         foreach ($legName in $legacyList) {
             if ($groupObjects.ContainsKey($legName)) {
                 $legId = $groupObjects[$legName].id
@@ -141,6 +164,7 @@ if ($conflicts.Count -gt 0 -and $Fix) {
                         Write-Host "  -> Purge complete: $legName" -ForegroundColor Green
                     } catch {
                         Write-Error "  -> Failed purging from $($legName): $($_.Exception.Message)"
+                        $cFailed = $true
                     }
                 }
             }
@@ -155,19 +179,39 @@ if ($conflicts.Count -gt 0 -and $Fix) {
                 Write-Host "  -> Sessions invalidated." -ForegroundColor Green
             } catch {
                 Write-Warning "  -> Token revocation returned: $($_.Exception.Message)"
+                $cFailed = $true
             }
         }
 
         # Write audit log
         if ($PSCmdlet.ShouldProcess("$($c.UserPrincipalName)", "Write reconciliation audit log")) {
-            Write-LifecycleAuditLog -EventType "RECONCILIATION" `
-                                    -TargetUserPrincipalName $c.UserPrincipalName `
-                                    -TargetUserId $c.UserId `
-                                    -Details "Reconciled multi-group mover conflict. Stripped legacy groups: $($c.LegacyGroups). Preserved target: $($c.ExpectedGroup)." `
-                                    -TransactionState "Completed"
+            try {
+                Write-LifecycleAuditLog -EventType "RECONCILIATION" `
+                                        -TargetUserPrincipalName $c.UserPrincipalName `
+                                        -TargetUserId $c.UserId `
+                                        -Details "Reconciled multi-group mover conflict. Stripped legacy groups: $($c.LegacyGroups). Preserved target: $($c.ExpectedGroup)." `
+                                        -TransactionState $(if($cFailed){"RemediationFailed"}else{"Completed"})
+            } catch {
+                Write-Warning "  -> Audit write failed: $($_.Exception.Message)"
+                $cFailed = $true
+            }
+        }
+
+        if ($cFailed) {
+            $c.Status = "RemediationFailed"
+            $allRemediated = $false
+        } else {
+            $c.Status = "Clean"
         }
     }
-    Write-Host "`nReconciliation run complete. All identified privilege creep states resolved." -ForegroundColor Green
+
+    if ($allRemediated -and $failedGroupQueries.Count -eq 0) {
+        Write-Host "`nReconciliation run complete. All identified privilege creep states resolved." -ForegroundColor Green
+    } else {
+        Write-Warning "`nReconciliation run finished with issues: FailedRemediations=$(@($conflicts | Where-Object {$_.Status -eq 'RemediationFailed'}).Count), UnqueriedGroups=$($failedGroupQueries.Count)"
+    }
+} elseif ($failedGroupQueries.Count -gt 0) {
+    Write-Warning "`n[INCOMPLETE VERIFICATION] Directory reconciliation incomplete: Could not query group(s): $($failedGroupQueries -join ', '). Privilege creep state cannot be definitively ruled out."
 } elseif ($conflicts.Count -gt 0) {
     Write-Host "`nRun with -Fix to automatically purge legacy memberships and revoke active sessions." -ForegroundColor Yellow
 } else {

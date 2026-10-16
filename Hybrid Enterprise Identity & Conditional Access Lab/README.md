@@ -3,23 +3,23 @@
 > **Framework Alignment:** NIST Zero Trust Architecture (SP 800-207) & Microsoft SC-300  
 > **Environment:** Microsoft Entra ID (P2) Cloud Tenant *(Live Verified)* + AD DS Hybrid Reference Architecture  
 > **Implementation Methodology:** Declarative Identity-as-Code (IaC), Safe Staging & Continuous Governance  
-> **Operational Verification:** 56/56 Automated Verification Checks Passing Across 7 Test Suites (including 13 Native Pester Assertions) | 11 Live Policies in Report-Only Mode | Cryptographically Sealed Snapshots  
+> **Operational Verification:** Automated Verification Checks Passing Across Master Test Suite | 11 Live Policies in Report-Only Mode | SHA-256 Integrity-Checked Snapshots  
 
 ---
 
 ## 1. Executive Summary
 
-This repository delivers an enterprise-grade **Zero Trust Identity and Access Management (IAM)** platform engineered in **Microsoft Entra ID**. Built on the principle that **Identity is the primary security boundary**, all authentication and authorization requests are evaluated dynamically using real-time signals, adaptive session controls, and least-privilege boundaries.
+This repository delivers an enterprise **Zero Trust Identity and Access Management (IAM)** reference implementation engineered in **Microsoft Entra ID**. Built on the principle that **Identity is the primary security boundary**, all authentication and authorization requests are evaluated dynamically using real-time signals, adaptive session controls, and least-privilege boundaries.
 
 ### Core Implemented Capabilities:
-* **Declarative Identity-as-Code (IaC):** 11 production Conditional Access policy definitions maintained in version-controlled JSON schemas ([`policies/`](./policies/)) and deployed programmatically via the Microsoft Graph API with pre-flight schema validation ([`validate_schema.ps1`](./scripts/deployment/validate_schema.ps1)).
+* **Declarative Identity-as-Code (IaC):** 11 report-only Conditional Access baseline policy definitions maintained in version-controlled JSON schemas ([`policies/`](./policies/)) and deployed programmatically via the Microsoft Graph API with pre-flight schema validation ([`validate_schema.ps1`](./scripts/deployment/validate_schema.ps1)).
 * **Zero Trust Safe Staging:** All policies deploy in `Report-only` mode (`enabledForReportingButNotEnforced`) to evaluate live sign-in telemetry without risking user disruption.
 * **Dual Break-Glass Disaster Recovery:** Two independent, cloud-only emergency accounts (`emergency-admin-01`, `emergency-admin-02`) excluded via `SEC-BreakGlass-Exclusion` with fail-closed programmatic verification to eliminate administrative lockout risk.
 * **Privileged Identity Management (PIM):** Implementation of Zero Standing Access (ZSA). Administrative roles require Just-in-Time (JIT) activation with a 4-hour max window, mandatory justification, and phishing-resistant MFA (itemized in [`privileged-role-inventory.md`](./evidence/live-tenant-state/privileged-role-inventory.md)).
-* **Cryptographic Snapshot Rollback Engine:** Pre-deployment state captures with SHA-256 checksums and authoritative manifests ([`rollback_policies.ps1`](./scripts/deployment/rollback_policies.ps1)), providing atomic rollback upon mid-flight deployment failures.
-* **Automated JML Lifecycle Engine:** Deterministic Joiner, Mover, and Leaver workflows ([`identity-lifecycle/`](./identity-lifecycle/)) featuring cryptographic temporary passwords, privilege creep prevention, compensating quarantine actions, and 5-stage offboarding with immediate session invalidation.
-* **Detection Engineering (KQL):** Production Kusto queries ([`monitoring/kql/`](./monitoring/kql/)) and incident response playbooks ([`monitoring/playbooks/`](./monitoring/playbooks/)) monitoring break-glass account sign-ins, policy drift, and MFA fatigue.
-* **Automated Testing & CI/CD:** Unified master test runner ([`tests/run_all_tests.ps1`](./tests/run_all_tests.ps1)) executing 56 assertions across 7 test suites, supported by a GitHub Actions workflow ([`.github/workflows/validate.yml`](./.github/workflows/validate.yml)) enforcing schema validity, linting, and secret scanning.
+* **Verified Snapshot Rollback Engine:** Pre-deployment state captures with SHA-256 integrity checksums and authoritative manifests ([`rollback_policies.ps1`](./scripts/deployment/rollback_policies.ps1)), providing verified rollback with documented failure boundaries upon mid-flight deployment failures.
+* **Automated JML Lifecycle Engine:** Deterministic Joiner, Mover, and Leaver workflows ([`identity-lifecycle/`](./identity-lifecycle/)) featuring cryptographic temporary passwords, privilege creep prevention, compensating quarantine actions, and 5-stage offboarding with session revocation requests.
+* **Detection Engineering (KQL):** KQL detection queries ([`monitoring/kql/`](./monitoring/kql/)) and incident response playbooks ([`monitoring/playbooks/`](./monitoring/playbooks/)) monitoring break-glass account sign-ins, policy drift, and MFA fatigue.
+* **Automated Testing & CI/CD:** Unified master test runner ([`tests/run_all_tests.ps1`](./tests/run_all_tests.ps1)) executing test suites across schema validation, resolution, deployment recovery, lifecycle, and Pester assertions, supported by a GitHub Actions workflow ([`.github/workflows/validate.yml`](./.github/workflows/validate.yml)) enforcing schema validity, linting, and blocking secret scanning.
 
 ---
 
@@ -121,7 +121,7 @@ All 11 policies are deployed and active in the live tenant in **Report-only** (`
 | **CAP-007** | Require MFA for All Workforce Users | `SEC-StandardUsers`, `SEC-Admins` | All cloud apps, All platforms | **Grant: Require MFA** | **Report-only** *(Verified: Success)* |
 | **CAP-008** | Securing Security Info Registration | All Users (Excl: `SEC-BreakGlass-Exclusion`) | User action: Register security info | **Block access** outside `Allowed-Home-Country` | **Report-only** |
 | **CAP-009** | Restrict Privileged Access to Designated Devices | `SEC-Admins` | All cloud apps | **Block access** unless device matches PAW filter | **Report-only** |
-| **CAP-010** | Apply Guest and External User Access Controls | All Guest & External Users | All cloud apps | **Grant: Require MFA + Terms of Use** | **Report-only** |
+| **CAP-010** | Apply Guest and External User Access Controls | All Guest & External Users | All cloud apps | **Grant: Require MFA** *(Terms of Use planned tenant extension)* | **Report-only** |
 | **CAP-012** | High User Risk Remediation & Password Change | All Users (Excl: `SEC-BreakGlass-Exclusion`) | User risk level: High | **Grant: Require MFA + Password Change** | **Report-only** |
 
 ---
@@ -179,7 +179,7 @@ Hybrid Enterprise Identity & Conditional Access Lab/
 │   ├── deployment/
 │   │   ├── compare_policies.ps1       # Live vs. Desired drift detection engine
 │   │   ├── deploy_ca_policies.ps1     # Core IaC deployment orchestrator
-│   │   └── rollback_policies.ps1      # Immutable snapshot & rollback engine
+│   │   └── rollback_policies.ps1      # SHA-256 integrity-checked snapshot & rollback engine
 │   ├── governance/
 │   │   ├── access_review.ps1          # Privileged group attestation audit engine
 │   │   ├── configure_pim.ps1          # Programmatic PIM eligibility assignment
@@ -220,7 +220,7 @@ powershell -ExecutionPolicy Bypass -File .\tests\run_all_tests.ps1
 # 2. Plan mode: Compare live tenant state against Git and calculate drift
 .\scripts\deploy_ca_policies.ps1 -Plan -DeviceCode
 
-# 3. Live deployment (Generates cryptographically sealed pre-deployment rollback snapshot)
+# 3. Live deployment (Generates SHA-256 integrity-checked pre-deployment rollback snapshot)
 .\scripts\deploy_ca_policies.ps1 -Deploy -Environment Lab -DeviceCode
 ```
 

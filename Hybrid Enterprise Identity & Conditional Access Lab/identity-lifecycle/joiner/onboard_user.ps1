@@ -187,26 +187,63 @@ try {
             Invoke-MgGraphRequest -Method POST -Uri $addGroupMemberUri -Body $memberPayload -ContentType "application/json" -ErrorAction Stop
             Write-Host "  -> Assigned membership to group: $assignedGroup" -ForegroundColor Green
         } catch {
-            # Compensating Action: Contain/Quarantine newly created account to prevent orphaned active identities (Finding 9)
+            # Compensating Action: Contain/Quarantine newly created account to prevent orphaned active identities (Item 8)
+            $groupError = $_.Exception.Message
             Write-Warning "[COMPENSATING ACTION] Group assignment failed! Disabling and quarantining newly created identity '$createdUserId'..."
             $quarantinePayload = @{
                 accountEnabled = $false
                 jobTitle       = "Quarantine - ProvisioningFailed"
             } | ConvertTo-Json
-            Invoke-MgGraphRequest -Method PATCH -Uri "https://graph.microsoft.com/v1.0/users/$createdUserId" -Body $quarantinePayload -ContentType "application/json" -ErrorAction SilentlyContinue
 
-            Write-LifecycleAuditLog -EventType "JOINER" `
-                                    -TargetUserPrincipalName $UserPrincipalName `
-                                    -TargetUserId $createdUserId `
-                                    -Action "OnboardUser" `
-                                    -Status "COMPENSATED_FAILURE" `
-                                    -Details @{
-                                        Error = "GroupAssignmentFailed"
-                                        CompensatingAction = "AccountDisabledAndQuarantined"
-                                        OriginalError = $_.Exception.Message
-                                    } `
-                                    -Initiator $activeContext.Account
-            throw "Compensating action triggered: User '$UserPrincipalName' was quarantined (disabled) because group assignment failed: $($_.Exception.Message)"
+            $quarantineConfirmed = $false
+            $quarantineError = $null
+
+            try {
+                Invoke-MgGraphRequest -Method PATCH -Uri "https://graph.microsoft.com/v1.0/users/$createdUserId" -Body $quarantinePayload -ContentType "application/json" -ErrorAction Stop | Out-Null
+
+                # Re-query user to verify account is disabled (fail-closed verification)
+                $verifyUserUri = "https://graph.microsoft.com/v1.0/users/$createdUserId`?`$select=id,accountEnabled,jobTitle"
+                $verifiedUser = Invoke-MgGraphRequest -Method GET -Uri $verifyUserUri -ErrorAction Stop
+                if ($verifiedUser -and $verifiedUser.accountEnabled -eq $false) {
+                    $quarantineConfirmed = $true
+                    Write-Host "  -> [VERIFIED] Compensating quarantine confirmed: Account is disabled (accountEnabled = False)." -ForegroundColor Green
+                } else {
+                    $quarantineError = "Post-quarantine query returned accountEnabled = $($verifiedUser.accountEnabled)"
+                }
+            } catch {
+                $quarantineError = $_.Exception.Message
+            }
+
+            if ($quarantineConfirmed) {
+                Write-LifecycleAuditLog -EventType "JOINER" `
+                                        -TargetUserPrincipalName $UserPrincipalName `
+                                        -TargetUserId $createdUserId `
+                                        -Action "OnboardUser" `
+                                        -Status "COMPENSATED_FAILURE" `
+                                        -Details @{
+                                            Error = "GroupAssignmentFailed"
+                                            CompensatingAction = "AccountDisabledAndQuarantined"
+                                            Verification = "ConfirmedDisabled"
+                                            OriginalError = $groupError
+                                        } `
+                                        -Initiator $activeContext.Account
+                throw "Compensating action triggered: User '$UserPrincipalName' was safely quarantined (accountEnabled = False) because group assignment failed: $groupError"
+            } else {
+                Write-LifecycleAuditLog -EventType "JOINER" `
+                                        -TargetUserPrincipalName $UserPrincipalName `
+                                        -TargetUserId $createdUserId `
+                                        -Action "OnboardUser" `
+                                        -Status "QUARANTINE_FAILED" `
+                                        -Details @{
+                                            Error = "GroupAssignmentFailed"
+                                            CompensatingAction = "QuarantineFailed"
+                                            Verification = "FailedToConfirmDisabled"
+                                            OriginalError = $groupError
+                                            QuarantineError = $quarantineError
+                                        } `
+                                        -Initiator $activeContext.Account
+                throw "[CRITICAL SECURITY FAILURE] Compensating quarantine could NOT be verified for user '$UserPrincipalName' (ID: $createdUserId). Account may remain enabled without proper RBAC groups! Immediate manual containment required: $quarantineError (Original Error: $groupError)"
+            }
         }
     }
 

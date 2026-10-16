@@ -1,15 +1,16 @@
 <#
 .SYNOPSIS
-    Deep Recursive JSON Schema Validator for Conditional Access Policies.
+    Deterministic JSON Schema Validator for Microsoft Entra Conditional Access Policies.
 .DESCRIPTION
     Validates Microsoft Entra ID Conditional Access declarative policy definitions
-    strictly against draft-07 JSON Schema specifications:
-    - Enforces all required properties at all schema tiers.
-    - Rejects unpermitted properties when additionalProperties is false.
-    - Enforces strict data types (string, integer, boolean, array, object).
-    - Enforces enum constraints.
-    - Enforces regular expression patterns (e.g. ^CAP-[0-9]{3}:\s.+$, GUIDs).
-    - Validates anyOf and required combinations.
+    against the schema subset of JSON Schema Draft-07:
+    - Supported Draft-07 Keywords: type, properties, required, additionalProperties, enum, pattern, items, anyOf, allOf.
+    - Deep structural validation: Enforces all required properties and rejects undeclared properties when additionalProperties=false.
+    - Type and enum enforcement: Strict types (string, integer, boolean, array, object) and allowed string enums.
+    - Pattern matching: Validates regex constraints (displayName naming conventions, GUID structures).
+    - Scope & Boundaries: Designed specifically for declarative policy pre-flight in zero-dependency CI/CD environments.
+      Complex meta-schema features ($ref external URI dereferencing, oneOf discriminators, not negative assertions)
+      are intentionally excluded in favor of deterministic native execution without third-party assembly dependencies.
 #>
 
 function Test-PolicyJsonSchema {

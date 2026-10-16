@@ -107,6 +107,7 @@ Write-Host "  -> Found $($activeAssignments.Count) active role assignment(s)." -
 # 4. Fetch PIM Eligible Role Assignments
 Write-Host "`n[Step 3/4] Querying PIM eligible role assignments..." -ForegroundColor Cyan
 $eligibleAssignments = @()
+$pimQueryFailed = $false
 try {
     $eligibilityUri = "https://graph.microsoft.com/v1.0/roleManagement/directory/roleEligibilityScheduleInstances?`$expand=principal"
     $currentUri = $eligibilityUri
@@ -119,8 +120,9 @@ try {
     }
     Write-Host "  -> Found $($eligibleAssignments.Count) PIM eligible assignment(s)." -ForegroundColor Gray
 } catch {
-    Write-Host "  -> Notice: PIM eligibility schedules query returned: $($_.Exception.Message)" -ForegroundColor Yellow
-    Write-Host "     (Tenant may require Entra ID P2 / Governance license to query roleEligibilityScheduleInstances)" -ForegroundColor Yellow
+    $pimQueryFailed = $true
+    Write-Warning "  -> [DATA INCOMPLETE] PIM eligibility schedules query failed: $($_.Exception.Message)"
+    Write-Host "     (Tenant requires Entra ID P2 / Governance license to query roleEligibilityScheduleInstances)" -ForegroundColor Yellow
 }
 
 # 5. Analyze Findings & Generate Compliance Audit
@@ -231,12 +233,20 @@ if ($Format -in @("Both", "Json")) {
     $jsonFile = Join-Path $OutputPath "privileged_role_audit_$timestamp.json"
     $csvFile = Join-Path $OutputPath "privileged_role_audit_$timestamp.csv"
 
-    $auditStatus = if ($nonCompliant.Count -eq 0) { "Passed" } else { "Failed" }
+    $auditStatus = if ($pimQueryFailed) {
+        "Incomplete"
+    } elseif ($nonCompliant.Count -gt 0) {
+        "Failed"
+    } else {
+        "Complete"
+    }
+
     $reportPayload = @{
         TenantId           = $activeContext.TenantId
         AuditedAtUtc       = (Get-Date).ToUniversalTime().ToString("o")
         Auditor            = $activeContext.Account
         AuditStatus        = $auditStatus
+        PimQuerySucceeded  = (-not $pimQueryFailed)
         TotalAssignments   = $auditFindings.Count
         StandingViolations = $nonCompliant.Count
         Findings           = $auditFindings
@@ -246,14 +256,19 @@ if ($Format -in @("Both", "Json")) {
     $auditFindings | Export-Csv -Path $csvFile -NoTypeInformation -Encoding utf8
 
     Write-Host "`n[Audit Evidence Exported]:" -ForegroundColor Green
-    Write-Host "  -> Audit Status: $auditStatus" -ForegroundColor $(if ($auditStatus -eq "Passed") { "Green" } else { "Red" })
+    $auditColor = switch ($auditStatus) {
+        "Complete"   { "Green" }
+        "Incomplete" { "Yellow" }
+        "Failed"     { "Red" }
+    }
+    Write-Host "  -> Audit Status: $auditStatus" -ForegroundColor $auditColor
     Write-Host "  -> JSON Report : $jsonFile" -ForegroundColor Gray
     Write-Host "  -> CSV Report  : $csvFile" -ForegroundColor Gray
 }
 
 Write-Host "==========================================================" -ForegroundColor Cyan
 
-if ($FailOnViolations -and $nonCompliant.Count -gt 0) {
-    Write-Error "Audit failed with $($nonCompliant.Count) standing privilege violation(s)."
+if ($FailOnViolations -and ($nonCompliant.Count -gt 0 -or $pimQueryFailed)) {
+    Write-Error "Audit failed or incomplete: $($nonCompliant.Count) standing privilege violation(s), PIM Query Succeeded = $(-not $pimQueryFailed)."
     exit 1
 }

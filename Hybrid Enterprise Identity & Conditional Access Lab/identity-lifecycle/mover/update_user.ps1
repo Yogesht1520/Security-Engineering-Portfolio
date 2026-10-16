@@ -120,11 +120,12 @@ Write-Host "  -> Identity Found: $($user.displayName) (Current Dept: $($user.dep
 
 # Transaction-Style Stage Tracking
 $stageResults = [ordered]@{
-    Stage1_TargetGroupResolution = "Pending"
-    Stage2_LegacyPrivilegePurge  = "Pending"
-    Stage3_TargetGroupAssignment = "Pending"
-    Stage4_ProfileUpdate         = "Pending"
-    Stage5_SessionRevocation     = "Pending"
+    Stage1_TargetGroupResolution        = "Pending"
+    Stage2_LegacyPrivilegePurge         = "Pending"
+    Stage3_TargetGroupAssignment        = "Pending"
+    Stage4_ProfileUpdate                = "Pending"
+    Stage5_SessionRevocation            = "Pending"
+    Stage6_FinalDirectoryReconciliation = "Pending"
 }
 
 # 4. Resolve Target Group ID
@@ -243,6 +244,43 @@ try {
 } catch {
     Write-Warning "  -> Could not revoke sessions: $($_.Exception.Message)"
     $stageResults["Stage5_SessionRevocation"] = "Failed: $($_.Exception.Message)"
+}
+
+# 7.5. Independent Final State Directory Reconciliation Gate (Item 9)
+Write-Host "`n[Step 5.5] Independently reconciling final directory state against desired target..." -ForegroundColor Cyan
+try {
+    # Query live memberships independently
+    $reconciledMemberships = @()
+    $reconUri = "https://graph.microsoft.com/v1.0/users/$($user.id)/memberOf"
+    do {
+        $reconResp = Invoke-MgGraphRequest -Method GET -Uri $reconUri -ErrorAction Stop
+        if ($reconResp.value) { $reconciledMemberships += $reconResp.value }
+        $reconUri = $reconResp.'@odata.nextLink'
+    } while ($reconUri)
+
+    $reconciledGroupNames = @($reconciledMemberships | Where-Object { $_.'@odata.type' -eq "#microsoft.graph.group" } | ForEach-Object { $_.displayName })
+    $targetPresent = $reconciledGroupNames -contains $targetGroup
+    $lingeringLegacy = @($legacyRbacGroups | Where-Object { $reconciledGroupNames -contains $_.displayName })
+
+    if (-not $targetPresent) {
+        $stageResults["Stage3_TargetGroupAssignment"] = "Failed: Target group '$targetGroup' missing in post-reconciliation directory query"
+    }
+    if ($lingeringLegacy.Count -gt 0) {
+        $lingeringNames = ($lingeringLegacy | ForEach-Object { $_.displayName }) -join ", "
+        $stageResults["Stage2_LegacyPrivilegePurge"] = "PartiallyCompleted: Lingering legacy memberships detected ($lingeringNames)"
+    }
+
+    # Re-query user profile to assert department and jobTitle
+    $reconUser = Invoke-MgGraphRequest -Method GET -Uri $userUri -ErrorAction Stop
+    if ($reconUser.department -ne $NewDepartment -or $reconUser.jobTitle -ne $NewJobTitle) {
+        $stageResults["Stage4_ProfileUpdate"] = "Failed: Attribute parity failure (Dept: $($reconUser.department), Title: $($reconUser.jobTitle))"
+    }
+
+    Write-Host "  -> Directory State Reconciliation: TargetPresent=$targetPresent, LingeringLegacyCount=$($lingeringLegacy.Count)" -ForegroundColor Green
+    $stageResults["Stage6_FinalDirectoryReconciliation"] = if ($targetPresent -and $lingeringLegacy.Count -eq 0) { "Completed" } else { "Incomplete: ParityMismatch" }
+} catch {
+    Write-Warning "  -> [WARNING] Independent final reconciliation query failed: $($_.Exception.Message)"
+    $stageResults["Stage6_FinalDirectoryReconciliation"] = "Incomplete: $($_.Exception.Message)"
 }
 
 # 8. Evaluate Overall Transaction State

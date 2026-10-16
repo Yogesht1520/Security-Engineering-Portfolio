@@ -37,6 +37,18 @@ if (-not (Test-Path $SnapshotsDir)) {
     New-Item -ItemType Directory -Path $SnapshotsDir -Force | Out-Null
 }
 
+function Get-NormalizedPolicyConfiguration {
+    param ([Parameter(Mandatory=$true)]$Policy)
+    $obj = $Policy | ConvertTo-Json -Depth 15 | ConvertFrom-Json
+    $metadataProps = @("id", "createdDateTime", "modifiedDateTime", "@odata.context", "@odata.nextLink")
+    foreach ($prop in $metadataProps) {
+        if ($obj.PSObject.Properties[$prop]) {
+            $obj.PSObject.Properties.Remove($prop)
+        }
+    }
+    return ($obj | ConvertTo-Json -Depth 15 -Compress)
+}
+
 function Test-SnapshotIntegrity {
     [CmdletBinding()]
     param (
@@ -324,9 +336,20 @@ function Restore-Snapshot {
         $body.PSObject.Properties.Remove("modifiedDateTime")
         $jsonPayload = $body | ConvertTo-Json -Depth 10
 
-        $existingLive = $livePolicies | Where-Object { $_.id -eq $policyId -or $_.displayName -eq $displayName } | Select-Object -First 1
+        $matchingLive = @($livePolicies | Where-Object { $_.id -eq $policyId -or $_.displayName -eq $displayName })
+        if ($matchingLive.Count -gt 1) {
+            throw "[ROLLBACK AMBIGUITY] Multiple policies ($($matchingLive.Count)) match target '$displayName' in live tenant. Rollback halted to prevent cross-policy corruption."
+        }
+        $existingLive = if ($matchingLive.Count -eq 1) { $matchingLive[0] } else { $null }
 
         if ($existingLive) {
+            $liveNorm = Get-NormalizedPolicyConfiguration -Policy $existingLive
+            $snapNorm = Get-NormalizedPolicyConfiguration -Policy $policy
+            if ($liveNorm -eq $snapNorm) {
+                Write-Host "  [In Parity] '$displayName' (ID: $($existingLive.id)) matches snapshot baseline. No patch required." -ForegroundColor Gray
+                continue
+            }
+
             Write-Host "  [Restoring Existing] '$displayName' (ID: $($existingLive.id))..." -ForegroundColor White
             try {
                 $patchUri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies/$($existingLive.id)"
@@ -349,7 +372,7 @@ function Restore-Snapshot {
         }
     }
 
-    # 3. Post-Rollback Live Graph Verification Gate
+    # 3. Post-Rollback Live Graph Verification Gate (Full Configuration Parity)
     Write-Host "`n[POST-ROLLBACK VERIFICATION] Querying Graph to verify live tenant state against snapshot..." -ForegroundColor Cyan
     $verifyPolicies = @()
     $verifyUri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies"
@@ -361,15 +384,30 @@ function Restore-Snapshot {
 
     $allVerified = $true
     foreach ($sp in $snapshotPolicies) {
-        $match = $verifyPolicies | Where-Object { $_.displayName -eq $sp.displayName }
-        if (-not $match) {
+        $matching = @($verifyPolicies | Where-Object { $_.displayName -eq $sp.displayName })
+        if ($matching.Count -eq 0) {
             Write-Error "  [VERIFY FAIL] Restored policy '$($sp.displayName)' not found in live tenant!"
             $allVerified = $false
-        } elseif ($match.state -ne $sp.state) {
-            Write-Warning "  [VERIFY DRIFT] Policy '$($sp.displayName)' state mismatch! Expected: $($sp.state), Actual: $($match.state)"
+            continue
+        }
+        if ($matching.Count -gt 1) {
+            Write-Error "  [VERIFY FAIL] Ambiguous duplicate policy detected! $($matching.Count) policies share display name '$($sp.displayName)'."
+            $allVerified = $false
+            continue
+        }
+
+        $livePolicy = $matching[0]
+        $normalizedLive = Get-NormalizedPolicyConfiguration -Policy $livePolicy
+        $normalizedSnap = Get-NormalizedPolicyConfiguration -Policy $sp
+
+        if ($normalizedLive -ne $normalizedSnap) {
+            Write-Warning "  [VERIFY CONFIG DRIFT] Policy '$($sp.displayName)' configuration mismatch between snapshot and live tenant!"
+            if ($livePolicy.state -ne $sp.state) {
+                Write-Warning "    * State: Expected '$($sp.state)', Actual '$($livePolicy.state)'"
+            }
             $allVerified = $false
         } else {
-            Write-Host "  [VERIFY PASS] '$($sp.displayName)' active state confirmed ($($match.state))." -ForegroundColor Green
+            Write-Host "  [VERIFY PASS] '$($sp.displayName)' full configuration verified in 100% parity with snapshot." -ForegroundColor Green
         }
     }
 

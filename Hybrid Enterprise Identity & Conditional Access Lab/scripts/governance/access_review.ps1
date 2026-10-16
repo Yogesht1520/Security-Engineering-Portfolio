@@ -91,15 +91,39 @@ foreach ($grpName in $GroupNames) {
     $groupId = $groupResp.value[0].id
     $membersUri = "https://graph.microsoft.com/v1.0/groups/$groupId/members?`$select=id,displayName,userPrincipalName,accountEnabled,userType,signInActivity"
     $allGroupMembers = [System.Collections.Generic.List[PSObject]]::new()
+    $groupQueryFailed = $false
 
-    while ($membersUri) {
-        $membersResp = Invoke-MgGraphRequest -Method GET -Uri $membersUri -ErrorAction SilentlyContinue
-        if ($membersResp.value) {
-            foreach ($m in $membersResp.value) {
-                $allGroupMembers.Add($m)
+    try {
+        while ($membersUri) {
+            $membersResp = Invoke-MgGraphRequest -Method GET -Uri $membersUri -ErrorAction Stop
+            if ($membersResp.value) {
+                foreach ($m in $membersResp.value) {
+                    $allGroupMembers.Add($m)
+                }
             }
+            $membersUri = $membersResp.'@odata.nextLink'
         }
-        $membersUri = $membersResp.'@odata.nextLink'
+    } catch {
+        $groupQueryFailed = $true
+        Write-Warning "    [INCOMPLETE REVIEW] Failed querying members for group '$grpName': $($_.Exception.Message)"
+        $reviewResults += [PSCustomObject]@{
+            GroupName          = $grpName
+            GroupId            = $groupId
+            UserId             = $null
+            DisplayName        = "[QueryFailed]"
+            UserPrincipalName  = "[QueryFailed]"
+            AccountEnabled     = $null
+            UserType           = $null
+            LastSignInDateTime = $null
+            ReviewStatus       = "Incomplete"
+            ComplianceFlags    = "QUERY_FAILED"
+            Recommendation     = "Re-run review with verified Directory.Read.All permissions"
+            AttestedAtUtc      = $nowUtc.ToString("o")
+        }
+    }
+
+    if ($groupQueryFailed) {
+        continue
     }
 
     Write-Host "    -> Found $($allGroupMembers.Count) member(s)." -ForegroundColor Gray
@@ -197,12 +221,17 @@ $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $jsonPath = Join-Path $OutputPath "access_review_attestation_$timestamp.json"
 $csvPath = Join-Path $OutputPath "access_review_attestation_$timestamp.csv"
 
+$incompleteCount = @($reviewResults | Where-Object { $_.ReviewStatus -eq "Incomplete" }).Count
+$overallStatus = if ($incompleteCount -gt 0) { "Incomplete" } elseif ($flagged.Count -gt 0) { "ActionRequired" } else { "Approved" }
+
 $attestationEnvelope = @{
     TenantId             = $activeContext.TenantId
     AttestationTimestamp = $nowUtc.ToString("o")
     Reviewer             = $activeContext.Account
+    OverallStatus        = $overallStatus
     TotalReviewed        = $reviewResults.Count
     FlaggedCount         = $flagged.Count
+    IncompleteCount      = $incompleteCount
     AuditRecords         = $reviewResults
 }
 

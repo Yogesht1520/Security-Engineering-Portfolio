@@ -42,8 +42,251 @@ param (
 
     [switch]$DeviceCode,
 
-    [switch]$Force
+    [switch]$Force,
+
+    [switch]$OnlyExportFunctions
 )
+
+function Invoke-PolicyDeploymentTransaction {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory=$true)]
+        [array]$ActionsToTake,
+        [Parameter(Mandatory=$true)]
+        [string]$SnapshotId,
+        [Parameter(Mandatory=$true)]
+        [string]$RollbackScript,
+        [Parameter(Mandatory=$false)]
+        $ActiveContext = $null,
+        [string]$ReceiptsDirectory,
+        [string]$SnapshotsDir
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ReceiptsDirectory)) {
+        $ReceiptsDirectory = Join-Path $PSScriptRoot "..\..\reports"
+    }
+    if ([string]::IsNullOrWhiteSpace($SnapshotsDir)) {
+        $SnapshotsDir = Join-Path $PSScriptRoot "..\..\snapshots"
+    }
+
+    Write-Host "`nExecuting Live Policy Deployment with Per-Policy Transaction Tracking..." -ForegroundColor Cyan
+    $transactionResults = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $deploymentFailed = $false
+    $failureReason = $null
+    $newlyCreatedPolicyIds = [System.Collections.Generic.List[string]]::new()
+    $mutationsApplied = 0
+
+    foreach ($item in $ActionsToTake) {
+        if ($deploymentFailed) {
+            Write-Host "  [SKIPPING] $($item.DisplayName) (Action: $($item.Action)) - Transaction halted due to preceding failure." -ForegroundColor DarkGray
+            $transactionResults.Add([PSCustomObject]@{
+                DisplayName = $item.DisplayName
+                Action      = $item.Action
+                Status      = "Skipped"
+                PolicyId    = $item.PolicyId
+                Message     = "Halted: Prior step failed ($failureReason)"
+            })
+            continue
+        }
+
+        if ($item.Action -eq "Skip") {
+            Write-Host "  [In Sync] $($item.DisplayName) - Zero drift. Skipped mutation." -ForegroundColor Gray
+            $transactionResults.Add([PSCustomObject]@{
+                DisplayName = $item.DisplayName
+                Action      = "Skip"
+                Status      = "SkippedNoDrift"
+                PolicyId    = $item.PolicyId
+                Message     = "In parity with desired state"
+            })
+            continue
+        }
+
+        $jsonBody = $item.Payload | ConvertTo-Json -Depth 10
+
+        if ($item.Action -eq "Update") {
+            Write-Host "  [Updating] $($item.DisplayName) (ID: $($item.PolicyId))..." -ForegroundColor Yellow
+            $patchUri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies/$($item.PolicyId)"
+            try {
+                Invoke-MgGraphRequest -Method PATCH -Uri $patchUri -Body $jsonBody -ContentType "application/json" -ErrorAction Stop | Out-Null
+                Write-Host "  -> Successfully updated." -ForegroundColor Green
+                $mutationsApplied++
+                $transactionResults.Add([PSCustomObject]@{
+                    DisplayName = $item.DisplayName
+                    Action      = "Update"
+                    Status      = "Success"
+                    PolicyId    = $item.PolicyId
+                    Message     = "OK"
+                })
+            } catch {
+                $deploymentFailed = $true
+                $failureReason = $_.Exception.Message
+                Write-Host "  -> FAILED to update: $failureReason" -ForegroundColor Red
+
+                # Ambiguous Write Mitigation: Check whether server applied change prior to connection loss
+                try {
+                    $verifyUri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies/$($item.PolicyId)"
+                    $livePol = Invoke-MgGraphRequest -Method GET -Uri $verifyUri -ErrorAction Stop
+                    $snapshotFile = if ($SnapshotsDir -and (Test-Path (Join-Path $SnapshotsDir "$SnapshotId\$($item.DisplayName).json"))) {
+                        Get-Content (Join-Path $SnapshotsDir "$SnapshotId\$($item.DisplayName).json") -Raw | ConvertFrom-Json
+                    } else { $null }
+
+                    if ($snapshotFile -and $livePol) {
+                        # Strip server-generated metadata and compare canonical state
+                        $cleanLive = $livePol.PSObject.Copy()
+                        $cleanSnap = $snapshotFile.PSObject.Copy()
+                        foreach ($prop in @("id", "createdDateTime", "modifiedDateTime", "@odata.context", "@odata.nextLink")) {
+                            $cleanLive.PSObject.Properties.Remove($prop)
+                            $cleanSnap.PSObject.Properties.Remove($prop)
+                        }
+                        $liveJson = $cleanLive | ConvertTo-Json -Depth 10 -Compress
+                        $snapJson = $cleanSnap | ConvertTo-Json -Depth 10 -Compress
+
+                        if ($liveJson -ne $snapJson) {
+                            $mutationsApplied++
+                            Write-Warning "  -> [AMBIGUOUS WRITE DETECTED] Server applied update prior to connection loss! Live state differs from pre-deployment snapshot. Flagged for mandatory rollback."
+                        } else {
+                            Write-Host "  -> [CONFIRMED UNMUTATED] Live policy state is identical to pre-deployment snapshot. Write was not committed." -ForegroundColor Gray
+                        }
+                    } else {
+                        $mutationsApplied++
+                        Write-Warning "  -> [AMBIGUOUS WRITE DETECTED] Live policy exists; treating as potentially applied for fail-safe rollback."
+                    }
+                } catch {
+                    $mutationsApplied++
+                    Write-Warning "  -> [AMBIGUOUS STATE] Unable to verify write state via Graph query ($($_.Exception.Message)). Treating as potentially applied for fail-safe rollback."
+                }
+
+                $transactionResults.Add([PSCustomObject]@{
+                    DisplayName = $item.DisplayName
+                    Action      = "Update"
+                    Status      = "Failed"
+                    PolicyId    = $item.PolicyId
+                    Message     = $failureReason
+                })
+            }
+        } else {
+            Write-Host "  [Creating] $($item.DisplayName)..." -ForegroundColor Cyan
+            $postUri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies"
+            try {
+                $created = Invoke-MgGraphRequest -Method POST -Uri $postUri -Body $jsonBody -ContentType "application/json" -ErrorAction Stop
+                $createdId = $created.id
+                $newlyCreatedPolicyIds.Add($createdId)
+                $mutationsApplied++
+                Write-Host "  -> Successfully created (ID: $createdId)." -ForegroundColor Green
+                $transactionResults.Add([PSCustomObject]@{
+                    DisplayName = $item.DisplayName
+                    Action      = "Create"
+                    Status      = "Success"
+                    PolicyId    = $createdId
+                    Message     = "Created successfully"
+                })
+            } catch {
+                $deploymentFailed = $true
+                $failureReason = $_.Exception.Message
+                Write-Host "  -> FAILED to create: $failureReason" -ForegroundColor Red
+
+                # Ambiguous Creation Mitigation: Check if policy was created despite response loss
+                try {
+                    $checkListUri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies"
+                    $currentList = Invoke-MgGraphRequest -Method GET -Uri $checkListUri -ErrorAction Stop
+                    $ambiguousMatches = @($currentList.value | Where-Object { $_.displayName -eq $item.DisplayName })
+                    if ($ambiguousMatches.Count -gt 0) {
+                        foreach ($am in $ambiguousMatches) {
+                            if (-not $newlyCreatedPolicyIds.Contains($am.id)) {
+                                $newlyCreatedPolicyIds.Add($am.id)
+                            }
+                        }
+                        $mutationsApplied++
+                        Write-Warning "  -> [AMBIGUOUS WRITE DETECTED] Policy created before response drop! Added ID(s) to cleanup list."
+                    }
+                } catch {
+                    $mutationsApplied++
+                    Write-Warning "  -> [AMBIGUOUS STATE] Unable to verify creation state. Assuming mutation applied."
+                }
+
+                $transactionResults.Add([PSCustomObject]@{
+                    DisplayName = $item.DisplayName
+                    Action      = "Create"
+                    Status      = "Failed"
+                    PolicyId    = $null
+                    Message     = $failureReason
+                })
+            }
+        }
+    }
+
+    Write-Host "`n================ PER-POLICY TRANSACTION SUMMARY ================" -ForegroundColor Cyan
+    $transactionResults | Format-Table -Property DisplayName, Action, Status, Message -AutoSize
+
+    # 8. Automatic In-Flight Rollback & Transaction State Machine
+    $transactionState = "Completed"
+    $rollbackExecuted = $false
+    $rollbackVerified = $false
+
+    if ($deploymentFailed) {
+        Write-Host "`n[DEPLOYMENT FAILED] One or more policies encountered errors during deployment!" -ForegroundColor Red
+        Write-Host "Transaction halted immediately. Beginning automatic in-flight rollback..." -ForegroundColor Red
+
+        if ($mutationsApplied -gt 0 -or $newlyCreatedPolicyIds.Count -gt 0) {
+            $rollbackExecuted = $true
+            Write-Host "`n[AUTOMATIC ROLLBACK TRIGGERED] Restoring tenant to pre-deployment snapshot '$SnapshotId'..." -ForegroundColor Yellow
+            try {
+                $rollbackResult = & $RollbackScript -Action Restore -SnapshotId $SnapshotId -SnapshotsDir $SnapshotsDir -SessionCreatedPolicyIds $newlyCreatedPolicyIds
+                if ($rollbackResult -eq $true) {
+                    $rollbackVerified = $true
+                    $transactionState = "FailedAndRolledBack"
+                    Write-Host "`n[ROLLBACK SUCCESS] Automatic rollback completed and live state verified restored!" -ForegroundColor Green
+                } else {
+                    $transactionState = "PendingVerification"
+                    Write-Warning "`n[ROLLBACK WARNING] Rollback completed but live verification returned warnings."
+                }
+            } catch {
+                $transactionState = "RollbackFailed"
+                Write-Error "`n[CRITICAL ROLLBACK FAILURE] Automatic rollback encountered an error: $($_.Exception.Message)"
+            }
+        } else {
+            $transactionState = "FailedAndRolledBack"
+            Write-Host "Zero tenant mutations were applied prior to failure. Snapshot baseline is intact." -ForegroundColor Green
+        }
+    }
+
+    # 9. Persist Formal Deployment Transaction Receipt
+    if (-not (Test-Path $ReceiptsDirectory)) { New-Item -ItemType Directory -Path $ReceiptsDirectory -Force | Out-Null }
+    $receiptTimestamp = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
+    $receiptFile = Join-Path $ReceiptsDirectory "deployment_receipt_$receiptTimestamp.json"
+
+    $tId = if ($ActiveContext) { $ActiveContext.TenantId } else { "unknown" }
+    $acc = if ($ActiveContext) { $ActiveContext.Account } else { "automated-runner" }
+
+    $receipt = [PSCustomObject]@{
+        TransactionId            = [Guid]::NewGuid().ToString()
+        TimestampUtc             = (Get-Date).ToUniversalTime().ToString("o")
+        TenantId                 = $tId
+        Operator                 = $acc
+        OverallTransactionState  = $transactionState
+        SnapshotId               = $SnapshotId
+        MutationsAttempted       = $ActionsToTake.Count
+        MutationsApplied         = $mutationsApplied
+        CreatedPolicyIds         = $newlyCreatedPolicyIds
+        RollbackExecuted         = $rollbackExecuted
+        RollbackVerified         = $rollbackVerified
+        FailureReason            = $failureReason
+        PolicyTransactions       = $transactionResults
+    }
+
+    $receipt | ConvertTo-Json -Depth 5 | Out-File -FilePath $receiptFile -Encoding utf8
+    Write-Host "`n[TRANSACTION RECEIPT] Audit receipt saved: $receiptFile" -ForegroundColor Cyan
+
+    return [PSCustomObject]@{
+        TransactionState = $transactionState
+        Receipt          = $receipt
+        ReceiptFile      = $receiptFile
+    }
+}
+
+if ($OnlyExportFunctions) {
+    return
+}
 
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "  Enterprise Identity-as-Code Engine (Microsoft Entra ID) " -ForegroundColor Cyan
@@ -411,161 +654,17 @@ try {
     exit 1
 }
 
-Write-Host "`nExecuting Live Policy Deployment with Per-Policy Transaction Tracking..." -ForegroundColor Cyan
-$transactionResults = [System.Collections.Generic.List[PSCustomObject]]::new()
-$deploymentFailed = $false
-$failureReason = $null
-$newlyCreatedPolicyIds = [System.Collections.Generic.List[string]]::new()
-$mutationsApplied = 0
+# 8. Execute Deployment Transaction
 
-foreach ($item in $actionsToTake) {
-    if ($deploymentFailed) {
-        Write-Host "  [SKIPPING] $($item.DisplayName) (Action: $($item.Action)) - Transaction halted due to preceding failure." -ForegroundColor DarkGray
-        $transactionResults.Add([PSCustomObject]@{
-            DisplayName = $item.DisplayName
-            Action      = $item.Action
-            Status      = "Skipped"
-            PolicyId    = $item.PolicyId
-            Message     = "Halted: Prior step failed ($failureReason)"
-        })
-        continue
-    }
+$deployResult = Invoke-PolicyDeploymentTransaction `
+    -ActionsToTake $actionsToTake `
+    -SnapshotId $snapshotId `
+    -RollbackScript $rollbackScript `
+    -ActiveContext $activeContext
 
-    if ($item.Action -eq "Skip") {
-        Write-Host "  [In Sync] $($item.DisplayName) - Zero drift. Skipped mutation." -ForegroundColor Gray
-        $transactionResults.Add([PSCustomObject]@{
-            DisplayName = $item.DisplayName
-            Action      = "Skip"
-            Status      = "SkippedNoDrift"
-            PolicyId    = $item.PolicyId
-            Message     = "In parity with desired state"
-        })
-        continue
-    }
-
-    $jsonBody = $item.Payload | ConvertTo-Json -Depth 10
-
-    if ($item.Action -eq "Update") {
-        Write-Host "  [Updating] $($item.DisplayName) (ID: $($item.PolicyId))..." -ForegroundColor Yellow
-        $patchUri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies/$($item.PolicyId)"
-        try {
-            Invoke-MgGraphRequest -Method PATCH -Uri $patchUri -Body $jsonBody -ContentType "application/json" -ErrorAction Stop | Out-Null
-            Write-Host "  -> Successfully updated." -ForegroundColor Green
-            $mutationsApplied++
-            $transactionResults.Add([PSCustomObject]@{
-                DisplayName = $item.DisplayName
-                Action      = "Update"
-                Status      = "Success"
-                PolicyId    = $item.PolicyId
-                Message     = "OK"
-            })
-        } catch {
-            $deploymentFailed = $true
-            $failureReason = $_.Exception.Message
-            Write-Host "  -> FAILED to update: $failureReason" -ForegroundColor Red
-            $transactionResults.Add([PSCustomObject]@{
-                DisplayName = $item.DisplayName
-                Action      = "Update"
-                Status      = "Failed"
-                PolicyId    = $item.PolicyId
-                Message     = $failureReason
-            })
-        }
-    } else {
-        Write-Host "  [Creating] $($item.DisplayName)..." -ForegroundColor Cyan
-        $postUri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies"
-        try {
-            $created = Invoke-MgGraphRequest -Method POST -Uri $postUri -Body $jsonBody -ContentType "application/json" -ErrorAction Stop
-            $createdId = $created.id
-            $newlyCreatedPolicyIds.Add($createdId)
-            $mutationsApplied++
-            Write-Host "  -> Successfully created (ID: $createdId)." -ForegroundColor Green
-            $transactionResults.Add([PSCustomObject]@{
-                DisplayName = $item.DisplayName
-                Action      = "Create"
-                Status      = "Success"
-                PolicyId    = $createdId
-                Message     = "Created successfully"
-            })
-        } catch {
-            $deploymentFailed = $true
-            $failureReason = $_.Exception.Message
-            Write-Host "  -> FAILED to create: $failureReason" -ForegroundColor Red
-            $transactionResults.Add([PSCustomObject]@{
-                DisplayName = $item.DisplayName
-                Action      = "Create"
-                Status      = "Failed"
-                PolicyId    = $null
-                Message     = $failureReason
-            })
-        }
-    }
-}
-
-Write-Host "`n================ PER-POLICY TRANSACTION SUMMARY ================" -ForegroundColor Cyan
-$transactionResults | Format-Table -Property DisplayName, Action, Status, Message -AutoSize
-
-# 8. Automatic In-Flight Rollback & Transaction State Machine (Finding 2)
-$transactionState = "Completed"
-$rollbackExecuted = $false
-$rollbackVerified = $false
-
-if ($deploymentFailed) {
-    Write-Host "`n[DEPLOYMENT FAILED] One or more policies encountered errors during deployment!" -ForegroundColor Red
-    Write-Host "Transaction halted immediately. Beginning automatic in-flight rollback..." -ForegroundColor Red
-
-    if ($mutationsApplied -gt 0) {
-        $rollbackExecuted = $true
-        Write-Host "`n[AUTOMATIC ROLLBACK TRIGGERED] Restoring tenant to pre-deployment snapshot '$snapshotId'..." -ForegroundColor Yellow
-        try {
-            $rollbackResult = & $rollbackScript -Action Restore -SnapshotId $snapshotId -SessionCreatedPolicyIds $newlyCreatedPolicyIds
-            if ($rollbackResult -eq $true) {
-                $rollbackVerified = $true
-                $transactionState = "FailedAndRolledBack"
-                Write-Host "`n[ROLLBACK SUCCESS] Automatic rollback completed and live state verified restored!" -ForegroundColor Green
-            } else {
-                $transactionState = "PendingVerification"
-                Write-Warning "`n[ROLLBACK WARNING] Rollback completed but live verification returned warnings."
-            }
-        } catch {
-            $transactionState = "RollbackFailed"
-            Write-Error "`n[CRITICAL ROLLBACK FAILURE] Automatic rollback encountered an error: $($_.Exception.Message)"
-        }
-    } else {
-        $transactionState = "FailedAndRolledBack"
-        Write-Host "Zero tenant mutations were applied prior to failure. Snapshot baseline is intact." -ForegroundColor Green
-    }
-}
-
-# 9. Persist Formal Deployment Transaction Receipt
-$receiptsDir = Join-Path $PSScriptRoot "..\..\reports"
-if (-not (Test-Path $receiptsDir)) { New-Item -ItemType Directory -Path $receiptsDir -Force | Out-Null }
-
-$receiptTimestamp = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
-$receiptFile = Join-Path $receiptsDir "deployment_receipt_$receiptTimestamp.json"
-
-$receipt = [PSCustomObject]@{
-    TransactionId            = [Guid]::NewGuid().ToString()
-    TimestampUtc             = (Get-Date).ToUniversalTime().ToString("o")
-    TenantId                 = $activeContext.TenantId
-    Operator                 = $activeContext.Account
-    OverallTransactionState  = $transactionState
-    SnapshotId               = $snapshotId
-    MutationsAttempted       = $actionsToTake.Count
-    MutationsApplied         = $mutationsApplied
-    CreatedPolicyIds         = $newlyCreatedPolicyIds
-    RollbackExecuted         = $rollbackExecuted
-    RollbackVerified         = $rollbackVerified
-    FailureReason            = $failureReason
-    PolicyTransactions       = $transactionResults
-}
-
-$receipt | ConvertTo-Json -Depth 5 | Out-File -FilePath $receiptFile -Encoding utf8
-Write-Host "`n[TRANSACTION RECEIPT] Audit receipt saved: $receiptFile" -ForegroundColor Cyan
-
-if ($transactionState -ne "Completed") {
+if ($deployResult.TransactionState -ne "Completed") {
     Write-Host "`n==========================================================" -ForegroundColor Red
-    Write-Host "  DEPLOYMENT TRANSACTION RESULT: $transactionState        " -ForegroundColor Red
+    Write-Host "  DEPLOYMENT TRANSACTION RESULT: $($deployResult.TransactionState) " -ForegroundColor Red
     Write-Host "  Snapshot Baseline: $snapshotId                         " -ForegroundColor White
     Write-Host "==========================================================" -ForegroundColor Red
     exit 1
