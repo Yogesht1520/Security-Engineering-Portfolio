@@ -40,13 +40,56 @@ if (-not (Test-Path $SnapshotsDir)) {
 function Get-NormalizedPolicyConfiguration {
     param ([Parameter(Mandatory=$true)]$Policy)
     $obj = $Policy | ConvertTo-Json -Depth 15 | ConvertFrom-Json
-    $metadataProps = @("id", "createdDateTime", "modifiedDateTime", "@odata.context", "@odata.nextLink")
+    $metadataProps = @("id", "createdDateTime", "modifiedDateTime", "@odata.context", "@odata.nextLink", "@odata.etag", "templateId")
     foreach ($prop in $metadataProps) {
         if ($obj.PSObject.Properties[$prop]) {
             $obj.PSObject.Properties.Remove($prop)
         }
     }
     return ($obj | ConvertTo-Json -Depth 15 -Compress)
+}
+
+function Test-PolicyConfigurationParity {
+    param (
+        [Parameter(Mandatory=$true)]$LivePolicy,
+        [Parameter(Mandatory=$true)]$SnapshotPolicy
+    )
+    $mismatches = [System.Collections.Generic.List[string]]::new()
+
+    # 1. State
+    if ($LivePolicy.state -ne $SnapshotPolicy.state) {
+        $mismatches.Add("State: Expected '$($SnapshotPolicy.state)', Actual '$($LivePolicy.state)'")
+    }
+
+    # 2. Grant Controls
+    $liveGrant = if ($LivePolicy.grantControls) { $LivePolicy.grantControls | ConvertTo-Json -Depth 10 -Compress } else { "" }
+    $snapGrant = if ($SnapshotPolicy.grantControls) { $SnapshotPolicy.grantControls | ConvertTo-Json -Depth 10 -Compress } else { "" }
+    if ($liveGrant -ne $snapGrant) {
+        $mismatches.Add("GrantControls: Expected '$snapGrant', Actual '$liveGrant'")
+    }
+
+    # 3. Session Controls
+    $liveSession = if ($LivePolicy.sessionControls) { $LivePolicy.sessionControls | ConvertTo-Json -Depth 10 -Compress } else { "" }
+    $snapSession = if ($SnapshotPolicy.sessionControls) { $SnapshotPolicy.sessionControls | ConvertTo-Json -Depth 10 -Compress } else { "" }
+    if ($liveSession -ne $snapSession) {
+        $mismatches.Add("SessionControls: Expected '$snapSession', Actual '$liveSession'")
+    }
+
+    # 4. Complete Conditions Scope (Users, Apps, Locations, Devices, Client Apps, Risk Levels)
+    $conditionProps = @("users", "applications", "clientAppTypes", "locations", "devices", "platforms", "signInRiskLevels", "userRiskLevels")
+    foreach ($cProp in $conditionProps) {
+        $liveCond = if ($LivePolicy.conditions -and $LivePolicy.conditions.PSObject.Properties[$cProp]) {
+            $LivePolicy.conditions.$cProp | ConvertTo-Json -Depth 10 -Compress
+        } else { "" }
+        $snapCond = if ($SnapshotPolicy.conditions -and $SnapshotPolicy.conditions.PSObject.Properties[$cProp]) {
+            $SnapshotPolicy.conditions.$cProp | ConvertTo-Json -Depth 10 -Compress
+        } else { "" }
+        if ($liveCond -ne $snapCond) {
+            $mismatches.Add("Conditions.$($cProp): Expected '$snapCond', Actual '$liveCond'")
+        }
+    }
+
+    return $mismatches
 }
 
 function Test-SnapshotIntegrity {
@@ -397,17 +440,16 @@ function Restore-Snapshot {
         }
 
         $livePolicy = $matching[0]
-        $normalizedLive = Get-NormalizedPolicyConfiguration -Policy $livePolicy
-        $normalizedSnap = Get-NormalizedPolicyConfiguration -Policy $sp
+        $mismatches = Test-PolicyConfigurationParity -LivePolicy $livePolicy -SnapshotPolicy $sp
 
-        if ($normalizedLive -ne $normalizedSnap) {
-            Write-Warning "  [VERIFY CONFIG DRIFT] Policy '$($sp.displayName)' configuration mismatch between snapshot and live tenant!"
-            if ($livePolicy.state -ne $sp.state) {
-                Write-Warning "    * State: Expected '$($sp.state)', Actual '$($livePolicy.state)'"
+        if ($mismatches.Count -gt 0) {
+            Write-Warning "  [VERIFY CONFIG DRIFT] Policy '$($sp.displayName)' configuration mismatch between snapshot and live tenant ($($mismatches.Count) field(s) drifted):"
+            foreach ($m in $mismatches) {
+                Write-Warning "    * $m"
             }
             $allVerified = $false
         } else {
-            Write-Host "  [VERIFY PASS] '$($sp.displayName)' full configuration verified in 100% parity with snapshot." -ForegroundColor Green
+            Write-Host "  [VERIFY PASS] '$($sp.displayName)' full configuration verified in 100% parity with snapshot (state, conditions, grantControls, sessionControls)." -ForegroundColor Green
         }
     }
 

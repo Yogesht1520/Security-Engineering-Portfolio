@@ -207,21 +207,22 @@ Hybrid Enterprise Identity & Conditional Access Lab/
 ## 5. Operational Commands & Quickstart
 
 ### 5.1 Execute Master Test Suite (Locally)
-To run all 56 automated verification checks across the 7 specialized suites (including 13 Native Pester Assertions):
+To run all 58 automated verification checks across the 9 specialized test suites (including 13 Native Pester assertions):
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\tests\run_all_tests.ps1
+powershell -ExecutionPolicy Bypass -File .\tests\run_all_tests.ps1 -ExportEvidence
 ```
+The test runner itemizes verification checks across two distinct offline tiers (38 Local Unit Tests and 20 Mocked Graph API Integration Tests) and generates machine-readable execution telemetry in [`evidence/test-results.json`](./evidence/test-results.json). Independently exported live staging tenant baseline state is preserved separately in [`evidence/live-tenant-state/`](./evidence/live-tenant-state/).
 
 ### 5.2 Plan & Deploy Conditional Access Policies
 ```powershell
 # 1. Deep schema validation & pre-flight check (No Graph connection needed)
-.\scripts\deploy_ca_policies.ps1 -ValidateOnly
+.\scripts\deployment\deploy_ca_policies.ps1 -ValidateOnly
 
 # 2. Plan mode: Compare live tenant state against Git and calculate drift
-.\scripts\deploy_ca_policies.ps1 -Plan -DeviceCode
+.\scripts\deployment\deploy_ca_policies.ps1 -Plan -DeviceCode
 
 # 3. Live deployment (Generates SHA-256 integrity-checked pre-deployment rollback snapshot)
-.\scripts\deploy_ca_policies.ps1 -Deploy -Environment Lab -DeviceCode
+.\scripts\deployment\deploy_ca_policies.ps1 -Deploy -Environment Lab -DeviceCode
 ```
 
 ### 5.3 Audit Privileged Roles & PIM Compliance

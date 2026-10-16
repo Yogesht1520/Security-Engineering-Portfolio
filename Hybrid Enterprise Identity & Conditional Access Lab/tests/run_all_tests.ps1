@@ -23,6 +23,8 @@ $suiteRecords = [System.Collections.Generic.List[psobject]]::new()
 $totalTestSteps = 0
 $passedTestSteps = 0
 $totalVerificationChecks = 0
+$totalPassedChecks = 0
+$totalFailedChecks = 0
 
 function Invoke-GuardedTestSuite {
     param (
@@ -71,14 +73,17 @@ function Invoke-GuardedTestSuite {
         if ($childExitCode -ne 0 -or $hasFailedText) {
             $suiteStatus = "FAIL"
             $script:suiteFailures.Add("$SuiteName (Exit Code: $childExitCode)")
+            $script:totalFailedChecks += $CheckCount
             Write-Host "  [RESULT] FAILED: $SuiteName" -ForegroundColor Red
         } else {
             $script:passedTestSteps++
+            $script:totalPassedChecks += $CheckCount
             Write-Host "  [RESULT] PASSED: $SuiteName" -ForegroundColor Green
         }
     } catch {
         $suiteStatus = "FAIL"
         $script:suiteFailures.Add("$SuiteName (Exception: $($_.Exception.Message))")
+        $script:totalFailedChecks += $CheckCount
         Write-Host "  [RESULT] EXCEPTION in $SuiteName : $($_.Exception.Message)" -ForegroundColor Red
     }
 
@@ -160,13 +165,18 @@ Write-Host "----------------------------------------------------------" -Foregro
 
 $pesterResult = Invoke-Pester -Path "$PSScriptRoot\" -PassThru
 $pesterStatus = "PASS"
-if ($pesterResult.FailedCount -gt 0) {
+$pPassed = $pesterResult.PassedCount
+$pFailed = $pesterResult.FailedCount
+$script:totalPassedChecks += $pPassed
+$script:totalFailedChecks += $pFailed
+
+if ($pFailed -gt 0) {
     $pesterStatus = "FAIL"
-    $suiteFailures.Add("Pester Matrix ($($pesterResult.FailedCount) failed assertions)")
-    Write-Host "  [RESULT] FAILED: $($pesterResult.FailedCount) Pester assertion(s) failed." -ForegroundColor Red
+    $suiteFailures.Add("Pester Matrix ($pFailed failed assertions)")
+    Write-Host "  [RESULT] FAILED: $pFailed Pester assertion(s) failed." -ForegroundColor Red
 } else {
     $script:passedTestSteps++
-    Write-Host "  [RESULT] PASSED: All $($pesterResult.PassedCount) Pester assertions passed." -ForegroundColor Green
+    Write-Host "  [RESULT] PASSED: All $pPassed Pester assertions passed." -ForegroundColor Green
 }
 
 $suiteRecords.Add([PSCustomObject]@{
@@ -188,9 +198,11 @@ Write-Host "  Total Test Suites     : $totalTestSteps" -ForegroundColor White
 Write-Host "  Passed Test Suites    : $passedTestSteps" -ForegroundColor Green
 Write-Host "  Failed Test Suites    : $($suiteFailures.Count)" -ForegroundColor $(if($suiteFailures.Count -gt 0){'Red'}else{'Green'})
 Write-Host "  Total Itemized Checks : $totalVerificationChecks" -ForegroundColor White
+Write-Host "  Passed Checks         : $totalPassedChecks" -ForegroundColor Green
+Write-Host "  Failed Checks         : $totalFailedChecks" -ForegroundColor $(if($totalFailedChecks -gt 0){'Red'}else{'Green'})
 Write-Host "  Execution Duration    : $([math]::Round($elapsed, 2))s" -ForegroundColor White
 
-# Optional Machine-Readable Evidence Generation (Item 19)
+# Optional Machine-Readable Evidence Generation (Item 19 / Audit Finding 1)
 if ($ExportEvidence -or $ExportEvidencePath) {
     $outPath = if ($ExportEvidencePath) { $ExportEvidencePath } else { Join-Path (Split-Path $PSScriptRoot -Parent) "evidence\test-results.json" }
     Write-Host "`n[Evidence Engine] Generating reproducible test provenance report..." -ForegroundColor Cyan
@@ -207,54 +219,33 @@ if ($ExportEvidence -or $ExportEvidencePath) {
         "local://workstation/test-execution"
     }
 
-    $livePolicies = @(
-        @{ id = "a475eb97-059f-4c95-a81f-6826a1c8d8d7"; displayName = "CAP-001: Block Sign-in Outside Allowed Regions"; state = "enabledForReportingButNotEnforced" },
-        @{ id = "3b363e8e-f8bf-40fc-8852-ae4820aa713a"; displayName = "CAP-002: Require Phishing-Resistant MFA for Privileged Roles"; state = "enabledForReportingButNotEnforced" },
-        @{ id = "73f8d8c1-3abc-4f40-b97f-a6883a9bcfe2"; displayName = "CAP-003: Risk-Based Step-Up MFA"; state = "enabledForReportingButNotEnforced" },
-        @{ id = "3124fd33-5269-4b16-a340-bd1b7a3e561d"; displayName = "CAP-004: Block Legacy Authentication Protocols"; state = "enabledForReportingButNotEnforced" },
-        @{ id = "79f73724-c871-4f4b-9301-3deb4585d6aa"; displayName = "CAP-005: Privileged Session Reauthentication Policy"; state = "enabledForReportingButNotEnforced" },
-        @{ id = "b182c414-99f8-4820-8af4-2a1b1bce8a82"; displayName = "CAP-006: Require Compliant or Hybrid Joined Device"; state = "enabledForReportingButNotEnforced" },
-        @{ id = "845da1fa-4b1c-4ac6-b71a-7324b5df4fbd"; displayName = "CAP-007: Require MFA for All Workforce Users"; state = "enabledForReportingButNotEnforced" },
-        @{ id = "5d6a53ce-13bd-46c0-b69a-b26d228c095f"; displayName = "CAP-008: Securing Security Information Registration"; state = "enabledForReportingButNotEnforced" },
-        @{ id = "7e21c517-2279-4124-a482-fdea891889f5"; displayName = "CAP-009: Restrict Privileged Access to Designated Devices"; state = "enabledForReportingButNotEnforced" },
-        @{ id = "39bb3eb9-888d-4b8d-855f-44ebf09475ce"; displayName = "CAP-010: Apply Guest and External User Access Controls"; state = "enabledForReportingButNotEnforced" },
-        @{ id = "11d66207-016e-445b-bac4-9b46b1a08eb9"; displayName = "CAP-012: High User Risk Remediation and Password Change"; state = "enabledForReportingButNotEnforced" }
-    )
-
-    $passedCount = if ($suiteFailures.Count -eq 0) { $totalVerificationChecks } else { 0 }
-    $failedCount = if ($suiteFailures.Count -gt 0) { $suiteFailures.Count } else { 0 }
-
     $evidenceObject = [PSCustomObject]@{
         testSuite         = "Microsoft Entra ID Zero Trust & Identity-as-Code Engine"
         executedAtUtc     = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
         gitCommitSha      = $commitSha
         gitHubActionsRunId = $runId
         gitHubActionsRunUrl = $runUrl
-        environment       = "Microsoft Entra ID (P2) Staging/Lab Tenant & GitHub Actions CI/CD"
-        tenantId          = "<REDACTED_TENANT_ID>"
+        environment       = "GitHub Actions CI/CD & Local PowerShell Engine"
+        executionScope    = [PSCustomObject]@{
+            mode                    = "Automated Offline CI/CD Test Matrix"
+            liveTenantConnected     = $false
+            mockedGraphApiEmulation = $true
+            independentLiveEvidence = "evidence/live-tenant-state/live-tenant-state.json"
+            scopeNote               = "This report documents local AST syntax, JSON schema conformance, cryptographic snapshot integrity, and mocked Graph API deployment transactions. Live tenant state is documented independently via dedicated read-only tenant exports."
+        }
         resultsSummary    = [PSCustomObject]@{
             totalVerificationChecks = $totalVerificationChecks
-            passed                  = $passedCount
-            failed                  = $failedCount
+            passed                  = $totalPassedChecks
+            failed                  = $totalFailedChecks
             skipped                 = 0
             durationSeconds         = [math]::Round($elapsed, 2)
-            calculationMethodology  = "Sum of all automated verification checks across 9 test suites: Schema validation (11), Group resolution (1), User resolution (1), Drift engine (5), Snapshot integrity (9), Deployment failure & rollback recovery (6), Lifecycle engine (9), Governance pre-flight (3), and Native Pester matrix (13)."
+            calculationMethodology  = "Itemized check count across 9 test suites: Schema validation (11), Group resolution (1), User resolution (1), Drift engine (5), Snapshot integrity (9), Deployment failure & rollback recovery (6), Lifecycle engine (9), Governance pre-flight (3), and Native Pester matrix (13)."
             testTiersBreakdown      = [PSCustomObject]@{
-                localUnitTestsChecks                = 38
-                mockedGraphApiIntegrationChecks     = 20
-                liveTenantReadOnlyVerificationChecks = 11
+                localUnitTestsChecks            = 38
+                mockedGraphApiIntegrationChecks = 20
             }
         }
         testSuites        = $suiteRecords
-        liveTenantState   = [PSCustomObject]@{
-            provenance                  = "Tier 3: Captured via read-only Microsoft Graph API export from live Microsoft Entra ID tenant. Strictly distinguished from Tier 1 local unit tests and Tier 2 simulated/mocked integration tests."
-            deployedReportOnlyPolicies  = $livePolicies
-            governancePIMState          = [PSCustomObject]@{
-                standingWorkforcePrivileges  = 0
-                breakGlassEmergencyAccounts = 2
-                eligiblePIMAdmins           = 3
-            }
-        }
     }
 
     $jsonOutput = $evidenceObject | ConvertTo-Json -Depth 6

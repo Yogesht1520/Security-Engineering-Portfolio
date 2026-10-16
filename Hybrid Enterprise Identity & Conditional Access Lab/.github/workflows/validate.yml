@@ -97,15 +97,10 @@ jobs:
       - name: Verify No Sensitive Files Committed
         shell: bash
         run: |
-          prohibitedFiles=(
-            "config/tenant.json"
-            "config/environment.json"
-            "config/identity-mapping.json"
-          )
-          for file in "${prohibitedFiles[@]}"; do
-            if [ -f "$file" ]; then
-              echo "CRITICAL: Live credentials file '$file' detected in repository!"
-              exit 1
-            fi
-          done
-          echo "Secret scanning gate passed: No sensitive configuration files committed."
+          foundSensitive=$(find . -type f \( -name "tenant.json" -o -name "environment.json" -o -name "identity-mapping.json" \) 2>/dev/null)
+          if [ -n "$foundSensitive" ]; then
+            echo "CRITICAL: Prohibited sensitive live config file(s) found in repository:"
+            echo "$foundSensitive"
+            exit 1
+          fi
+          echo "Secret scanning gate passed: No sensitive configuration files committed anywhere in repository."

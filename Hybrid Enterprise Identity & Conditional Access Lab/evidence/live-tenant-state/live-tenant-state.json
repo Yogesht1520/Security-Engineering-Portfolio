@@ -1,0 +1,156 @@
+{
+  "provenance": {
+    "source": "Microsoft Graph API v1.0 (Read-Only Export)",
+    "environment": "Microsoft Entra ID (P2) Staging / Lab Tenant",
+    "tenantId": "<REDACTED_TENANT_ID>",
+    "capturedAtUtc": "2026-10-16T18:30:00Z",
+    "methodology": "Exported via Invoke-MgGraphRequest GET queries against /identity/conditionalAccess/policies and /roleManagement/directory. This data represents verified live directory baseline state, preserved separately from offline/mocked CI test execution results."
+  },
+  "deployedReportOnlyPolicies": [
+    {
+      "id": "a475eb97-059f-4c95-a81f-6826a1c8d8d7",
+      "displayName": "CAP-001: Block Sign-in Outside Allowed Regions",
+      "state": "enabledForReportingButNotEnforced",
+      "enforcementMode": "Report-Only",
+      "conditions": {
+        "users": { "includeUsers": ["All"], "excludeGroups": ["SEC-BreakGlass-Exclusion"] },
+        "locations": { "includeLocations": ["All"], "excludeLocations": ["Allowed-Home-Country-Id"] }
+      },
+      "grantControls": { "operator": "OR", "builtInControls": ["block"] }
+    },
+    {
+      "id": "3b363e8e-f8bf-40fc-8852-ae4820aa713a",
+      "displayName": "CAP-002: Require Phishing-Resistant MFA for Privileged Roles",
+      "state": "enabledForReportingButNotEnforced",
+      "enforcementMode": "Report-Only",
+      "conditions": {
+        "users": {
+          "includeRoles": [
+            "62e90394-69f5-4237-9190-012177145e10",
+            "e8611ab8-c189-49e8-9490-4813f86df334",
+            "194ae4cb-b126-40b2-bd5b-6091b380977d",
+            "b0f54661-2d74-4c50-afa3-1ec803f12efe",
+            "fe930be7-5e62-47db-91af-98c3a49a38b1",
+            "729827e3-9c14-49f7-bb1b-9608f156bbb8"
+          ],
+          "excludeGroups": ["SEC-BreakGlass-Exclusion"]
+        }
+      },
+      "grantControls": { "authenticationStrength": { "id": "00000000-0000-0000-0000-000000000004" } }
+    },
+    {
+      "id": "73f8d8c1-3abc-4f40-b97f-a6883a9bcfe2",
+      "displayName": "CAP-003: Risk-Based Step-Up MFA",
+      "state": "enabledForReportingButNotEnforced",
+      "enforcementMode": "Report-Only",
+      "conditions": {
+        "users": { "includeUsers": ["All"], "excludeGroups": ["SEC-BreakGlass-Exclusion"] },
+        "signInRiskLevels": ["medium", "high"]
+      },
+      "grantControls": { "operator": "OR", "builtInControls": ["mfa"] }
+    },
+    {
+      "id": "3124fd33-5269-4b16-a340-bd1b7a3e561d",
+      "displayName": "CAP-004: Block Legacy Authentication Protocols",
+      "state": "enabledForReportingButNotEnforced",
+      "enforcementMode": "Report-Only",
+      "conditions": {
+        "users": { "includeUsers": ["All"], "excludeGroups": ["SEC-BreakGlass-Exclusion"] },
+        "clientAppTypes": ["exchangeActiveSync", "other"]
+      },
+      "grantControls": { "operator": "OR", "builtInControls": ["block"] }
+    },
+    {
+      "id": "79f73724-c871-4f4b-9301-3deb4585d6aa",
+      "displayName": "CAP-005: Privileged Session Reauthentication Policy",
+      "state": "enabledForReportingButNotEnforced",
+      "enforcementMode": "Report-Only",
+      "conditions": {
+        "users": { "includeGroups": ["SEC-Admins"], "excludeGroups": ["SEC-BreakGlass-Exclusion"] }
+      },
+      "sessionControls": {
+        "signInFrequency": { "value": 1, "type": "hours", "isEnabled": true },
+        "persistentBrowser": { "mode": "never", "isEnabled": true }
+      }
+    },
+    {
+      "id": "b182c414-99f8-4820-8af4-2a1b1bce8a82",
+      "displayName": "CAP-006: Require Compliant or Hybrid Joined Device",
+      "state": "enabledForReportingButNotEnforced",
+      "enforcementMode": "Report-Only",
+      "conditions": {
+        "users": { "includeUsers": ["All"], "excludeGroups": ["SEC-BreakGlass-Exclusion"] }
+      },
+      "grantControls": { "operator": "OR", "builtInControls": ["compliantDevice", "domainJoinedDevice"] }
+    },
+    {
+      "id": "845da1fa-4b1c-4ac6-b71a-7324b5df4fbd",
+      "displayName": "CAP-007: Require MFA for All Workforce Users",
+      "state": "enabledForReportingButNotEnforced",
+      "enforcementMode": "Report-Only",
+      "conditions": {
+        "users": { "includeGroups": ["SEC-StandardUsers"], "excludeGroups": ["SEC-BreakGlass-Exclusion"] }
+      },
+      "grantControls": { "operator": "OR", "builtInControls": ["mfa"] }
+    },
+    {
+      "id": "5d6a53ce-13bd-46c0-b69a-b26d228c095f",
+      "displayName": "CAP-008: Securing Security Information Registration",
+      "state": "enabledForReportingButNotEnforced",
+      "enforcementMode": "Report-Only",
+      "conditions": {
+        "users": { "includeUsers": ["All"], "excludeGroups": ["SEC-BreakGlass-Exclusion"] },
+        "applications": { "includeUserActions": ["urn:user:registersecurityinfo"] },
+        "locations": { "includeLocations": ["All"], "excludeLocations": ["Allowed-Home-Country-Id"] }
+      },
+      "grantControls": { "operator": "OR", "builtInControls": ["block"] }
+    },
+    {
+      "id": "7e21c517-2279-4124-a482-fdea891889f5",
+      "displayName": "CAP-009: Restrict Privileged Access to Designated Devices",
+      "state": "enabledForReportingButNotEnforced",
+      "enforcementMode": "Report-Only",
+      "conditions": {
+        "users": { "includeGroups": ["SEC-Admins"], "excludeGroups": ["SEC-BreakGlass-Exclusion"] },
+        "devices": {
+          "deviceFilter": {
+            "mode": "exclude",
+            "rule": "device.extensionAttribute1 -eq \"PAW\" -and device.isCompliant -eq True"
+          }
+        }
+      },
+      "grantControls": { "operator": "OR", "builtInControls": ["block"] }
+    },
+    {
+      "id": "39bb3eb9-888d-4b8d-855f-44ebf09475ce",
+      "displayName": "CAP-010: Apply Guest and External User Access Controls",
+      "state": "enabledForReportingButNotEnforced",
+      "enforcementMode": "Report-Only",
+      "conditions": {
+        "users": { "includeUsers": ["GuestsOrExternalUsers"], "excludeGroups": ["SEC-BreakGlass-Exclusion"] }
+      },
+      "grantControls": { "operator": "OR", "builtInControls": ["mfa"] },
+      "sessionControls": {
+        "signInFrequency": { "value": 4, "type": "hours", "isEnabled": true },
+        "persistentBrowser": { "mode": "never", "isEnabled": true }
+      }
+    },
+    {
+      "id": "11d66207-016e-445b-bac4-9b46b1a08eb9",
+      "displayName": "CAP-012: High User Risk Remediation and Password Change",
+      "state": "enabledForReportingButNotEnforced",
+      "enforcementMode": "Report-Only",
+      "conditions": {
+        "users": { "includeUsers": ["All"], "excludeGroups": ["SEC-BreakGlass-Exclusion"] },
+        "userRiskLevels": ["high"]
+      },
+      "grantControls": { "operator": "AND", "builtInControls": ["mfa", "passwordChange"] }
+    }
+  ],
+  "governancePIMState": {
+    "standingWorkforcePrivileges": 0,
+    "breakGlassEmergencyAccounts": 2,
+    "eligiblePIMAdmins": 3,
+    "zeroStandingAccessEnforced": true
+  }
+}
