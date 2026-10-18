@@ -62,7 +62,7 @@ jobs:
           }
 
       - name: Upload Test Evidence and Telemetry Artifacts
-        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb99ba8afd # v4.6.1
+        uses: actions/upload-artifact@v4
         if: success()
         with:
           name: test-results-and-evidence-${{ github.run_id }}-${{ github.sha }}
@@ -109,7 +109,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run Gitleaks Secret Scanner
-        uses: gitleaks/gitleaks-action@e851d428984992523281084206ca6e8a00dd3eb9 # v2.3.9 pinned SHA
+        uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
