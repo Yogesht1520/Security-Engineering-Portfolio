@@ -237,7 +237,12 @@ function Test-PimRoleActivationRule {
 }
 
 if ($VerifyPolicyRules) {
-    Test-PimRoleActivationRule -RoleDefinitionId $targetRole.id -RoleDisplayName $targetRole.displayName | Out-Null
+    $ruleResults = Test-PimRoleActivationRule -RoleDefinitionId $targetRole.id -RoleDisplayName $targetRole.displayName
+    if (-not $ruleResults.IsCompliant -or $ruleResults.Status -eq "Unknown") {
+        Write-Error "[PIM VERIFY FAILURE] Role activation policy rules for '$($targetRole.displayName)' do not meet Zero Standing Access standards."
+        exit 1
+    }
+    Write-Host "[PIM VERIFY SUCCESS] Role activation policy rules for '$($targetRole.displayName)' verified compliant." -ForegroundColor Green
     exit 0
 }
 
@@ -331,10 +336,19 @@ if ($AssignEligible) {
         Write-Host "  Final Eligibility State: $verificationState" -ForegroundColor $(if($verificationState -eq 'Assignment confirmed'){'Green'}elseif($verificationState -eq 'Assignment pending propagation'){'Yellow'}else{'Red'})
 
         # Step 4: Audit role activation constraints
-        Test-PimRoleActivationRule -RoleDefinitionId $targetRole.id -RoleDisplayName $targetRole.displayName | Out-Null
+        $ruleResults = Test-PimRoleActivationRule -RoleDefinitionId $targetRole.id -RoleDisplayName $targetRole.displayName
+        if (-not $ruleResults.IsCompliant -or $ruleResults.Status -eq "Unknown") {
+            Write-Warning "  [PIM COMPLIANCE WARNING] Role activation policy has compliance findings for '$($targetRole.displayName)'."
+        }
+
+        if ($verificationState -eq "Verification unavailable" -or $verificationState -eq "Assignment failed") {
+            Write-Error "[PIM ASSIGNMENT INCOMPLETE] Final eligibility verification state was '$verificationState'."
+            exit 1
+        }
     } catch {
         $verificationState = "Assignment failed"
         Write-Error "  [ASSIGNMENT FAILED] PIM Graph Request returned: $($_.Exception.Message). State: $verificationState."
+        exit 1
     }
 }
 

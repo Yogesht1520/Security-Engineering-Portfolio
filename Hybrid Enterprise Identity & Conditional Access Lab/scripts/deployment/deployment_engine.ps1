@@ -190,11 +190,30 @@ function Invoke-PolicyDeploymentTransaction {
     }
 
     Write-Host "`nExecuting Live Policy Deployment with Per-Policy Transaction Tracking..." -ForegroundColor Cyan
+    $transactionStartTime = [DateTime]::UtcNow
     $transactionResults = [System.Collections.Generic.List[PSCustomObject]]::new()
     $deploymentFailed = $false
     $failureReason = $null
     $newlyCreatedPolicyIds = [System.Collections.Generic.List[string]]::new()
+    $baselinePolicyIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $mutationsApplied = 0
+
+    # Pre-index baseline snapshot policy IDs to guarantee pre-existing policies are never deleted during rollback
+    $targetSnapDir = Join-Path $SnapshotsDir $SnapshotId
+    if (Test-Path $targetSnapDir) {
+        Get-ChildItem -Path $targetSnapDir -Filter "*.json" | ForEach-Object {
+            if ($_.Name -ne "manifest.json" -and $_.Name -ne "checksums.sha256") {
+                try {
+                    $snapObj = Get-Content -Path $_.FullName -Raw | ConvertFrom-Json
+                    if ($snapObj.id) {
+                        $baselinePolicyIds.Add($snapObj.id) | Out-Null
+                    }
+                } catch {
+                    Write-Verbose "Could not read or parse snapshot file $($_.FullName): $($_.Exception.Message)"
+                }
+            }
+        }
+    }
 
     foreach ($item in $ActionsToTake) {
         if ($deploymentFailed) {
@@ -296,19 +315,42 @@ function Invoke-PolicyDeploymentTransaction {
                 $failureReason = $_.Exception.Message
                 Write-Host "  -> FAILED to create: $failureReason" -ForegroundColor Red
 
-                # Ambiguous Creation Mitigation: Check if policy was created despite response loss
+                # Ambiguous Creation Mitigation: Prove policy ownership before deleting
                 try {
                     $checkListUri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies"
                     $currentList = Invoke-MgGraphRequest -Method GET -Uri $checkListUri -ErrorAction Stop
                     $ambiguousMatches = @($currentList.value | Where-Object { $_.displayName -eq $item.DisplayName })
                     if ($ambiguousMatches.Count -gt 0) {
                         foreach ($am in $ambiguousMatches) {
-                            if (-not $newlyCreatedPolicyIds.Contains($am.id)) {
-                                $newlyCreatedPolicyIds.Add($am.id)
+                            # CRITICAL: Prove ownership before adding to deletion list.
+                            # If policy ID already existed in pre-deployment baseline snapshot, IT IS PRE-EXISTING!
+                            if ($baselinePolicyIds.Contains($am.id)) {
+                                Write-Warning "  -> [PRE-EXISTING POLICY] Policy '$($am.displayName)' (ID: $($am.id)) was present in baseline snapshot. Preserving from deletion."
+                                continue
+                            }
+
+                            # Verify creation time matches transaction window if createdDateTime property exists
+                            $provenOwnership = $true
+                            if ($am.createdDateTime) {
+                                try {
+                                    $createdDt = [DateTime]::Parse($am.createdDateTime).ToUniversalTime()
+                                    if ($createdDt -lt $transactionStartTime.AddSeconds(-30)) {
+                                        $provenOwnership = $false
+                                        Write-Warning "  -> [PRE-EXISTING TIMESTAMP] Policy '$($am.displayName)' createdDateTime ($($am.createdDateTime)) precedes transaction window. Proving non-ownership; preserving from deletion."
+                                    }
+                                } catch {
+                                    Write-Verbose "Could not parse createdDateTime on policy '$($am.displayName)': $($_.Exception.Message)"
+                                }
+                            }
+
+                            if ($provenOwnership) {
+                                if (-not $newlyCreatedPolicyIds.Contains($am.id)) {
+                                    $newlyCreatedPolicyIds.Add($am.id)
+                                }
+                                $mutationsApplied++
+                                Write-Warning "  -> [AMBIGUOUS WRITE DETECTED] Verified newly created policy '$($am.displayName)' (ID: $($am.id)) before response drop. Added to cleanup list."
                             }
                         }
-                        $mutationsApplied++
-                        Write-Warning "  -> [AMBIGUOUS WRITE DETECTED] Policy created before response drop! Added ID(s) to cleanup list."
                     }
                 } catch {
                     $mutationsApplied++

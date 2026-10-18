@@ -14,3 +14,22 @@ This directory contains offline, sanitized telemetry and state exports generated
 
 > [!NOTE]
 > All personal identifiers and live tenant IDs have been sanitized in conformance with enterprise repository hygiene requirements (`<LAB_DOMAIN>`, `<REDACTED_TENANT_ID>`).
+
+---
+
+## Reproducible Export Procedure
+
+To reproduce or refresh these sanitized evidence artifacts from any live Microsoft Entra ID tenant with read-only permissions:
+
+```powershell
+# Execute the automated export and sanitization pipeline:
+powershell -ExecutionPolicy Bypass -File .\scripts\deployment\export_tenant_evidence.ps1 -DeviceCode
+```
+
+### Required Delegated Read-Only Scopes:
+- `Policy.Read.ConditionalAccess`
+- `RoleManagement.Read.Directory`
+- `AuditLog.Read.All`
+- `Directory.Read.All`
+
+The script connects via device authentication, extracts the live objects, scrubs tenant IDs and personal UPNs, and updates this evidence folder.

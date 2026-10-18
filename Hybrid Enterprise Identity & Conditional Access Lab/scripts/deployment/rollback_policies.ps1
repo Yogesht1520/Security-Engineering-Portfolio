@@ -331,7 +331,12 @@ function Restore-Snapshot {
         $body.PSObject.Properties.Remove("modifiedDateTime")
         $jsonPayload = $body | ConvertTo-Json -Depth 10
 
-        # Finding 3: Immutable policy ID as primary identity; fallback to unique display name candidate
+        # Finding 3: Immutable policy ID as primary identity & strict duplicate display name rejection
+        $allNameMatches = @($livePolicies | Where-Object { $_.displayName -eq $displayName })
+        if ($allNameMatches.Count -gt 1) {
+            throw "[ROLLBACK AMBIGUITY] Multiple live policies ($($allNameMatches.Count)) share display name '$displayName'. Restoration cannot arbitrarily select one; rollback halted."
+        }
+
         $existingLive = $null
         if ($policyId) {
             $matchById = @($livePolicies | Where-Object { $_.id -eq $policyId })
@@ -339,17 +344,19 @@ function Restore-Snapshot {
                 $existingLive = $matchById[0]
             } elseif ($matchById.Count -gt 1) {
                 throw "[ROLLBACK AMBIGUITY] Critical directory error: Multiple live policies found with identical ID '$policyId'."
+            } else {
+                # ID not found in live tenant. Check if another live policy is using this display name under a different ID.
+                if ($allNameMatches.Count -gt 0) {
+                    throw "[ROLLBACK IDENTITY CONFLICT] Snapshot policy '$displayName' expects immutable ID '$policyId', but live tenant contains policy with matching name having different ID '$($allNameMatches[0].id)'. Halting rollback to prevent modifying wrong policy."
+                }
             }
-        }
-
-        # If policy ID is missing from live tenant (e.g. deleted or re-created with new ID), check for exactly 1 replacement candidate by display name
-        if (-not $existingLive) {
+        } elseif ($displayName) {
+            # Only if snapshot has no ID (legacy/synthetic), match by unique display name
             $matchByName = @($livePolicies | Where-Object { $_.displayName -eq $displayName })
             if ($matchByName.Count -gt 1) {
                 throw "[ROLLBACK AMBIGUITY] Multiple policies ($($matchByName.Count)) match target display name '$displayName' in live tenant. Rollback halted to prevent cross-policy corruption."
             } elseif ($matchByName.Count -eq 1) {
                 $existingLive = $matchByName[0]
-                Write-Warning "  [POLICY ID RE-MAPPING] Policy ID '$policyId' was not found; safely resolved to single permitted replacement candidate ID '$($existingLive.id)' by display name '$displayName'."
             }
         }
 
@@ -395,9 +402,19 @@ function Restore-Snapshot {
 
     $allVerified = $true
     foreach ($sp in $snapshotPolicies) {
-        $matching = @($verifyPolicies | Where-Object { ($sp.id -and $_.id -eq $sp.id) -or ($_.displayName -eq $sp.displayName) })
+        $matching = if ($sp.id) {
+            @($verifyPolicies | Where-Object { $_.id -eq $sp.id })
+        } else {
+            @($verifyPolicies | Where-Object { $_.displayName -eq $sp.displayName })
+        }
+
         if ($matching.Count -eq 0) {
-            Write-Error "  [VERIFY FAIL] Restored policy '$($sp.displayName)' not found in live tenant!"
+            $nameMatches = @($verifyPolicies | Where-Object { $_.displayName -eq $sp.displayName })
+            if ($nameMatches.Count -gt 0) {
+                Write-Error "  [VERIFY FAIL] Identity mismatch for policy '$($sp.displayName)': Snapshot expected ID '$($sp.id)', but live tenant has ID '$($nameMatches[0].id)'!"
+            } else {
+                Write-Error "  [VERIFY FAIL] Restored policy '$($sp.displayName)' (ID: $($sp.id)) not found in live tenant!"
+            }
             $allVerified = $false
             continue
         }

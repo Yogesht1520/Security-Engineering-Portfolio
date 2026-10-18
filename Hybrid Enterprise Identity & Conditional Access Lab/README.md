@@ -3,7 +3,7 @@
 > **Framework Alignment:** NIST Zero Trust Architecture (SP 800-207) & Microsoft SC-300  
 > **Environment:** Microsoft Entra ID (P2) Cloud Tenant *(Live Verified Staging)* + AD DS Hybrid Reference Architecture  
 > **Implementation Methodology:** Declarative Identity-as-Code (IaC), Safe Staging & Continuous Governance  
-> **Operational Verification:** 62 Automated Verification Checks Passing Across 9 Test Suites | 11 Live Policies Staged in Report-Only Mode | SHA-256 Integrity-Checked Snapshots  
+> **Operational Verification:** 64 Automated Verification Checks Passing Across 9 Test Suites | 11 Live Policies Staged in Report-Only Mode | SHA-256 Integrity-Checked Snapshots  
 
 ---
 
@@ -19,7 +19,7 @@ This repository delivers an enterprise **Zero Trust Identity and Access Manageme
 * **Verified Snapshot Rollback Engine:** Pre-deployment state captures with SHA-256 integrity checksums and authoritative manifests ([`rollback_policies.ps1`](./scripts/deployment/rollback_policies.ps1)), providing verified rollback with documented failure boundaries upon mid-flight deployment failures.
 * **Automated JML Lifecycle Engine:** Deterministic Joiner, Mover, and Leaver workflows ([`identity-lifecycle/`](./identity-lifecycle/)) featuring cryptographic temporary passwords, privilege creep prevention, compensating quarantine actions, and 5-stage offboarding with session revocation requests (documenting boundaries for non-Entra cloud entitlements and token revocation lifetimes).
 * **Detection Engineering (KQL):** KQL detection queries ([`monitoring/kql/`](./monitoring/kql/)) and incident response playbooks ([`monitoring/playbooks/`](./monitoring/playbooks/)) monitoring break-glass account sign-ins, policy drift, and MFA fatigue.
-* **Automated Testing & CI/CD:** Unified master test runner ([`tests/run_all_tests.ps1`](./tests/run_all_tests.ps1)) executing test suites across schema validation, resolution, deployment recovery, lifecycle, and Pester assertions, supported by a GitHub Actions workflow ([`.github/workflows/validate.yml`](./.github/workflows/validate.yml)) enforcing schema validity, linting, and blocking secret scanning.
+* **Automated Testing & CI/CD:** Unified master test runner ([`tests/run_all_tests.ps1`](./tests/run_all_tests.ps1)) executing test suites across schema validation, resolution, deployment recovery, lifecycle, and Pester assertions, supported by a dedicated root GitHub Actions workflow ([`.github/workflows/identity-access-lab-validate.yml`](../.github/workflows/identity-access-lab-validate.yml)) enforcing schema validity, linting, and blocking secret scanning.
 
 ---
 
@@ -130,9 +130,6 @@ All 11 policies are deployed in the reference staging tenant in **Report-only** 
 
 ```text
 Hybrid Enterprise Identity & Conditional Access Lab/
-├── .github/
-│   └── workflows/
-│       └── validate.yml               # GitHub Actions CI/CD Pipeline
 ├── config/
 │   ├── environment.example.json       # Environment profile abstraction template
 │   ├── identity-mapping.example.json  # Tenant identity GUID mapping template
@@ -210,11 +207,11 @@ Hybrid Enterprise Identity & Conditional Access Lab/
 ## 5. Operational Commands & Quickstart
 
 ### 5.1 Execute Master Test Suite (Locally)
-To run all 62 automated verification checks across the 9 specialized test suites (including 13 Native Pester assertions):
+To run all 64 automated verification checks across the 9 specialized test suites (including 13 Native Pester assertions):
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tests\run_all_tests.ps1 -ExportEvidence
 ```
-The test runner itemizes verification checks across two distinct offline tiers (38 Local Unit Tests and 24 Mocked Graph API Integration Tests) and generates machine-readable execution telemetry in [`evidence/test-results.json`](./evidence/test-results.json). Independently exported live staging tenant baseline state is preserved separately in [`evidence/live-tenant-state/`](./evidence/live-tenant-state/).
+The test runner itemizes verification checks across two distinct offline tiers (38 Local Unit Tests and 26 Mocked Graph API Integration Tests) and generates machine-readable execution telemetry in [`evidence/test-results.json`](./evidence/test-results.json). Independently exported live staging tenant baseline state is preserved separately in [`evidence/live-tenant-state/`](./evidence/live-tenant-state/).
 
 ### 5.2 Plan & Deploy Conditional Access Policies
 ```powershell

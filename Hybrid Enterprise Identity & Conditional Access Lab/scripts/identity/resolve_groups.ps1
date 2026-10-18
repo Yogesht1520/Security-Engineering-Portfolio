@@ -38,15 +38,25 @@ if (Test-Path $MappingPath) {
 
 # 2. Build In-Memory Cache from Microsoft Graph if connected
 $graphGroupCache = @{}
+$ambiguousGroups = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 $isGraphConnected = $false
 try {
-    $context = Get-MgContext -ErrorAction SilentlyContinue
+    $context = $null
+    try {
+        $context = Get-MgContext -ErrorAction Stop
+    } catch {
+        $context = $null
+    }
     if ($context) {
         $isGraphConnected = $true
         # Query groups with pagination support
         $allGroups = Get-MgGroup -All -Property "id,displayName" -ErrorAction Stop
         foreach ($g in $allGroups) {
-            $graphGroupCache[$g.DisplayName] = $g.Id
+            if ($graphGroupCache.ContainsKey($g.DisplayName)) {
+                $ambiguousGroups.Add($g.DisplayName) | Out-Null
+            } else {
+                $graphGroupCache[$g.DisplayName] = $g.Id
+            }
         }
     }
 } catch {
@@ -72,6 +82,11 @@ foreach ($name in $GroupNames) {
             $resolvedIds += $mappedId
             continue
         }
+    }
+
+    # Reject Ambiguous Groups in Directory
+    if ($ambiguousGroups.Contains($name)) {
+        throw "[AMBIGUOUS GROUP ERROR] Multiple groups share display name '$name' in directory. Cannot resolve unambiguous identity GUID. Configure an explicit mapping in identity-mapping.json or use immutable object ID."
     }
 
     # Check live Graph cache

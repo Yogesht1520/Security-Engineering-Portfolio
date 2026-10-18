@@ -88,7 +88,13 @@ if ($WhatIfPreference) {
 
 # 2. Graph Authentication
 $env:ENTRA_IDENTITY_DISABLE_WAM = "true"
-$activeContext = Get-MgContext -ErrorAction SilentlyContinue
+$activeContext = $null
+try {
+    $activeContext = Get-MgContext -ErrorAction Stop
+} catch {
+    $activeContext = $null
+}
+
 $requiredScopes = @("User.ReadWrite.All", "Group.ReadWrite.All", "Directory.ReadWrite.All")
 
 $needsAuth = $false
@@ -116,7 +122,7 @@ if ($needsAuth) {
     $activeContext = Get-MgContext
 }
 
-# 3. Check for Duplicate UPN (Finding 9: Distinguish 404 from Graph API failures)
+# 3. Check for Duplicate UPN (Finding 9: Fail-closed, distinguish 404 from directory failures)
 Write-Host "`n[Step 1/3] Checking for duplicate user in directory..." -ForegroundColor Cyan
 $checkUri = "https://graph.microsoft.com/v1.0/users/$UserPrincipalName"
 try {
@@ -132,7 +138,12 @@ try {
     }
 } catch {
     $msg = $_.Exception.Message
-    if ($msg -match "404" -or $msg -match "ResourceNotFound" -or $msg -match "Request_ResourceNotFound") {
+    $is404 = ($msg -match "404" -or $msg -match "ResourceNotFound" -or $msg -match "Request_ResourceNotFound")
+    if ($_.Exception -is [System.Net.WebException]) {
+        $resp = $_.Exception.Response
+        if ($resp -and [int]$resp.StatusCode -eq 404) { $is404 = $true }
+    }
+    if ($is404) {
         Write-Host "  -> Confirmed: '$UserPrincipalName' does not exist in directory (HTTP 404). Proceeding." -ForegroundColor Gray
     } else {
         Write-Error "[FAIL-CLOSED GATE] Duplicate identity check failed due to directory query failure (not 404): $msg. Halting provisioning."
@@ -143,7 +154,13 @@ try {
 # 4. Resolve Target Group
 Write-Host "`n[Step 2/3] Resolving target RBAC group '$assignedGroup'..." -ForegroundColor Cyan
 $groupUri = "https://graph.microsoft.com/v1.0/groups?`$filter=displayName eq '$assignedGroup'"
-$groupResp = Invoke-MgGraphRequest -Method GET -Uri $groupUri
+try {
+    $groupResp = Invoke-MgGraphRequest -Method GET -Uri $groupUri -ErrorAction Stop
+} catch {
+    Write-Error "[FAIL-CLOSED GATE] Failed querying target group '$assignedGroup' from directory: $($_.Exception.Message)"
+    exit 1
+}
+
 if (-not $groupResp.value -or @($groupResp.value).Count -eq 0) {
     Write-Error "Target security group '$assignedGroup' was not found in directory. Ensure Phase 0 seeds were executed."
     exit 1

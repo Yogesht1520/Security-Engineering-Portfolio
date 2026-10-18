@@ -170,9 +170,23 @@ $accountUpdatePayload = @{
 
 try {
     Invoke-MgGraphRequest -Method PATCH -Uri $userUri -Body $accountUpdatePayload -ContentType "application/json" -ErrorAction Stop
-    Write-Host "  -> Account disabled (accountEnabled = False)." -ForegroundColor Green
     Write-Host "  -> Password scrambled with 64-character high-entropy token." -ForegroundColor Green
-    $stageResults["Stage2_AccountDisabled"] = "Completed"
+
+    # Independent Verification Gate: Confirm accountEnabled is False in directory
+    Write-Host "  Verifying account disablement state in directory..." -ForegroundColor Gray
+    try {
+        $verifyUser = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/users/$($user.id)?`$select=accountEnabled" -ErrorAction Stop
+        if ($verifyUser.accountEnabled -eq $false) {
+            $stageResults["Stage2_AccountDisabled"] = "Completed"
+            Write-Host "  -> [VERIFIED] Account confirmed disabled in directory (accountEnabled = False)." -ForegroundColor Green
+        } else {
+            $stageResults["Stage2_AccountDisabled"] = "Failed: AccountStillEnabledInDirectory"
+            Write-Error "  -> [VERIFY FAILED] Account still reported enabled in directory after PATCH operation!"
+        }
+    } catch {
+        $stageResults["Stage2_AccountDisabled"] = "Failed: VerificationReadError ($($_.Exception.Message))"
+        Write-Error "  -> [VERIFY FAILED] Could not verify account disablement: $($_.Exception.Message)"
+    }
 } catch {
     Write-Error "  -> Failed disabling account: $($_.Exception.Message)"
     $stageResults["Stage2_AccountDisabled"] = "Failed: $($_.Exception.Message)"
@@ -232,8 +246,8 @@ try {
 
     if ($remainingGroups.Count -gt 0 -or $stripFailed) {
         $lingeringStr = $remainingGroups -join ", "
-        $stageResults["Stage3_GroupsStripped"] = "PartiallyCompleted: RemainingGroups=($lingeringStr)"
-        Write-Warning "  -> [WARNING] Group purge incomplete! Remaining memberships: $lingeringStr"
+        $stageResults["Stage3_GroupsStripped"] = "Failed: LingeringGroups=($lingeringStr)"
+        Write-Warning "  -> [VERIFY FAILED] Group purge incomplete! Remaining memberships: $lingeringStr"
     } else {
         $stageResults["Stage3_GroupsStripped"] = "Completed"
         Write-Host "  -> [VERIFIED] All security group memberships confirmed purged." -ForegroundColor Green
@@ -337,23 +351,41 @@ Write-Host "`n[Stage 5/5] Evaluating transaction state and generating offboardin
 
 $totalStages = $stageResults.Count
 $failedStages = ($stageResults.Values | Where-Object { $_ -like "Failed*" }).Count
-$partialStages = ($stageResults.Values | Where-Object { $_ -eq "PartiallyCompleted" }).Count
+$partialStages = ($stageResults.Values | Where-Object { $_ -like "PartiallyCompleted*" }).Count
 $completedStages = ($stageResults.Values | Where-Object { $_ -eq "Completed" }).Count
 
 $overallState = if ($failedStages -eq 0 -and $partialStages -eq 0 -and $completedStages -eq $totalStages) {
     "Completed"
-} elseif ($completedStages -gt 0 -or $partialStages -gt 0) {
-    "PartiallyCompleted"
-} elseif ($failedStages -eq $totalStages) {
+} elseif ($failedStages -gt 0) {
     "Failed"
+} elseif ($partialStages -gt 0) {
+    "PartiallyCompleted"
 } else {
     "PendingVerification"
 }
+
+$receiptsDir = Join-Path $PSScriptRoot "..\..\reports"
+if (-not (Test-Path $receiptsDir)) {
+    New-Item -ItemType Directory -Path $receiptsDir -Force | Out-Null
+}
+
+$safeUpn = $UserPrincipalName -replace "[@.]", "_"
+$timestampStr = Get-Date -Format "yyyyMMdd-HHmmss"
+$receiptPath = Join-Path $receiptsDir "leaver_receipt_${safeUpn}_${timestampStr}.json"
+$receiptSaved = $true
 
 $offboardingAuditDetails["OverallState"]   = $overallState
 $offboardingAuditDetails["StageBreakdown"] = $stageResults
 $offboardingAuditDetails["GroupsStripped"] = $groupsStripped
 $offboardingAuditDetails["RolesStripped"]  = $rolesStripped
+
+try {
+    $offboardingAuditDetails | ConvertTo-Json -Depth 6 | Set-Content -Path $receiptPath -Encoding utf8
+    Write-Host "  -> Compliance Receipt exported: $receiptPath" -ForegroundColor Green
+} catch {
+    $receiptSaved = $false
+    Write-Error "[RECEIPT EXPORT FAILURE] Writing the compliance receipt file failed: $($_.Exception.Message)"
+}
 
 $auditLogged = $true
 try {
@@ -369,33 +401,16 @@ try {
     Write-Error "[AUDIT LOGGING FAILURE] Offboarding actions executed, but writing the audit log record failed: $($_.Exception.Message)"
 }
 
-$receiptsDir = Join-Path $PSScriptRoot "..\..\reports"
-if (-not (Test-Path $receiptsDir)) {
-    New-Item -ItemType Directory -Path $receiptsDir -Force | Out-Null
-}
-
-$safeUpn = $UserPrincipalName -replace "[@.]", "_"
-$timestampStr = Get-Date -Format "yyyyMMdd-HHmmss"
-$receiptPath = Join-Path $receiptsDir "leaver_receipt_${safeUpn}_${timestampStr}.json"
-$receiptSaved = $true
-
-try {
-    $offboardingAuditDetails | ConvertTo-Json -Depth 6 | Set-Content -Path $receiptPath -Encoding utf8
-    Write-Host "  -> Compliance Receipt exported: $receiptPath" -ForegroundColor Green
-} catch {
-    $receiptSaved = $false
-    Write-Error "[RECEIPT EXPORT FAILURE] Writing the compliance receipt file failed: $($_.Exception.Message)"
-}
-
+# Audit persistence and receipt generation are mandatory gates for completed state
 if (-not $auditLogged -or -not $receiptSaved) {
-    $overallState = "PartiallyCompleted: AuditRecordOrReceiptFailed"
-    Write-Warning "  -> [TRANSACTION WARNING] Transaction marked PartiallyCompleted due to audit/receipt failure."
+    $overallState = "Failed: AuditPersistenceOrReceiptFailed"
+    Write-Error "  -> [TRANSACTION GATE FAILURE] Transaction marked Failed because audit log or compliance receipt could not be persisted."
 }
 
-$statusColor = switch ($overallState) {
+$statusColor = switch -Wildcard ($overallState) {
     "Completed"          { "Green" }
     "PartiallyCompleted" { "Yellow" }
-    "Failed"             { "Red" }
+    "Failed*"            { "Red" }
     Default              { "Cyan" }
 }
 
@@ -408,3 +423,8 @@ Write-Host "Groups Stripped     : $($groupsStripped.Count) ($($stageResults['Sta
 Write-Host "Roles Stripped      : $($rolesStripped.Count) ($($stageResults['Stage4_RolesStripped']))" -ForegroundColor White
 Write-Host "Compliance Receipt  : $receiptPath" -ForegroundColor Gray
 Write-Host "================================================================================" -ForegroundColor $statusColor
+
+if ($overallState -ne "Completed") {
+    Write-Error "[LEAVER INCOMPLETE] Offboarding failed to verify complete deprovisioning. Final state: $overallState"
+    exit 1
+}

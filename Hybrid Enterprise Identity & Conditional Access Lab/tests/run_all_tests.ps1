@@ -124,8 +124,8 @@ Invoke-GuardedTestSuite -SuiteName "User Reference Resolution Gate" `
 Invoke-GuardedTestSuite -SuiteName "Declarative Policy Drift Detection Engine" `
                        -ScriptPath (Join-Path $PSScriptRoot "deployment\test_compare_policies.ps1") `
                        -Category "Mocked Graph API Integration Test" `
-                       -CheckCount 5 `
-                       -Description "5 drift detection tests: Identity equivalence (in-sync), state drift, grant control drift, condition application drift, and new policy creation planning."
+                       -CheckCount 7 `
+                       -Description "7 drift & canonical normalization tests: Identity equivalence, state drift, array-order normalization, key-order normalization, server metadata stripping, null vs missing property handling, and deep field-level difference reporting."
 
 Invoke-GuardedTestSuite -SuiteName "Snapshot Cryptographic Integrity & Anti-Tamper Engine" `
                        -ScriptPath (Join-Path $PSScriptRoot "deployment\test_snapshot_integrity.ps1") `
@@ -239,10 +239,10 @@ if ($ExportEvidence -or $ExportEvidencePath) {
             failed                  = $totalFailedChecks
             skipped                 = 0
             durationSeconds         = [math]::Round($elapsed, 2)
-            calculationMethodology  = "Itemized check count across 9 test suites: Schema validation (11), Group resolution (1), User resolution (1), Drift engine (5), Snapshot integrity (9), Deployment failure & rollback recovery (10), Lifecycle engine (9), Governance pre-flight (3), and Native Pester matrix (13)."
+            calculationMethodology  = "Itemized check count across 9 test suites: Schema validation (11), Group resolution (1), User resolution (1), Drift & canonical normalization engine (7), Snapshot integrity (9), Deployment failure & rollback recovery (10), Lifecycle engine (9), Governance pre-flight (3), and Native Pester matrix (13)."
             testTiersBreakdown      = [PSCustomObject]@{
                 localUnitTestsChecks            = 38
-                mockedGraphApiIntegrationChecks = 24
+                mockedGraphApiIntegrationChecks = 26
             }
         }
         testSuites        = $suiteRecords

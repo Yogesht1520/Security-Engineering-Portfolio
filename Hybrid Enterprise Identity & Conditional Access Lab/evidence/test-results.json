@@ -1,7 +1,7 @@
 ﻿{
     "testSuite":  "Microsoft Entra ID Zero Trust \u0026 Identity-as-Code Engine",
-    "executedAtUtc":  "2026-10-18T15:40:32Z",
-    "gitCommitSha":  "91dbce524b8a38da41b24dd94bd373f6a240757c",
+    "executedAtUtc":  "2026-10-18T16:23:48Z",
+    "gitCommitSha":  "9ad12aa28461470003e45626ca7d23f183a07560",
     "gitHubActionsRunId":  "local-dev-execution",
     "gitHubActionsRunUrl":  "local://workstation/test-execution",
     "environment":  "GitHub Actions CI/CD \u0026 Local PowerShell Engine",
@@ -13,15 +13,15 @@
                            "scopeNote":  "This report documents local AST syntax, JSON schema conformance, cryptographic snapshot integrity, and mocked Graph API deployment transactions. Live tenant state is documented independently via dedicated read-only tenant exports."
                        },
     "resultsSummary":  {
-                           "totalVerificationChecks":  62,
-                           "passed":  62,
+                           "totalVerificationChecks":  64,
+                           "passed":  64,
                            "failed":  0,
                            "skipped":  0,
-                           "durationSeconds":  12.34,
-                           "calculationMethodology":  "Itemized check count across 9 test suites: Schema validation (11), Group resolution (1), User resolution (1), Drift engine (5), Snapshot integrity (9), Deployment failure \u0026 rollback recovery (10), Lifecycle engine (9), Governance pre-flight (3), and Native Pester matrix (13).",
+                           "durationSeconds":  15.47,
+                           "calculationMethodology":  "Itemized check count across 9 test suites: Schema validation (11), Group resolution (1), User resolution (1), Drift \u0026 canonical normalization engine (7), Snapshot integrity (9), Deployment failure \u0026 rollback recovery (10), Lifecycle engine (9), Governance pre-flight (3), and Native Pester matrix (13).",
                            "testTiersBreakdown":  {
                                                       "localUnitTestsChecks":  38,
-                                                      "mockedGraphApiIntegrationChecks":  24
+                                                      "mockedGraphApiIntegrationChecks":  26
                                                   }
                        },
     "testSuites":  [
@@ -54,8 +54,8 @@
                            "category":  "Mocked Graph API Integration Test",
                            "script":  "tests/deployment/test_compare_policies.ps1",
                            "status":  "PASS",
-                           "count":  5,
-                           "details":  "5 drift detection tests: Identity equivalence (in-sync), state drift, grant control drift, condition application drift, and new policy creation planning."
+                           "count":  7,
+                           "details":  "7 drift \u0026 canonical normalization tests: Identity equivalence, state drift, array-order normalization, key-order normalization, server metadata stripping, null vs missing property handling, and deep field-level difference reporting."
                        },
                        {
                            "suiteName":  "Snapshot Cryptographic Integrity \u0026 Anti-Tamper Engine",
