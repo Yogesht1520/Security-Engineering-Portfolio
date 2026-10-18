@@ -40,6 +40,10 @@ param (
 
     [string]$TargetGroupId,
 
+    [string[]]$ManagedRbacGroupIds = @(),
+
+    [string]$MappingConfigFile = "",
+
     [Parameter(Mandatory=$false)]
     [ValidateSet("FailClosedOnPrivilegePurge", "Permissive")]
     [string]$TransactionPolicy = "FailClosedOnPrivilegePurge",
@@ -132,6 +136,24 @@ $stageResults = [ordered]@{
 
 # 4. Resolve Target Group ID (Finding 9: Support immutable ID & fail closed on duplicate display names)
 Write-Host "`n[Step 2/5] Resolving target group '$targetGroup'..." -ForegroundColor Cyan
+if (-not $TargetGroupId) {
+    # Check mapping config if available
+    $mappingPath = if ($MappingConfigFile) { $MappingConfigFile } else { Join-Path $PSScriptRoot "..\..\config\identity-mapping.json" }
+    if (Test-Path $mappingPath) {
+        try {
+            $mapContent = Get-Content -Path $mappingPath -Raw | ConvertFrom-Json
+            if ($mapContent.groups -and $mapContent.groups.PSObject.Properties[$targetGroup]) {
+                $mappedId = $mapContent.groups.PSObject.Properties[$targetGroup].Value
+                if ($mappedId -and $mappedId -notmatch "^<.*>$") {
+                    $TargetGroupId = $mappedId.Trim()
+                }
+            }
+        } catch {
+            Write-Warning "Could not read target group mapping from '$mappingPath': $($_.Exception.Message)"
+        }
+    }
+}
+
 if ($TargetGroupId) {
     $targetGroupId = $TargetGroupId
     $targetGroupUri = "https://graph.microsoft.com/v1.0/groups/$TargetGroupId"
@@ -169,8 +191,59 @@ if ($TargetGroupId) {
 }
 
 # 5. Privilege Creep Remediation: Remove Legacy RBAC Groups
-Write-Host "`n[Step 3/5] Inspecting memberships to strip legacy role privileges..." -ForegroundColor Cyan
-$managedRbacGroups = @("SEC-StandardUsers", "SEC-Admins", "SEC-Contractors")
+Write-Host "`n[Step 3/5] Resolving managed RBAC group immutable IDs and inspecting memberships..." -ForegroundColor Cyan
+
+$resolvedManagedGroupIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+# A. Direct parameter input of immutable IDs
+if ($ManagedRbacGroupIds -and $ManagedRbacGroupIds.Count -gt 0) {
+    foreach ($gid in $ManagedRbacGroupIds) {
+        if (-not [string]::IsNullOrWhiteSpace($gid)) {
+            [void]$resolvedManagedGroupIds.Add($gid.Trim())
+        }
+    }
+}
+
+# B. Configuration file input of immutable IDs
+$mappingPath = if ($MappingConfigFile) { $MappingConfigFile } else { Join-Path $PSScriptRoot "..\..\config\identity-mapping.json" }
+if ($resolvedManagedGroupIds.Count -eq 0 -and (Test-Path $mappingPath)) {
+    try {
+        $mapContent = Get-Content -Path $mappingPath -Raw | ConvertFrom-Json
+        if ($mapContent.groups) {
+            $managedNames = @("SEC-StandardUsers", "SEC-Admins", "SEC-Contractors")
+            foreach ($prop in $mapContent.groups.PSObject.Properties) {
+                if ($managedNames -contains $prop.Name -and $prop.Value -and $prop.Value -notmatch "^<.*>$") {
+                    [void]$resolvedManagedGroupIds.Add($prop.Value.Trim())
+                }
+            }
+        }
+    } catch {
+        Write-Warning "Failed reading mapping config at '$mappingPath': $($_.Exception.Message)"
+    }
+}
+
+# C. Fallback: Resolve managed role names in Graph with strict fail-closed uniqueness check
+if ($resolvedManagedGroupIds.Count -eq 0) {
+    $managedRoleNames = @("SEC-StandardUsers", "SEC-Admins", "SEC-Contractors")
+    foreach ($mName in $managedRoleNames) {
+        $mUri = "https://graph.microsoft.com/v1.0/groups?`$filter=displayName eq '$mName'"
+        try {
+            $mResp = Invoke-MgGraphRequest -Method GET -Uri $mUri -ErrorAction Stop
+            $matched = @($mResp.value)
+            if ($matched.Count -eq 1) {
+                [void]$resolvedManagedGroupIds.Add($matched[0].id)
+            } elseif ($matched.Count -gt 1) {
+                $stageResults["Stage2_LegacyPrivilegePurge"] = "Failed: DuplicateGroupAmbiguity ($mName)"
+                Write-Error "[FAIL-CLOSED GATE] Multiple groups ($($matched.Count)) match managed role name '$mName'. Risk of unintended removal due to naming collision! Supply -ManagedRbacGroupIds."
+                exit 1
+            }
+        } catch {
+            Write-Warning "Could not resolve immutable ID for managed role group '$mName': $($_.Exception.Message)"
+        }
+    }
+}
+
+Write-Host "  -> Tracking $($resolvedManagedGroupIds.Count) managed RBAC group immutable IDs for privilege creep remediation." -ForegroundColor Gray
 $removedGroups = @()
 $purgeFailed = $false
 $allUserGroups = @()
@@ -183,10 +256,10 @@ try {
         $memberOfUri = $memberOfResp.'@odata.nextLink'
     } while ($memberOfUri)
 
-        # Identify legacy managed RBAC groups by immutable group ID (excluding target group ID)
-        $legacyRbacGroups = @($allUserGroups | Where-Object {
-            $_.id -ne $targetGroupId -and ($_.displayName -in $managedRbacGroups)
-        })
+    # Identify legacy managed RBAC groups strictly by immutable group ID (excluding target group ID)
+    $legacyRbacGroups = @($allUserGroups | Where-Object {
+        $_.id -ne $targetGroupId -and $resolvedManagedGroupIds.Contains($_.id)
+    })
 
         foreach ($grp in $legacyRbacGroups) {
             $grpName = $grp.displayName

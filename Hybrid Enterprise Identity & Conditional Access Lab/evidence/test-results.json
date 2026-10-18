@@ -1,7 +1,7 @@
 ﻿{
     "testSuite":  "Microsoft Entra ID Zero Trust \u0026 Identity-as-Code Engine",
-    "executedAtUtc":  "2026-10-18T17:01:56Z",
-    "gitCommitSha":  "0515cf72a1d860a62fa8c9a566c70cf396e6f6b6",
+    "executedAtUtc":  "2026-10-18T17:19:54Z",
+    "gitCommitSha":  "5d8ed2db21a5667a2b63ef118d6adc84b4dcbf92",
     "gitHubActionsRunId":  "local-dev-execution",
     "gitHubActionsRunUrl":  "local://workstation/test-execution",
     "environment":  "GitHub Actions CI/CD \u0026 Local PowerShell Engine",
@@ -17,7 +17,7 @@
                            "passed":  72,
                            "failed":  0,
                            "skipped":  0,
-                           "durationSeconds":  15.66,
+                           "durationSeconds":  15.31,
                            "calculationMethodology":  "Itemized check count across 9 test suites: Schema validation (11), Group resolution (1), User resolution (1), Drift \u0026 canonical normalization engine (7), Snapshot integrity (9), Deployment failure \u0026 rollback recovery (10), Lifecycle engine (16), Governance pre-flight (3), and Native Pester matrix (14).",
                            "testTiersBreakdown":  {
                                                       "localUnitTestsChecks":  46,

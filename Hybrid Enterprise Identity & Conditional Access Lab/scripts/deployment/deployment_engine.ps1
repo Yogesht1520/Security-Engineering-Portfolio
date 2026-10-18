@@ -230,7 +230,7 @@ function Invoke-PolicyDeploymentTransaction {
         }
     }
 
-    # Capture the complete live policy ID set immediately before deployment to establish baseline ownership
+    # Capture the complete live policy ID set immediately before deployment to establish baseline ownership (Fail-Closed)
     try {
         $preLiveUri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies?`$select=id,displayName"
         do {
@@ -245,7 +245,9 @@ function Invoke-PolicyDeploymentTransaction {
             $preLiveUri = $preLiveResp.'@odata.nextLink'
         } while ($preLiveUri)
     } catch {
-        Write-Warning "Could not capture pre-deployment live policy ID set: $($_.Exception.Message)"
+        $abortMsg = "[FAIL-CLOSED GATE] Pre-deployment live policy baseline capture failed or pagination was incomplete: $($_.Exception.Message). Deployment halted before first mutation to protect tenant."
+        Write-Error $abortMsg
+        throw $abortMsg
     }
 
     foreach ($item in $ActionsToTake) {
@@ -369,13 +371,38 @@ function Invoke-PolicyDeploymentTransaction {
                     })
 
                     if ($newlyObservedCandidates.Count -eq 1) {
-                        # Single newly observed ID with matching display name: proven ownership established!
                         $candidate = $newlyObservedCandidates[0]
-                        if (-not $newlyCreatedPolicyIds.Contains($candidate.id)) {
-                            $newlyCreatedPolicyIds.Add($candidate.id)
+
+                        # Strong Ownership Evidence: Verify deep canonical configuration parity and transaction window correlation.
+                        # Automatic deletion is prohibited on display-name and ID-difference evidence alone.
+                        $payloadDiffs = Compare-CanonicalPolicyParity -LivePolicy $candidate -SnapshotPolicy $item.Payload
+
+                        $timestampValid = $true
+                        if ($candidate.createdDateTime) {
+                            try {
+                                $createdDt = [DateTime]::Parse($candidate.createdDateTime).ToUniversalTime()
+                                if ($createdDt -lt $transactionStartTime.AddSeconds(-30)) {
+                                    $timestampValid = $false
+                                }
+                            } catch {
+                                $timestampValid = $false
+                            }
                         }
-                        $mutationsApplied++
-                        Write-Warning "  -> [AMBIGUOUS WRITE DETECTED] Verified newly created policy '$($candidate.displayName)' (ID: $($candidate.id)) was created in current transaction. Added to cleanup list."
+
+                        if ($payloadDiffs.Count -eq 0 -and $timestampValid) {
+                            # Proven ownership independently tied to this request: single candidate + 0 canonical drift + valid transaction window
+                            if (-not $newlyCreatedPolicyIds.Contains($candidate.id)) {
+                                $newlyCreatedPolicyIds.Add($candidate.id)
+                            }
+                            $mutationsApplied++
+                            Write-Warning "  -> [AMBIGUOUS WRITE DETECTED] Verified newly created policy '$($candidate.displayName)' (ID: $($candidate.id)) independently matched canonical desired payload and transaction window. Added to cleanup list."
+                        } else {
+                            # Ownership cannot be independently proven with certainty (payload drift or timestamp anomaly)
+                            # Halting automatic deletion to protect legitimate concurrent policies
+                            $ownershipUncertain = $true
+                            $mutationsApplied++
+                            Write-Warning "  -> [UNCERTAIN OWNERSHIP] Observed newly created policy '$($candidate.displayName)' (ID: $($candidate.id)), but canonical payload differed ($($payloadDiffs.Count) field(s) drifted) or timestamp did not correlate. Halting automatic deletion to prevent deleting third-party or concurrent policies."
+                        }
                     } elseif ($newlyObservedCandidates.Count -gt 1) {
                         # Multiple candidates exist: ownership is uncertain!
                         # Stop automatic deletion to prevent deleting legitimate policies and mark transaction PendingVerification
@@ -476,12 +503,42 @@ function Invoke-PolicyDeploymentTransaction {
         PolicyTransactions       = $transactionResults
     }
 
-    $receipt | ConvertTo-Json -Depth 5 | Out-File -FilePath $receiptFile -Encoding utf8
-    Write-Host "`n[TRANSACTION RECEIPT] Audit receipt saved: $receiptFile" -ForegroundColor Cyan
+    $receiptSaved = $false
+    try {
+        $receiptJson = $receipt | ConvertTo-Json -Depth 6
+        [System.IO.File]::WriteAllText($receiptFile, $receiptJson, [System.Text.Encoding]::UTF8)
+
+        # Mandatory Receipt Verification Gate:
+        # Verify receipt file exists on disk, is non-empty, and can be successfully parsed back
+        if ((Test-Path $receiptFile) -and ((Get-Item $receiptFile).Length -gt 0)) {
+            $parsedReceipt = Get-Content -Path $receiptFile -Raw | ConvertFrom-Json
+            if ($parsedReceipt.TransactionId -eq $receipt.TransactionId) {
+                $receiptSaved = $true
+                Write-Host "`n[TRANSACTION RECEIPT] Audit receipt durably verified on disk: $receiptFile" -ForegroundColor Cyan
+            } else {
+                Write-Error "[RECEIPT CORRUPT] Receipt file contents failed integrity check."
+            }
+        } else {
+            Write-Error "[RECEIPT MISSING] Receipt file was not created or is empty."
+        }
+    } catch {
+        Write-Error "[RECEIPT WRITE FAILURE] Failed writing deployment transaction receipt: $($_.Exception.Message)"
+    }
+
+    # Receipt write failure must be represented as a transaction failure or pending verification, not a completed deployment
+    if (-not $receiptSaved) {
+        if ($transactionState -eq "Completed") {
+            $transactionState = "Failed: ReceiptPersistenceFailed"
+        } else {
+            $transactionState = "PendingVerification"
+        }
+        $receipt.OverallTransactionState = $transactionState
+        Write-Error "[TRANSACTION STATE FAILURE] Deployment marked '$transactionState' because durable transaction receipt could not be persisted or verified."
+    }
 
     return [PSCustomObject]@{
         TransactionState = $transactionState
         Receipt          = $receipt
-        ReceiptFile      = $receiptFile
+        ReceiptFile      = if ($receiptSaved) { $receiptFile } else { $null }
     }
 }

@@ -61,37 +61,7 @@ if (-not (Test-Path $TargetDirectory)) {
     New-Item -ItemType Directory -Path $TargetDirectory -Force | Out-Null
 }
 
-$tenantId = if ($activeContext) { $activeContext.TenantId } else { $null }
-
-function ConvertTo-SanitizedJson {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$true)]
-        $InputObject,
-        [string]$TenantIdToRedact = $tenantId
-    )
-
-    $json = $InputObject | ConvertTo-Json -Depth 10
-
-    # 1. Redact specific tenant ID
-    if ($TenantIdToRedact) {
-        $json = $json -replace [regex]::Escape($TenantIdToRedact), "<REDACTED_TENANT_ID>"
-    }
-
-    # 2. Redact all email addresses and UPNs (including onmicrosoft.com, custom domains, personal domains)
-    $json = $json -replace '(?i)\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b', '<REDACTED_USER>@<LAB_DOMAIN>'
-
-    # 3. Redact IPv4 addresses with optional CIDR mask
-    $json = $json -replace '\b(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?\b', '<REDACTED_IP>'
-
-    # 4. Redact IPv6 addresses
-    $json = $json -replace '(?i)\b(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}(?:/\d{1,3})?\b', '<REDACTED_IPV6>'
-
-    # 5. Redact all standard 36-character GUIDs (object IDs, user IDs, group IDs, roleDefinitionIds, directoryScopeIds)
-    $json = $json -replace '\b[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\b', '<REDACTED_GUID>'
-
-    return $json
-}
+. "$PSScriptRoot\evidence_sanitizer.ps1"
 
 $exportResults = [ordered]@{}
 $failedExports = [System.Collections.Generic.List[string]]::new()
@@ -180,30 +150,38 @@ try {
     $exportResults["PimEligibilitySchedules"] = [PSCustomObject]@{ Status = "Failed: $($_.Exception.Message)"; Count = 0; File = "pim-eligibility-schedules.json" }
 }
 
-# 5. Export Sign-In Telemetry Receipt
-Write-Host "`n[4/5] Exporting Sample Sign-In Telemetry..." -ForegroundColor Cyan
+# 5. Export Sign-In Telemetry Audit Sample (Paginated)
+Write-Host "`n[4/5] Exporting Sign-In Telemetry Audit Sample (Paginated)..." -ForegroundColor Cyan
 try {
     $signIns = [System.Collections.Generic.List[PSObject]]::new()
     $signInsUri = "https://graph.microsoft.com/v1.0/auditLogs/signIns?`$top=20"
-    $signInsResp = Invoke-MgGraphRequest -Method GET -Uri $signInsUri -ErrorAction Stop
-    if ($signInsResp.value) {
-        foreach ($si in $signInsResp.value) { $signIns.Add($si) }
-    }
-    $cleanSignIns = ConvertTo-SanitizedJson -InputObject $signIns
+    $maxPages = 5
+    $pagesCount = 0
+    do {
+        $signInsResp = Invoke-MgGraphRequest -Method GET -Uri $signInsUri -ErrorAction Stop
+        if ($signInsResp.value) {
+            foreach ($si in $signInsResp.value) { $signIns.Add($si) }
+        }
+        $pagesCount++
+        $signInsUri = if ($pagesCount -lt $maxPages) { $signInsResp.'@odata.nextLink' } else { $null }
+    } while ($signInsUri)
+
+    $tId = if ($activeContext) { $activeContext.TenantId } else { $null }
+    $cleanSignIns = ConvertTo-SanitizedJson -InputObject $signIns -TenantIdToRedact $tId
     $outSignIns = Join-Path $TargetDirectory "sign-in-telemetry-receipt.json"
     [System.IO.File]::WriteAllText($outSignIns, $cleanSignIns, [System.Text.Encoding]::UTF8)
 
     if ((Test-Path $outSignIns) -and ((Get-Item $outSignIns).Length -gt 0)) {
-        Write-Host "  -> Saved & Verified: $outSignIns ($($signIns.Count) events)" -ForegroundColor Green
-        $exportResults["SignInTelemetry"] = [PSCustomObject]@{ Status = "Success"; Count = $signIns.Count; File = "sign-in-telemetry-receipt.json" }
+        Write-Host "  -> Saved & Verified: $outSignIns ($($signIns.Count) sample events across $pagesCount page(s))" -ForegroundColor Green
+        $exportResults["SignInTelemetrySample"] = [PSCustomObject]@{ Status = "Success"; Count = $signIns.Count; File = "sign-in-telemetry-receipt.json"; Scope = "Bounded Paginated Sample ($pagesCount pages)" }
         $verifiedFiles.Add("sign-in-telemetry-receipt.json")
     } else {
         throw "Exported file $outSignIns is missing or 0 bytes."
     }
 } catch {
     Write-Warning "Failed exporting Sign-in logs: $($_.Exception.Message)"
-    $failedExports.Add("SignInTelemetry")
-    $exportResults["SignInTelemetry"] = [PSCustomObject]@{ Status = "Failed: $($_.Exception.Message)"; Count = 0; File = "sign-in-telemetry-receipt.json" }
+    $failedExports.Add("SignInTelemetrySample")
+    $exportResults["SignInTelemetrySample"] = [PSCustomObject]@{ Status = "Failed: $($_.Exception.Message)"; Count = 0; File = "sign-in-telemetry-receipt.json" }
 }
 
 # Check static evidence files if present
