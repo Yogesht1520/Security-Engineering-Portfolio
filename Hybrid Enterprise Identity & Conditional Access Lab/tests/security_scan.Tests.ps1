@@ -18,14 +18,14 @@ Describe "Repository Hygiene & Secret Scanning" {
             )
 
             foreach ($file in $prohibitedFiles) {
-                (Test-Path (Join-Path $repoRoot $file)) | Should Be $false
+                (Test-Path (Join-Path $repoRoot $file)) | Should -Be $false
             }
         }
 
         It "All template files must exist in config directory" {
-            (Test-Path (Join-Path $repoRoot "config\tenant.example.json")) | Should Be $true
-            (Test-Path (Join-Path $repoRoot "config\environment.example.json")) | Should Be $true
-            (Test-Path (Join-Path $repoRoot "config\identity-mapping.example.json")) | Should Be $true
+            (Test-Path (Join-Path $repoRoot "config\tenant.example.json")) | Should -Be $true
+            (Test-Path (Join-Path $repoRoot "config\environment.example.json")) | Should -Be $true
+            (Test-Path (Join-Path $repoRoot "config\identity-mapping.example.json")) | Should -Be $true
         }
 
         It "Scripts must not contain hardcoded production secrets or private keys" {
@@ -39,7 +39,7 @@ Describe "Repository Hygiene & Secret Scanning" {
             foreach ($script in $scriptFiles) {
                 $content = Get-Content $script.FullName -Raw
                 foreach ($pattern in $forbiddenPatterns) {
-                    ($content -match $pattern) | Should Be $false
+                    ($content -match $pattern) | Should -Be $false
                 }
             }
         }
@@ -74,29 +74,29 @@ Describe "Repository Hygiene & Secret Scanning" {
             $json = ConvertTo-SanitizedJson -InputObject $sampleRawObject -TenantIdToRedact "11111111-2222-3333-4444-555555555555"
 
             # Assert no sensitive raw identifiers leaked
-            ($json -match "11111111-2222-3333-4444-555555555555") | Should Be $false
-            ($json -match "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d") | Should Be $false
-            ($json -match "99999999-8888-7777-6666-555555555555") | Should Be $false
-            ($json -match "88888888-7777-6666-5555-444444444444") | Should Be $false
-            ($json -match "12345678-1234-1234-1234-123456789abc") | Should Be $false
-            ($json -match "fedcba98-7654-3210-fedc-ba9876543210") | Should Be $false
-            ($json -match "admin\.secops@mycorp\.onmicrosoft\.com") | Should Be $false
-            ($json -match "contractor\.john@external-vendor\.com") | Should Be $false
-            ($json -match "director\.audit@globalfin\.org") | Should Be $false
-            ($json -match "198\.51\.100\.24") | Should Be $false
-            ($json -match "10\.200\.1\.0/24") | Should Be $false
-            ($json -match "172\.16\.50\.4") | Should Be $false
-            ($json -match "2001:0db8:85a3") | Should Be $false
-            ($json -match "2001:db8::1") | Should Be $false
-            ($json -match "::ffff:192.0.2.128") | Should Be $false
+            ($json -match "11111111-2222-3333-4444-555555555555") | Should -Be $false
+            ($json -match "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d") | Should -Be $false
+            ($json -match "99999999-8888-7777-6666-555555555555") | Should -Be $false
+            ($json -match "88888888-7777-6666-5555-444444444444") | Should -Be $false
+            ($json -match "12345678-1234-1234-1234-123456789abc") | Should -Be $false
+            ($json -match "fedcba98-7654-3210-fedc-ba9876543210") | Should -Be $false
+            ($json -match "admin\.secops@mycorp\.onmicrosoft\.com") | Should -Be $false
+            ($json -match "contractor\.john@external-vendor\.com") | Should -Be $false
+            ($json -match "director\.audit@globalfin\.org") | Should -Be $false
+            ($json -match "198\.51\.100\.24") | Should -Be $false
+            ($json -match "10\.200\.1\.0/24") | Should -Be $false
+            ($json -match "172\.16\.50\.4") | Should -Be $false
+            ($json -match "2001:0db8:85a3") | Should -Be $false
+            ($json -match "2001:db8::1") | Should -Be $false
+            ($json -match "::ffff:192.0.2.128") | Should -Be $false
 
             # Assert explicit replacement markers exist
-            ($json -match "<REDACTED_TENANT_ID>") | Should Be $true
-            ($json -match "<REDACTED_GUID>") | Should Be $true
-            ($json -match "<REDACTED_USER>@<LAB_DOMAIN>") | Should Be $true
-            ($json -match "<REDACTED_IP>") | Should Be $true
-            ($json -match "<REDACTED_IPV6>") | Should Be $true
-            ($json -match "<REDACTED_IPV4_MAPPED_IPV6>") | Should Be $true
+            ($json -match "<REDACTED_TENANT_ID>") | Should -Be $true
+            ($json -match "<REDACTED_GUID>") | Should -Be $true
+            ($json -match "<REDACTED_USER>@<LAB_DOMAIN>") | Should -Be $true
+            ($json -match "<REDACTED_IP>") | Should -Be $true
+            ($json -match "<REDACTED_IPV6>") | Should -Be $true
+            ($json -match "<REDACTED_IPV4_MAPPED_IPV6>") | Should -Be $true
         }
     }
 }
