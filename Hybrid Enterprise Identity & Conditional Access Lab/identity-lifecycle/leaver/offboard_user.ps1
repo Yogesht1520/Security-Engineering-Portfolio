@@ -320,17 +320,23 @@ try {
         $pimSchedUri = $pimSchedResp.'@odata.nextLink'
     } while ($pimSchedUri)
 
-    # 4.3. Independent Post-Removal Verification Gate (Item 11)
+    # 4.3. Independent Post-Removal Verification Gate (Paginated)
     Write-Host "  Verifying active and eligible role assignments are completely purged..." -ForegroundColor Gray
     $remainingActive = @()
     $checkActiveUri = "https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments?`$filter=principalId eq '$($user.id)'"
-    $checkActiveResp = Invoke-MgGraphRequest -Method GET -Uri $checkActiveUri -ErrorAction Stop
-    if ($checkActiveResp.value) { $remainingActive = @($checkActiveResp.value) }
+    do {
+        $checkActiveResp = Invoke-MgGraphRequest -Method GET -Uri $checkActiveUri -ErrorAction Stop
+        if ($checkActiveResp.value) { $remainingActive += $checkActiveResp.value }
+        $checkActiveUri = $checkActiveResp.'@odata.nextLink'
+    } while ($checkActiveUri)
 
     $remainingEligible = @()
     $checkEligibleUri = "https://graph.microsoft.com/v1.0/roleManagement/directory/roleEligibilityScheduleInstances?`$filter=principalId eq '$($user.id)'"
-    $checkEligibleResp = Invoke-MgGraphRequest -Method GET -Uri $checkEligibleUri -ErrorAction Stop
-    if ($checkEligibleResp.value) { $remainingEligible = @($checkEligibleResp.value) }
+    do {
+        $checkEligibleResp = Invoke-MgGraphRequest -Method GET -Uri $checkEligibleUri -ErrorAction Stop
+        if ($checkEligibleResp.value) { $remainingEligible += $checkEligibleResp.value }
+        $checkEligibleUri = $checkEligibleResp.'@odata.nextLink'
+    } while ($checkEligibleUri)
 
     if ($remainingActive.Count -gt 0 -or $remainingEligible.Count -gt 0 -or $failedRoleRemovals.Count -gt 0) {
         $stageResults["Stage4_RolesStripped"] = "PartiallyCompleted: RemainingActive=$($remainingActive.Count), RemainingEligible=$($remainingEligible.Count), Failures=$($failedRoleRemovals.Count)"
@@ -372,7 +378,7 @@ if (-not (Test-Path $receiptsDir)) {
 $safeUpn = $UserPrincipalName -replace "[@.]", "_"
 $timestampStr = Get-Date -Format "yyyyMMdd-HHmmss"
 $receiptPath = Join-Path $receiptsDir "leaver_receipt_${safeUpn}_${timestampStr}.json"
-$receiptSaved = $true
+$receiptSaved = $false
 
 $offboardingAuditDetails["OverallState"]   = $overallState
 $offboardingAuditDetails["StageBreakdown"] = $stageResults
@@ -381,7 +387,12 @@ $offboardingAuditDetails["RolesStripped"]  = $rolesStripped
 
 try {
     $offboardingAuditDetails | ConvertTo-Json -Depth 6 | Set-Content -Path $receiptPath -Encoding utf8
-    Write-Host "  -> Compliance Receipt exported: $receiptPath" -ForegroundColor Green
+    if ((Test-Path $receiptPath) -and ((Get-Item $receiptPath).Length -gt 0)) {
+        $receiptSaved = $true
+        Write-Host "  -> Compliance Receipt durably verified on disk: $receiptPath" -ForegroundColor Green
+    } else {
+        Write-Error "[RECEIPT EXPORT FAILURE] Compliance receipt file missing or empty on disk: $receiptPath"
+    }
 } catch {
     $receiptSaved = $false
     Write-Error "[RECEIPT EXPORT FAILURE] Writing the compliance receipt file failed: $($_.Exception.Message)"

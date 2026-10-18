@@ -1,7 +1,7 @@
 ﻿{
     "testSuite":  "Microsoft Entra ID Zero Trust \u0026 Identity-as-Code Engine",
-    "executedAtUtc":  "2026-10-18T16:23:48Z",
-    "gitCommitSha":  "9ad12aa28461470003e45626ca7d23f183a07560",
+    "executedAtUtc":  "2026-10-18T17:01:56Z",
+    "gitCommitSha":  "0515cf72a1d860a62fa8c9a566c70cf396e6f6b6",
     "gitHubActionsRunId":  "local-dev-execution",
     "gitHubActionsRunUrl":  "local://workstation/test-execution",
     "environment":  "GitHub Actions CI/CD \u0026 Local PowerShell Engine",
@@ -13,14 +13,14 @@
                            "scopeNote":  "This report documents local AST syntax, JSON schema conformance, cryptographic snapshot integrity, and mocked Graph API deployment transactions. Live tenant state is documented independently via dedicated read-only tenant exports."
                        },
     "resultsSummary":  {
-                           "totalVerificationChecks":  64,
-                           "passed":  64,
+                           "totalVerificationChecks":  72,
+                           "passed":  72,
                            "failed":  0,
                            "skipped":  0,
-                           "durationSeconds":  15.47,
-                           "calculationMethodology":  "Itemized check count across 9 test suites: Schema validation (11), Group resolution (1), User resolution (1), Drift \u0026 canonical normalization engine (7), Snapshot integrity (9), Deployment failure \u0026 rollback recovery (10), Lifecycle engine (9), Governance pre-flight (3), and Native Pester matrix (13).",
+                           "durationSeconds":  15.66,
+                           "calculationMethodology":  "Itemized check count across 9 test suites: Schema validation (11), Group resolution (1), User resolution (1), Drift \u0026 canonical normalization engine (7), Snapshot integrity (9), Deployment failure \u0026 rollback recovery (10), Lifecycle engine (16), Governance pre-flight (3), and Native Pester matrix (14).",
                            "testTiersBreakdown":  {
-                                                      "localUnitTestsChecks":  38,
+                                                      "localUnitTestsChecks":  46,
                                                       "mockedGraphApiIntegrationChecks":  26
                                                   }
                        },
@@ -78,8 +78,8 @@
                            "category":  "Local Unit Test",
                            "script":  "tests/lifecycle/test_lifecycle_engine.ps1",
                            "status":  "PASS",
-                           "count":  9,
-                           "details":  "9 unit tests: 24-character cryptographic password entropy, department-to-RBAC mappings, emergency break-glass account protection safeguard, and AST parser syntax checks across all lifecycle scripts."
+                           "count":  16,
+                           "details":  "16 unit tests: 24-character cryptographic password entropy, department-to-RBAC mappings, emergency break-glass account safeguard, AST parser syntax checks across all lifecycle scripts, and duplicate identity lookup error matrix (404 proceed, 200 exist, 403, 429, 500, timeout, and malformed fail-closed)."
                        },
                        {
                            "suiteName":  "Governance \u0026 PIM Pre-Flight Syntax \u0026 Parameter Engine",
@@ -94,8 +94,8 @@
                            "category":  "Local Unit Test",
                            "script":  "tests/identity_suite.Tests.ps1",
                            "status":  "PASS",
-                           "count":  13,
-                           "details":  "13 Pester assertions covering credential entropy, RBAC department routing, break-glass safeguard gates, policy file inventories, schema compliance, report-only default states, break-glass exclusion checks, git hygiene, and secret scanning."
+                           "count":  14,
+                           "details":  "14 Pester assertions covering credential entropy, RBAC department routing, break-glass safeguard gates, policy file inventories, schema compliance, report-only default states, break-glass exclusion checks, git hygiene, secret scanning, and evidence exporter data sanitization."
                        }
                    ]
 }

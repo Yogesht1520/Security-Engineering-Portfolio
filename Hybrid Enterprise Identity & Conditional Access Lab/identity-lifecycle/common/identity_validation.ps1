@@ -83,3 +83,42 @@ function Assert-SafeIdentityTarget {
     }
 }
 
+function Test-UserPrincipalNameExistence {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$UserPrincipalName
+    )
+
+    $checkUri = "https://graph.microsoft.com/v1.0/users/$UserPrincipalName"
+    try {
+        $existing = Invoke-MgGraphRequest -Method GET -Uri $checkUri -ErrorAction Stop
+        if ($existing) {
+            return [PSCustomObject]@{
+                Exists = $true
+                User   = $existing
+            }
+        }
+    } catch {
+        $msg = $_.Exception.Message
+        $is404 = ($msg -match "404" -or $msg -match "ResourceNotFound" -or $msg -match "Request_ResourceNotFound")
+        if ($_.Exception -is [System.Net.WebException]) {
+            $resp = $_.Exception.Response
+            if ($resp -and [int]$resp.StatusCode -eq 404) { $is404 = $true }
+        }
+        if ($is404) {
+            return [PSCustomObject]@{
+                Exists = $false
+                User   = $null
+            }
+        }
+        # Fail closed on all other directory query failures (403, 429, 500, timeout, malformed)
+        throw "Directory query failed for '$UserPrincipalName': $msg"
+    }
+
+    return [PSCustomObject]@{
+        Exists = $false
+        User   = $null
+    }
+}
+

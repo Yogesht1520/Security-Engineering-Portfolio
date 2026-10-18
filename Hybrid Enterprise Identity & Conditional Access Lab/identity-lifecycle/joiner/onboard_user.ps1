@@ -124,31 +124,22 @@ if ($needsAuth) {
 
 # 3. Check for Duplicate UPN (Finding 9: Fail-closed, distinguish 404 from directory failures)
 Write-Host "`n[Step 1/3] Checking for duplicate user in directory..." -ForegroundColor Cyan
-$checkUri = "https://graph.microsoft.com/v1.0/users/$UserPrincipalName"
 try {
-    $existing = Invoke-MgGraphRequest -Method GET -Uri $checkUri -ErrorAction Stop
-    if ($existing) {
-        Write-Error "Identity with UPN '$UserPrincipalName' already exists in tenant (ID: $($existing.id))."
+    $existence = Test-UserPrincipalNameExistence -UserPrincipalName $UserPrincipalName
+    if ($existence.Exists) {
+        Write-Error "Identity with UPN '$UserPrincipalName' already exists in tenant (ID: $($existence.User.id))."
         try {
             Write-LifecycleAuditLog -EventType "JOINER" -TargetUserPrincipalName $UserPrincipalName -Action "ProvisionUser" -Status "FAILURE" -Details @{ Error = "UserAlreadyExists" } -Initiator $activeContext.Account
         } catch {
             Write-Warning "Audit logging failed: $($_.Exception.Message)"
         }
         exit 1
+    } else {
+        Write-Host "  -> Confirmed: '$UserPrincipalName' does not exist in directory (HTTP 404). Proceeding." -ForegroundColor Gray
     }
 } catch {
-    $msg = $_.Exception.Message
-    $is404 = ($msg -match "404" -or $msg -match "ResourceNotFound" -or $msg -match "Request_ResourceNotFound")
-    if ($_.Exception -is [System.Net.WebException]) {
-        $resp = $_.Exception.Response
-        if ($resp -and [int]$resp.StatusCode -eq 404) { $is404 = $true }
-    }
-    if ($is404) {
-        Write-Host "  -> Confirmed: '$UserPrincipalName' does not exist in directory (HTTP 404). Proceeding." -ForegroundColor Gray
-    } else {
-        Write-Error "[FAIL-CLOSED GATE] Duplicate identity check failed due to directory query failure (not 404): $msg. Halting provisioning."
-        exit 1
-    }
+    Write-Error "[FAIL-CLOSED GATE] Duplicate identity check failed due to directory query failure (not 404): $($_.Exception.Message). Halting provisioning."
+    exit 1
 }
 
 # 4. Resolve Target Group

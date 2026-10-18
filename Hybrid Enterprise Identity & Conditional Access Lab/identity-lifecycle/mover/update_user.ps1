@@ -183,15 +183,19 @@ try {
         $memberOfUri = $memberOfResp.'@odata.nextLink'
     } while ($memberOfUri)
 
-    foreach ($grp in $allUserGroups) {
-        $grpName = $grp.displayName
-        if ($grpName -in $managedRbacGroups -and $grpName -ne $targetGroup) {
-            Write-Host "  [Revoking Legacy Group] Removing user from '$grpName'..." -ForegroundColor Yellow
+        # Identify legacy managed RBAC groups by immutable group ID (excluding target group ID)
+        $legacyRbacGroups = @($allUserGroups | Where-Object {
+            $_.id -ne $targetGroupId -and ($_.displayName -in $managedRbacGroups)
+        })
+
+        foreach ($grp in $legacyRbacGroups) {
+            $grpName = $grp.displayName
+            Write-Host "  [Revoking Legacy Group] Removing user from '$grpName' (ID: $($grp.id))..." -ForegroundColor Yellow
             $removeMemberUri = "https://graph.microsoft.com/v1.0/groups/$($grp.id)/members/$($user.id)/`$ref"
             if ($PSCmdlet.ShouldProcess($UserPrincipalName, "Revoke membership in legacy group '$grpName'")) {
                 try {
                     Invoke-MgGraphRequest -Method DELETE -Uri $removeMemberUri -ErrorAction Stop
-                    Write-Host "  -> Stripped legacy membership: $grpName" -ForegroundColor Green
+                    Write-Host "  -> Stripped legacy membership: $grpName ($($grp.id))" -ForegroundColor Green
                     $removedGroups += $grpName
                 } catch {
                     Write-Warning "Failed removing from group $grpName : $($_.Exception.Message)"
@@ -199,41 +203,40 @@ try {
                 }
             }
         }
+        $stageResults["Stage2_LegacyPrivilegePurge"] = if ($purgeFailed) { "PartiallyCompleted" } else { "Completed" }
+    } catch {
+        Write-Warning "Failed inspecting group memberships: $($_.Exception.Message)"
+        $stageResults["Stage2_LegacyPrivilegePurge"] = "Failed: $($_.Exception.Message)"
     }
-    $stageResults["Stage2_LegacyPrivilegePurge"] = if ($purgeFailed) { "PartiallyCompleted" } else { "Completed" }
-} catch {
-    Write-Warning "Failed inspecting group memberships: $($_.Exception.Message)"
-    $stageResults["Stage2_LegacyPrivilegePurge"] = "Failed: $($_.Exception.Message)"
-}
 
-# Add to New Target Group (if not already member)
-if ($TransactionPolicy -eq "FailClosedOnPrivilegePurge" -and ($stageResults["Stage2_LegacyPrivilegePurge"] -ne "Completed")) {
-    Write-Host "  [PRIVILEGE CREEP SAFEGUARD] Aborting target group assignment because Stage 2 (Legacy Privilege Purge) did not complete cleanly." -ForegroundColor Red
-    Write-Host "  Prevents user from retaining both legacy and target permissions concurrently." -ForegroundColor Red
-    $stageResults["Stage3_TargetGroupAssignment"] = "Blocked: PrivilegePurgeIncomplete"
-} else {
-    $isAlreadyMember = $allUserGroups | Where-Object { $_.displayName -eq $targetGroup }
-    if (-not $isAlreadyMember) {
-        Write-Host "  [Granting Target Group] Adding user to '$targetGroup'..." -ForegroundColor Cyan
-        $addMemberUri = "https://graph.microsoft.com/v1.0/groups/$targetGroupId/members/`$ref"
-        $addMemberPayload = @{
-            "@odata.id" = "https://graph.microsoft.com/v1.0/directoryObjects/$($user.id)"
-        } | ConvertTo-Json
-        if ($PSCmdlet.ShouldProcess($UserPrincipalName, "Assign membership in target group '$targetGroup'")) {
-            try {
-                Invoke-MgGraphRequest -Method POST -Uri $addMemberUri -Body $addMemberPayload -ContentType "application/json" -ErrorAction Stop
-                Write-Host "  -> Added to new group: $targetGroup" -ForegroundColor Green
-                $stageResults["Stage3_TargetGroupAssignment"] = "Completed"
-            } catch {
-                Write-Warning "Failed adding user to target group $targetGroup : $($_.Exception.Message)"
-                $stageResults["Stage3_TargetGroupAssignment"] = "Failed: $($_.Exception.Message)"
-            }
-        }
+    # Add to New Target Group (if not already member)
+    if ($TransactionPolicy -eq "FailClosedOnPrivilegePurge" -and ($stageResults["Stage2_LegacyPrivilegePurge"] -ne "Completed")) {
+        Write-Host "  [PRIVILEGE CREEP SAFEGUARD] Aborting target group assignment because Stage 2 (Legacy Privilege Purge) did not complete cleanly." -ForegroundColor Red
+        Write-Host "  Prevents user from retaining both legacy and target permissions concurrently." -ForegroundColor Red
+        $stageResults["Stage3_TargetGroupAssignment"] = "Blocked: PrivilegePurgeIncomplete"
     } else {
-        Write-Host "  -> User already member of target group: $targetGroup" -ForegroundColor Gray
-        $stageResults["Stage3_TargetGroupAssignment"] = "Completed"
+        $isAlreadyMember = $allUserGroups | Where-Object { $_.id -eq $targetGroupId }
+        if (-not $isAlreadyMember) {
+            Write-Host "  [Granting Target Group] Adding user to '$targetGroup' ($targetGroupId)..." -ForegroundColor Cyan
+            $addMemberUri = "https://graph.microsoft.com/v1.0/groups/$targetGroupId/members/`$ref"
+            $addMemberPayload = @{
+                "@odata.id" = "https://graph.microsoft.com/v1.0/directoryObjects/$($user.id)"
+            } | ConvertTo-Json
+            if ($PSCmdlet.ShouldProcess($UserPrincipalName, "Assign membership in target group '$targetGroup'")) {
+                try {
+                    Invoke-MgGraphRequest -Method POST -Uri $addMemberUri -Body $addMemberPayload -ContentType "application/json" -ErrorAction Stop
+                    Write-Host "  -> Added to new group: $targetGroup ($targetGroupId)" -ForegroundColor Green
+                    $stageResults["Stage3_TargetGroupAssignment"] = "Completed"
+                } catch {
+                    Write-Warning "Failed adding user to target group $targetGroup : $($_.Exception.Message)"
+                    $stageResults["Stage3_TargetGroupAssignment"] = "Failed: $($_.Exception.Message)"
+                }
+            }
+        } else {
+            Write-Host "  -> User already member of target group: $targetGroup ($targetGroupId)" -ForegroundColor Gray
+            $stageResults["Stage3_TargetGroupAssignment"] = "Completed"
+        }
     }
-}
 
 # 6. Update User Profile Attributes
 Write-Host "`n[Step 4/5] Updating user directory profile..." -ForegroundColor Cyan
@@ -280,15 +283,15 @@ try {
         $reconUri = $reconResp.'@odata.nextLink'
     } while ($reconUri)
 
-    $reconciledGroupNames = @($reconciledMemberships | Where-Object { $_.'@odata.type' -eq "#microsoft.graph.group" } | ForEach-Object { $_.displayName })
-    $targetPresent = $reconciledGroupNames -contains $targetGroup
-    $lingeringLegacy = @($legacyRbacGroups | Where-Object { $reconciledGroupNames -contains $_.displayName })
+    $reconciledGroupIds = @($reconciledMemberships | Where-Object { $_.'@odata.type' -eq "#microsoft.graph.group" } | ForEach-Object { $_.id })
+    $targetPresent = $reconciledGroupIds -contains $targetGroupId
+    $lingeringLegacy = @($legacyRbacGroups | Where-Object { $reconciledGroupIds -contains $_.id })
 
     if (-not $targetPresent) {
-        $stageResults["Stage3_TargetGroupAssignment"] = "Failed: Target group '$targetGroup' missing in post-reconciliation directory query"
+        $stageResults["Stage3_TargetGroupAssignment"] = "Failed: Target group ID '$targetGroupId' ($targetGroup) missing in post-reconciliation directory query"
     }
     if ($lingeringLegacy.Count -gt 0) {
-        $lingeringNames = ($lingeringLegacy | ForEach-Object { $_.displayName }) -join ", "
+        $lingeringNames = ($lingeringLegacy | ForEach-Object { "$($_.displayName) ($($_.id))" }) -join ", "
         $stageResults["Stage2_LegacyPrivilegePurge"] = "PartiallyCompleted: Lingering legacy memberships detected ($lingeringNames)"
     }
 
@@ -309,41 +312,54 @@ try {
 # 8. Evaluate Overall Transaction State
 $totalStages = $stageResults.Count
 $failedStages = ($stageResults.Values | Where-Object { $_ -like "Failed*" }).Count
-$partialStages = ($stageResults.Values | Where-Object { $_ -eq "PartiallyCompleted" }).Count
+$partialStages = ($stageResults.Values | Where-Object { $_ -like "PartiallyCompleted*" -or $_ -like "Incomplete*" -or $_ -like "Blocked*" }).Count
 $completedStages = ($stageResults.Values | Where-Object { $_ -eq "Completed" }).Count
 
 $overallState = if ($failedStages -eq 0 -and $partialStages -eq 0 -and $completedStages -eq $totalStages) {
     "Completed"
-} elseif ($completedStages -gt 0 -or $partialStages -gt 0) {
-    "PartiallyCompleted"
-} elseif ($failedStages -eq $totalStages) {
+} elseif ($failedStages -gt 0) {
     "Failed"
+} elseif ($partialStages -gt 0) {
+    "PartiallyCompleted"
 } else {
     "PendingVerification"
 }
 
 # Record Audit Telemetry
-Write-LifecycleAuditLog -EventType "MOVER" `
-                        -TargetUserPrincipalName $UserPrincipalName `
-                        -TargetUserId $user.id `
-                        -Action "TransitionUser" `
-                        -Status $overallState `
-                        -Details @{
-                            OverallState   = $overallState
-                            StageBreakdown = $stageResults
-                            OldDepartment  = $user.department
-                            NewDepartment  = $NewDepartment
-                            OldJobTitle    = $user.jobTitle
-                            NewJobTitle    = $NewJobTitle
-                            RemovedGroups  = ($removedGroups -join ", ")
-                            NewGroup       = $targetGroup
-                        } `
-                        -Initiator $activeContext.Account
+$auditLogged = $true
+try {
+    Write-LifecycleAuditLog -EventType "MOVER" `
+                            -TargetUserPrincipalName $UserPrincipalName `
+                            -TargetUserId $user.id `
+                            -Action "TransitionUser" `
+                            -Status $overallState `
+                            -Details @{
+                                OverallState   = $overallState
+                                StageBreakdown = $stageResults
+                                OldDepartment  = $user.department
+                                NewDepartment  = $NewDepartment
+                                OldJobTitle    = $user.jobTitle
+                                NewJobTitle    = $NewJobTitle
+                                RemovedGroups  = ($removedGroups -join ", ")
+                                NewGroup       = $targetGroup
+                                TargetGroupId  = $targetGroupId
+                            } `
+                            -Initiator $activeContext.Account
+} catch {
+    $auditLogged = $false
+    Write-Error "[AUDIT LOGGING FAILURE] Mover transition executed, but writing the audit log record failed: $($_.Exception.Message)"
+}
 
-$statusColor = switch ($overallState) {
+# Audit persistence is a mandatory gate for completed state
+if (-not $auditLogged) {
+    $overallState = "Failed: AuditPersistenceFailed"
+    Write-Error "  -> [TRANSACTION GATE FAILURE] Transaction marked Failed because audit log record could not be persisted."
+}
+
+$statusColor = switch -Wildcard ($overallState) {
     "Completed"          { "Green" }
     "PartiallyCompleted" { "Yellow" }
-    "Failed"             { "Red" }
+    "Failed*"            { "Red" }
     Default              { "Cyan" }
 }
 
@@ -352,7 +368,12 @@ Write-Host "User Principal Name : $UserPrincipalName" -ForegroundColor Cyan
 Write-Host "Transaction Status  : $overallState" -ForegroundColor $statusColor
 Write-Host "Department          : $NewDepartment ($($stageResults['Stage4_ProfileUpdate']))" -ForegroundColor White
 Write-Host "Job Title           : $NewJobTitle" -ForegroundColor White
-Write-Host "Assigned RBAC Group : $targetGroup ($($stageResults['Stage3_TargetGroupAssignment']))" -ForegroundColor White
+Write-Host "Assigned RBAC Group : $targetGroup (ID: $targetGroupId) ($($stageResults['Stage3_TargetGroupAssignment']))" -ForegroundColor White
 Write-Host "Legacy Groups Purged: $(if($removedGroups.Count -gt 0){$removedGroups -join ', '}else{'None'}) ($($stageResults['Stage2_LegacyPrivilegePurge']))" -ForegroundColor White
 Write-Host "Session State       : $($stageResults['Stage5_SessionRevocation'])" -ForegroundColor White
 Write-Host "================================================================================" -ForegroundColor $statusColor
+
+if ($overallState -ne "Completed") {
+    Write-Error "[MOVER INCOMPLETE] Transition failed or incomplete. Final state: $overallState"
+    exit 1
+}

@@ -145,8 +145,8 @@ if (Test-Path (Join-Path $PSScriptRoot "deployment\test_deployment_failure_recov
 Invoke-GuardedTestSuite -SuiteName "JML Identity Lifecycle State Machine Engine" `
                        -ScriptPath (Join-Path $PSScriptRoot "lifecycle\test_lifecycle_engine.ps1") `
                        -Category "Local Unit Test" `
-                       -CheckCount 9 `
-                       -Description "9 unit tests: 24-character cryptographic password entropy, department-to-RBAC mappings, emergency break-glass account protection safeguard, and AST parser syntax checks across all lifecycle scripts."
+                       -CheckCount 16 `
+                       -Description "16 unit tests: 24-character cryptographic password entropy, department-to-RBAC mappings, emergency break-glass account safeguard, AST parser syntax checks across all lifecycle scripts, and duplicate identity lookup error matrix (404 proceed, 200 exist, 403, 429, 500, timeout, and malformed fail-closed)."
 
 # 5. Governance Scripts Pre-Flight Tests
 Invoke-GuardedTestSuite -SuiteName "Governance & PIM Pre-Flight Syntax & Parameter Engine" `
@@ -157,10 +157,10 @@ Invoke-GuardedTestSuite -SuiteName "Governance & PIM Pre-Flight Syntax & Paramet
 
 # 6. Pester Native Test Matrix
 $script:totalTestSteps++
-$script:totalVerificationChecks += 13
+$script:totalVerificationChecks += 14
 Write-Host "`n----------------------------------------------------------" -ForegroundColor Gray
 Write-Host "[Master Runner] Executing Native Pester Assertion Matrix" -ForegroundColor Cyan
-Write-Host "Category: Local Unit Test | Checks: 13" -ForegroundColor DarkCyan
+Write-Host "Category: Local Unit Test | Checks: 14" -ForegroundColor DarkCyan
 Write-Host "----------------------------------------------------------" -ForegroundColor Gray
 
 $pesterResult = Invoke-Pester -Path "$PSScriptRoot\" -PassThru
@@ -184,8 +184,8 @@ $suiteRecords.Add([PSCustomObject]@{
     category  = "Local Unit Test"
     script    = "tests/identity_suite.Tests.ps1"
     status    = $pesterStatus
-    count     = 13
-    details   = "13 Pester assertions covering credential entropy, RBAC department routing, break-glass safeguard gates, policy file inventories, schema compliance, report-only default states, break-glass exclusion checks, git hygiene, and secret scanning."
+    count     = 14
+    details   = "14 Pester assertions covering credential entropy, RBAC department routing, break-glass safeguard gates, policy file inventories, schema compliance, report-only default states, break-glass exclusion checks, git hygiene, secret scanning, and evidence exporter data sanitization."
 })
 
 $elapsed = ((Get-Date) - $testStartTime).TotalSeconds
@@ -239,9 +239,9 @@ if ($ExportEvidence -or $ExportEvidencePath) {
             failed                  = $totalFailedChecks
             skipped                 = 0
             durationSeconds         = [math]::Round($elapsed, 2)
-            calculationMethodology  = "Itemized check count across 9 test suites: Schema validation (11), Group resolution (1), User resolution (1), Drift & canonical normalization engine (7), Snapshot integrity (9), Deployment failure & rollback recovery (10), Lifecycle engine (9), Governance pre-flight (3), and Native Pester matrix (13)."
+            calculationMethodology  = "Itemized check count across 9 test suites: Schema validation (11), Group resolution (1), User resolution (1), Drift & canonical normalization engine (7), Snapshot integrity (9), Deployment failure & rollback recovery (10), Lifecycle engine (16), Governance pre-flight (3), and Native Pester matrix (14)."
             testTiersBreakdown      = [PSCustomObject]@{
-                localUnitTestsChecks            = 38
+                localUnitTestsChecks            = 46
                 mockedGraphApiIntegrationChecks = 26
             }
         }

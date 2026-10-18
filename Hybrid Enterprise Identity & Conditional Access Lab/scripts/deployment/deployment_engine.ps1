@@ -83,6 +83,13 @@ function Get-CanonicalNormalizedPolicy {
                 @($elem.PSObject.Properties | Select-Object -ExpandProperty Name | Sort-Object { [string]$_ })
             }
 
+            # Volatile / Server-assigned metadata properties excluded from canonical comparison:
+            # - 'id': Random GUID assigned on creation, distinct across environments.
+            # - 'createdDateTime', 'modifiedDateTime': Server timestamps that drift on every mutation.
+            # - '@odata.*': Protocol-level payload context and caching etags.
+            # - 'templateId': Read-only, immutable Entra ID system metadata indicating whether
+            #   a policy originated from a built-in template gallery. It cannot be altered via PATCH
+            #   and does not alter runtime evaluation criteria, enforcement conditions, or session controls.
             $volatileMetadataProps = @(
                 "id", "createdDateTime", "modifiedDateTime", "@odata.context",
                 "@odata.nextLink", "@odata.etag", "templateId"
@@ -93,6 +100,12 @@ function Get-CanonicalNormalizedPolicy {
                     continue
                 }
                 $val = if ($elem -is [System.Collections.IDictionary]) { $elem[$propName] } else { $elem.$propName }
+                # Semantic note on null vs omitted properties:
+                # In Microsoft Graph Conditional Access policies, omitted complex sub-objects or collections
+                # (such as clientAppTypes, platforms, devices) are returned as null by Graph GET responses.
+                # To maintain idempotent equivalence between declarative local definitions (which omit unused blocks)
+                # and Graph API responses (which include them as null), null-valued properties are stripped.
+                # Properties with meaningful default falsy values (like boolean $false or integer 0) are preserved.
                 if ($null -ne $val) {
                     $sortedDict[$propName] = ConvertTo-NormalizedElement $val $propName
                 }
@@ -196,7 +209,9 @@ function Invoke-PolicyDeploymentTransaction {
     $failureReason = $null
     $newlyCreatedPolicyIds = [System.Collections.Generic.List[string]]::new()
     $baselinePolicyIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $preDeploymentLivePolicyIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $mutationsApplied = 0
+    $ownershipUncertain = $false
 
     # Pre-index baseline snapshot policy IDs to guarantee pre-existing policies are never deleted during rollback
     $targetSnapDir = Join-Path $SnapshotsDir $SnapshotId
@@ -213,6 +228,24 @@ function Invoke-PolicyDeploymentTransaction {
                 }
             }
         }
+    }
+
+    # Capture the complete live policy ID set immediately before deployment to establish baseline ownership
+    try {
+        $preLiveUri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies?`$select=id,displayName"
+        do {
+            $preLiveResp = Invoke-MgGraphRequest -Method GET -Uri $preLiveUri -ErrorAction Stop
+            if ($preLiveResp.value) {
+                foreach ($lp in $preLiveResp.value) {
+                    if ($lp.id) {
+                        $preDeploymentLivePolicyIds.Add($lp.id) | Out-Null
+                    }
+                }
+            }
+            $preLiveUri = $preLiveResp.'@odata.nextLink'
+        } while ($preLiveUri)
+    } catch {
+        Write-Warning "Could not capture pre-deployment live policy ID set: $($_.Exception.Message)"
     }
 
     foreach ($item in $ActionsToTake) {
@@ -315,46 +348,48 @@ function Invoke-PolicyDeploymentTransaction {
                 $failureReason = $_.Exception.Message
                 Write-Host "  -> FAILED to create: $failureReason" -ForegroundColor Red
 
-                # Ambiguous Creation Mitigation: Prove policy ownership before deleting
+                # Ambiguous Creation Mitigation: Prove policy ownership via before-and-after ID set delta
                 try {
                     $checkListUri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies"
-                    $currentList = Invoke-MgGraphRequest -Method GET -Uri $checkListUri -ErrorAction Stop
-                    $ambiguousMatches = @($currentList.value | Where-Object { $_.displayName -eq $item.DisplayName })
-                    if ($ambiguousMatches.Count -gt 0) {
-                        foreach ($am in $ambiguousMatches) {
-                            # CRITICAL: Prove ownership before adding to deletion list.
-                            # If policy ID already existed in pre-deployment baseline snapshot, IT IS PRE-EXISTING!
-                            if ($baselinePolicyIds.Contains($am.id)) {
-                                Write-Warning "  -> [PRE-EXISTING POLICY] Policy '$($am.displayName)' (ID: $($am.id)) was present in baseline snapshot. Preserving from deletion."
-                                continue
-                            }
-
-                            # Verify creation time matches transaction window if createdDateTime property exists
-                            $provenOwnership = $true
-                            if ($am.createdDateTime) {
-                                try {
-                                    $createdDt = [DateTime]::Parse($am.createdDateTime).ToUniversalTime()
-                                    if ($createdDt -lt $transactionStartTime.AddSeconds(-30)) {
-                                        $provenOwnership = $false
-                                        Write-Warning "  -> [PRE-EXISTING TIMESTAMP] Policy '$($am.displayName)' createdDateTime ($($am.createdDateTime)) precedes transaction window. Proving non-ownership; preserving from deletion."
-                                    }
-                                } catch {
-                                    Write-Verbose "Could not parse createdDateTime on policy '$($am.displayName)': $($_.Exception.Message)"
-                                }
-                            }
-
-                            if ($provenOwnership) {
-                                if (-not $newlyCreatedPolicyIds.Contains($am.id)) {
-                                    $newlyCreatedPolicyIds.Add($am.id)
-                                }
-                                $mutationsApplied++
-                                Write-Warning "  -> [AMBIGUOUS WRITE DETECTED] Verified newly created policy '$($am.displayName)' (ID: $($am.id)) before response drop. Added to cleanup list."
-                            }
+                    $currentList = [System.Collections.Generic.List[PSObject]]::new()
+                    do {
+                        $currentResp = Invoke-MgGraphRequest -Method GET -Uri $checkListUri -ErrorAction Stop
+                        if ($currentResp.value) {
+                            foreach ($cp in $currentResp.value) { $currentList.Add($cp) }
                         }
+                        $checkListUri = $currentResp.'@odata.nextLink'
+                    } while ($checkListUri)
+
+                    # Calculate difference between before and after ID sets (only newly observed IDs)
+                    # Exclude any ID present in the pre-deployment live set or the snapshot baseline
+                    $newlyObservedCandidates = @($currentList | Where-Object {
+                        $_.displayName -eq $item.DisplayName -and
+                        -not $preDeploymentLivePolicyIds.Contains($_.id) -and
+                        -not $baselinePolicyIds.Contains($_.id)
+                    })
+
+                    if ($newlyObservedCandidates.Count -eq 1) {
+                        # Single newly observed ID with matching display name: proven ownership established!
+                        $candidate = $newlyObservedCandidates[0]
+                        if (-not $newlyCreatedPolicyIds.Contains($candidate.id)) {
+                            $newlyCreatedPolicyIds.Add($candidate.id)
+                        }
+                        $mutationsApplied++
+                        Write-Warning "  -> [AMBIGUOUS WRITE DETECTED] Verified newly created policy '$($candidate.displayName)' (ID: $($candidate.id)) was created in current transaction. Added to cleanup list."
+                    } elseif ($newlyObservedCandidates.Count -gt 1) {
+                        # Multiple candidates exist: ownership is uncertain!
+                        # Stop automatic deletion to prevent deleting legitimate policies and mark transaction PendingVerification
+                        $ownershipUncertain = $true
+                        $mutationsApplied++
+                        Write-Warning "  -> [AMBIGUOUS OWNERSHIP] Multiple newly observed policies ($($newlyObservedCandidates.Count)) match display name '$($item.DisplayName)'. Ownership cannot be proven with certainty. Halting automatic deletion to protect tenant."
+                    } else {
+                        # 0 newly observed candidates found: write did not commit
+                        Write-Host "  -> [CONFIRMED UNMUTATED] No new policy matching '$($item.DisplayName)' was observed in live tenant. Server did not commit write." -ForegroundColor Gray
                     }
                 } catch {
+                    $ownershipUncertain = $true
                     $mutationsApplied++
-                    Write-Warning "  -> [AMBIGUOUS STATE] Unable to verify creation state. Assuming mutation applied."
+                    Write-Warning "  -> [AMBIGUOUS STATE] Unable to verify creation state via Graph query ($($_.Exception.Message)). Ownership cannot be established."
                 }
 
                 $transactionResults.Add([PSCustomObject]@{
@@ -380,7 +415,20 @@ function Invoke-PolicyDeploymentTransaction {
         Write-Host "`n[DEPLOYMENT FAILED] One or more policies encountered errors during deployment!" -ForegroundColor Red
         Write-Host "Transaction halted immediately. Beginning automatic in-flight rollback..." -ForegroundColor Red
 
-        if ($mutationsApplied -gt 0 -or $newlyCreatedPolicyIds.Count -gt 0) {
+        if ($ownershipUncertain) {
+            # Critical Safety Gate: If ownership is uncertain or multiple candidates exist,
+            # stop automatic deletion and mark the transaction PendingVerification
+            $transactionState = "PendingVerification"
+            Write-Warning "`n[SAFETY HALT] Ownership of ambiguously created policy could not be proven with certainty. Automatic deletion stopped to protect tenant. Transaction marked PendingVerification for operator attestation."
+            # Only restore pre-existing modified policies if any
+            if ($mutationsApplied -gt 0 -and $newlyCreatedPolicyIds.Count -gt 0) {
+                try {
+                    & $RollbackScript -Action Restore -SnapshotId $SnapshotId -SnapshotsDir $SnapshotsDir -SessionCreatedPolicyIds $newlyCreatedPolicyIds | Out-Null
+                } catch {
+                    Write-Warning "Partial restore attempt encountered error: $($_.Exception.Message)"
+                }
+            }
+        } elseif ($mutationsApplied -gt 0 -or $newlyCreatedPolicyIds.Count -gt 0) {
             $rollbackExecuted = $true
             Write-Host "`n[AUTOMATIC ROLLBACK TRIGGERED] Restoring tenant to pre-deployment snapshot '$SnapshotId'..." -ForegroundColor Yellow
             try {
@@ -414,6 +462,7 @@ function Invoke-PolicyDeploymentTransaction {
     $receipt = [PSCustomObject]@{
         TransactionId            = [Guid]::NewGuid().ToString()
         TimestampUtc             = (Get-Date).ToUniversalTime().ToString("o")
+        TransactionStartTimeUtc  = $transactionStartTime.ToString("o")
         TenantId                 = $tId
         Operator                 = $acc
         OverallTransactionState  = $transactionState
