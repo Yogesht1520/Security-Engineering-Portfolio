@@ -86,10 +86,10 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add "evidence/test-results.json"
-          if ! git diff --cached --quiet; then
-            git commit -m "chore(evidence): synchronize CI test telemetry [skip ci]"
-            git push
+          git -C "$GITHUB_WORKSPACE" add "Hybrid Enterprise Identity & Conditional Access Lab/evidence/test-results.json"
+          if ! git -C "$GITHUB_WORKSPACE" diff --cached --quiet; then
+            git -C "$GITHUB_WORKSPACE" commit -m "chore(evidence): synchronize CI test telemetry [skip ci]"
+            git -C "$GITHUB_WORKSPACE" push
           else
             echo "Evidence already up to date with repository state."
           fi
