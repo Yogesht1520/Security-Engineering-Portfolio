@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate-policies:
@@ -79,6 +79,20 @@ jobs:
             Hybrid Enterprise Identity & Conditional Access Lab/evidence/test-results.json
             Hybrid Enterprise Identity & Conditional Access Lab/evidence/policy-behavior-matrix.md
             Hybrid Enterprise Identity & Conditional Access Lab/evidence/live-tenant-state/live-tenant-state.json
+
+      - name: Synchronize Release Evidence to Repository
+        if: success() && github.ref == 'refs/heads/main' && github.event_name == 'push'
+        shell: bash
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add "Hybrid Enterprise Identity & Conditional Access Lab/evidence/test-results.json"
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(evidence): synchronize CI test telemetry [skip ci]"
+            git push
+          else
+            echo "Evidence already up to date with repository state."
+          fi
 
   static-analysis:
     name: "PSScriptAnalyzer Static Code Quality"
