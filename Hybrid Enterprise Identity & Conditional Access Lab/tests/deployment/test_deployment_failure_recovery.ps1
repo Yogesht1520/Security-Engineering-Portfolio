@@ -319,11 +319,21 @@ try {
     $actions7 = @(
         [PSCustomObject]@{ Action = "Create"; DisplayName = "CAP-999-new-policy"; PolicyId = $null; Payload = @{ displayName = "CAP-999-new-policy"; state = "enabled" } }
     )
-    $res7 = Invoke-PolicyDeploymentTransaction -ActionsToTake $actions7 -SnapshotId $snapshotTimestamp -RollbackScript $rollbackScript -ReceiptsDirectory $reportsDir -SnapshotsDir $snapshotsBaseDir
-    if ($res7.TransactionState -ne "FailedAndRolledBack") { throw "Scenario 7 Failed: Expected 'FailedAndRolledBack', got '$($res7.TransactionState)'" }
+
+    # 7A. Default Enterprise Policy (FailClosedPreserve): Policy preserved, automatic deletion halted, PendingVerification
+    $res7A = Invoke-PolicyDeploymentTransaction -ActionsToTake $actions7 -SnapshotId $snapshotTimestamp -RollbackScript $rollbackScript -ReceiptsDirectory $reportsDir -SnapshotsDir $snapshotsBaseDir -AmbiguousPostPolicy "FailClosedPreserve"
+    if ($res7A.TransactionState -ne "PendingVerification") { throw "Scenario 7A Failed: Expected 'PendingVerification', got '$($res7A.TransactionState)'" }
+    $preserveCheck = @($global:LiveMockPolicies.Values | Where-Object { $_.displayName -eq "CAP-999-new-policy" })
+    if ($preserveCheck.Count -ne 1) { throw "Scenario 7A Failed: Ambiguously created policy was deleted instead of being preserved for operator verification" }
+
+    # 7B. Automated Lab / CI Policy (AutoPurgeCorrelated): Strict correlation purges orphan
+    Clear-MockTenantState
+    $global:FaultInjectTimeoutPost = $true
+    $res7B = Invoke-PolicyDeploymentTransaction -ActionsToTake $actions7 -SnapshotId $snapshotTimestamp -RollbackScript $rollbackScript -ReceiptsDirectory $reportsDir -SnapshotsDir $snapshotsBaseDir -AmbiguousPostPolicy "AutoPurgeCorrelated"
+    if ($res7B.TransactionState -ne "FailedAndRolledBack") { throw "Scenario 7B Failed: Expected 'FailedAndRolledBack', got '$($res7B.TransactionState)'" }
     $orphanCheck = @($global:LiveMockPolicies.Values | Where-Object { $_.displayName -eq "CAP-999-new-policy" })
-    if ($orphanCheck.Count -gt 0) { throw "Scenario 7 Failed: Ambiguously created policy was not purged by rollback" }
-    Write-Host "  -> PASS: Ambiguous POST creation identified and cleaned up." -ForegroundColor Green
+    if ($orphanCheck.Count -gt 0) { throw "Scenario 7B Failed: Ambiguously created policy was not purged under AutoPurgeCorrelated" }
+    Write-Host "  -> PASS: Ambiguous POST creation verified: preserved under FailClosedPreserve and purged under AutoPurgeCorrelated." -ForegroundColor Green
 
     # =========================================================================
     # SCENARIO 8: Rollback Failure

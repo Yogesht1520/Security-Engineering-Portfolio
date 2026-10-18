@@ -192,7 +192,9 @@ function Invoke-PolicyDeploymentTransaction {
         [Parameter(Mandatory=$false)]
         $ActiveContext = $null,
         [string]$ReceiptsDirectory,
-        [string]$SnapshotsDir
+        [string]$SnapshotsDir,
+        [ValidateSet("FailClosedPreserve", "AutoPurgeCorrelated")]
+        [string]$AmbiguousPostPolicy = "FailClosedPreserve"
     )
 
     if ([string]::IsNullOrWhiteSpace($ReceiptsDirectory)) {
@@ -389,19 +391,30 @@ function Invoke-PolicyDeploymentTransaction {
                             }
                         }
 
-                        if ($payloadDiffs.Count -eq 0 -and $timestampValid) {
-                            # Proven ownership independently tied to this request: single candidate + 0 canonical drift + valid transaction window
+                        if ($AmbiguousPostPolicy -eq "AutoPurgeCorrelated" -and $payloadDiffs.Count -eq 0 -and $timestampValid) {
+                            # Opt-in automated mode: single candidate + 0 canonical drift + valid transaction window
                             if (-not $newlyCreatedPolicyIds.Contains($candidate.id)) {
                                 $newlyCreatedPolicyIds.Add($candidate.id)
                             }
                             $mutationsApplied++
-                            Write-Warning "  -> [AMBIGUOUS WRITE DETECTED] Verified newly created policy '$($candidate.displayName)' (ID: $($candidate.id)) independently matched canonical desired payload and transaction window. Added to cleanup list."
+                            Write-Warning "  -> [AMBIGUOUS WRITE DETECTED] Verified newly created policy '$($candidate.displayName)' (ID: $($candidate.id)) matched canonical desired payload and transaction window. Added to cleanup list under AutoPurgeCorrelated policy."
                         } else {
-                            # Ownership cannot be independently proven with certainty (payload drift or timestamp anomaly)
-                            # Halting automatic deletion to protect legitimate concurrent policies
+                            # Default Enterprise Fail-Closed Behavior (FailClosedPreserve):
+                            # Even with single matching candidate, a concurrent administrator or independent automation
+                            # process could create a policy with the same name during the transaction window.
+                            # A newly observed matching ID does not conclusively prove this transaction created it.
+                            # Therefore, preserve the candidate policy in tenant state, require operator verification,
+                            # and halt automatic deletion to prevent deleting concurrent or external policies.
                             $ownershipUncertain = $true
                             $mutationsApplied++
-                            Write-Warning "  -> [UNCERTAIN OWNERSHIP] Observed newly created policy '$($candidate.displayName)' (ID: $($candidate.id)), but canonical payload differed ($($payloadDiffs.Count) field(s) drifted) or timestamp did not correlate. Halting automatic deletion to prevent deleting third-party or concurrent policies."
+                            $reasonText = if ($AmbiguousPostPolicy -ne "AutoPurgeCorrelated") {
+                                "Enterprise safety policy prohibits automatic deletion on display-name and ID-difference evidence alone. Policy preserved for operator verification."
+                            } elseif ($payloadDiffs.Count -gt 0) {
+                                "Canonical payload differed ($($payloadDiffs.Count) field(s) drifted)."
+                            } else {
+                                "Timestamp did not correlate to active transaction window."
+                            }
+                            Write-Warning "  -> [PRESERVED FOR OPERATOR VERIFICATION] Observed newly created policy '$($candidate.displayName)' (ID: $($candidate.id)). $reasonText Halting automatic deletion; transaction marked PendingVerification."
                         }
                     } elseif ($newlyObservedCandidates.Count -gt 1) {
                         # Multiple candidates exist: ownership is uncertain!

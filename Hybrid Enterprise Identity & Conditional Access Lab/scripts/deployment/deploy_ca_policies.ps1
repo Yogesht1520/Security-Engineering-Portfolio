@@ -42,7 +42,10 @@ param (
 
     [switch]$DeviceCode,
 
-    [switch]$Force
+    [switch]$Force,
+
+    [ValidateSet("FailClosedPreserve", "AutoPurgeCorrelated")]
+    [string]$AmbiguousPostPolicy = "FailClosedPreserve"
 )
 
 . "$PSScriptRoot\deployment_engine.ps1"
@@ -420,7 +423,8 @@ $deployResult = Invoke-PolicyDeploymentTransaction `
     -ActionsToTake $actionsToTake `
     -SnapshotId $snapshotId `
     -RollbackScript $rollbackScript `
-    -ActiveContext $activeContext
+    -ActiveContext $activeContext `
+    -AmbiguousPostPolicy $AmbiguousPostPolicy
 
 if ($deployResult.TransactionState -ne "Completed") {
     Write-Host "`n==========================================================" -ForegroundColor Red
