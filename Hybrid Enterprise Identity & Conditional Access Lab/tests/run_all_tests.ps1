@@ -161,6 +161,13 @@ $script:totalTestSteps++
 Write-Host "`n----------------------------------------------------------" -ForegroundColor Gray
 Write-Host "[Master Runner] Executing Native Pester Assertion Matrix" -ForegroundColor Cyan
 
+# Ensure Pester 5 is loaded
+if (-not (Get-Module -Name Pester | Where-Object { $_.Version -ge '5.0.0' })) {
+    if (Get-Module -ListAvailable -Name Pester | Where-Object { $_.Version -ge '5.0.0' }) {
+        Import-Module Pester -MinimumVersion 5.0.0 -Force
+    }
+}
+
 $pesterResult = Invoke-Pester -Path "$PSScriptRoot\" -PassThru
 $pDiscovered = if ($null -ne $pesterResult.TotalCount) { $pesterResult.TotalCount } else { ($pesterResult.PassedCount + $pesterResult.FailedCount) }
 $script:totalVerificationChecks += $pDiscovered

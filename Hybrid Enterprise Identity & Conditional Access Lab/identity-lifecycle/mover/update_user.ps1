@@ -40,6 +40,8 @@ param (
 
     [string]$TargetGroupId,
 
+    [hashtable]$ManagedRbacRoleMap = @{},
+
     [string[]]$ManagedRbacGroupIds = @(),
 
     [string]$MappingConfigFile = "",
@@ -196,17 +198,38 @@ Write-Host "`n[Step 3/5] Resolving and validating complete managed RBAC group im
 $requiredManagedRoles = @("SEC-StandardUsers", "SEC-Admins", "SEC-Contractors")
 $resolvedRoleMap = [ordered]@{}
 
-# A. Direct parameter input of immutable IDs (if caller provided specific mapping)
-if ($ManagedRbacGroupIds -and $ManagedRbacGroupIds.Count -ge $requiredManagedRoles.Count) {
-    for ($i = 0; $i -lt $requiredManagedRoles.Count; $i++) {
-        $gid = $ManagedRbacGroupIds[$i]
-        if (-not [string]::IsNullOrWhiteSpace($gid)) {
-            $resolvedRoleMap[$requiredManagedRoles[$i]] = $gid.Trim()
+# A. Explicit role-to-ID mapping from -ManagedRbacRoleMap parameter
+if ($ManagedRbacRoleMap -and $ManagedRbacRoleMap.Count -gt 0) {
+    foreach ($k in $ManagedRbacRoleMap.Keys) {
+        $val = $ManagedRbacRoleMap[$k]
+        if (-not [string]::IsNullOrWhiteSpace($val)) {
+            $resolvedRoleMap[$k] = $val.Trim()
         }
     }
 }
 
-# B. Configuration file input of immutable IDs (evaluated per individual role)
+# B. Explicit ID resolution for -ManagedRbacGroupIds (non-positional, verified by Graph display name)
+if ($ManagedRbacGroupIds -and $ManagedRbacGroupIds.Count -gt 0) {
+    foreach ($gid in $ManagedRbacGroupIds) {
+        if ([string]::IsNullOrWhiteSpace($gid)) { continue }
+        $trimGid = $gid.Trim()
+        try {
+            $gQueryUri = "https://graph.microsoft.com/v1.0/groups/$trimGid"
+            $gQueryObj = Invoke-MgGraphRequest -Method GET -Uri $gQueryUri -ErrorAction Stop
+            if ($requiredManagedRoles -contains $gQueryObj.displayName) {
+                $resolvedRoleMap[$gQueryObj.displayName] = $trimGid
+            } else {
+                Write-Warning "Supplied group ID '$trimGid' has display name '$($gQueryObj.displayName)', which is not in the managed RBAC set."
+            }
+        } catch {
+            $stageResults["Stage2_LegacyPrivilegePurge"] = "Failed: InvalidSuppliedGroupId ($trimGid - $($_.Exception.Message))"
+            Write-Error "[FAIL-CLOSED GATE] Supplied managed group ID '$trimGid' could not be resolved in tenant: $($_.Exception.Message). Aborting mover transition."
+            exit 1
+        }
+    }
+}
+
+# C. Configuration file input of immutable IDs (evaluated per individual role)
 $mappingPath = if ($MappingConfigFile) { $MappingConfigFile } else { Join-Path $PSScriptRoot "..\..\config\identity-mapping.json" }
 $mapContent = $null
 if (Test-Path $mappingPath) {
@@ -217,22 +240,23 @@ if (Test-Path $mappingPath) {
     }
 }
 
-# C. Resolve each individual required managed role (from config mapping first, then Graph with fail-closed checks)
+foreach ($roleName in $requiredManagedRoles) {
+    if (-not $resolvedRoleMap.ContainsKey($roleName)) {
+        if ($mapContent -and $mapContent.groups -and $mapContent.groups.PSObject.Properties[$roleName]) {
+            $confVal = $mapContent.groups.PSObject.Properties[$roleName].Value
+            if ($confVal -and $confVal -notmatch "^<.*>$") {
+                $resolvedRoleMap[$roleName] = $confVal.Trim()
+            }
+        }
+    }
+}
+
+# D. Fallback to Graph resolution for any remaining unmapped roles with strict fail-closed validation
 foreach ($roleName in $requiredManagedRoles) {
     if ($resolvedRoleMap.ContainsKey($roleName)) {
         continue
     }
 
-    # Check mapping config for this specific role
-    if ($mapContent -and $mapContent.groups -and $mapContent.groups.PSObject.Properties[$roleName]) {
-        $confVal = $mapContent.groups.PSObject.Properties[$roleName].Value
-        if ($confVal -and $confVal -notmatch "^<.*>$") {
-            $resolvedRoleMap[$roleName] = $confVal.Trim()
-            continue
-        }
-    }
-
-    # Fallback to Graph resolution for this role with strict fail-closed validation
     $mUri = "https://graph.microsoft.com/v1.0/groups?`$filter=displayName eq '$roleName'"
     try {
         $mResp = Invoke-MgGraphRequest -Method GET -Uri $mUri -ErrorAction Stop
@@ -241,7 +265,7 @@ foreach ($roleName in $requiredManagedRoles) {
             $resolvedRoleMap[$roleName] = $matched[0].id
         } elseif ($matched.Count -gt 1) {
             $stageResults["Stage2_LegacyPrivilegePurge"] = "Failed: DuplicateGroupAmbiguity ($roleName)"
-            Write-Error "[FAIL-CLOSED GATE] Multiple groups ($($matched.Count)) match managed role name '$roleName'. Cannot resolve unambiguous immutable ID! Supply -ManagedRbacGroupIds."
+            Write-Error "[FAIL-CLOSED GATE] Multiple groups ($($matched.Count)) match managed role name '$roleName'. Cannot resolve unambiguous immutable ID! Supply explicit -ManagedRbacRoleMap."
             exit 1
         } else {
             $stageResults["Stage2_LegacyPrivilegePurge"] = "Failed: ManagedRoleNotFound ($roleName)"
@@ -255,7 +279,28 @@ foreach ($roleName in $requiredManagedRoles) {
     }
 }
 
-# D. Strict assertion: All required managed roles MUST be resolved
+# E. Independent Validation Gate: Every configured group ID MUST be verified against Graph
+# to guarantee its actual tenant displayName matches the expected roleName (prevents wrong/mismatched ID usage)
+foreach ($roleName in $requiredManagedRoles) {
+    if ($resolvedRoleMap.ContainsKey($roleName)) {
+        $checkId = $resolvedRoleMap[$roleName]
+        try {
+            $vUri = "https://graph.microsoft.com/v1.0/groups/$checkId"
+            $vObj = Invoke-MgGraphRequest -Method GET -Uri $vUri -ErrorAction Stop
+            if ($vObj.displayName -ne $roleName) {
+                $stageResults["Stage2_LegacyPrivilegePurge"] = "Failed: GroupIdentityMismatch ($roleName)"
+                Write-Error "[FAIL-CLOSED GATE] Configured group ID '$checkId' for role '$roleName' does not match directory display name (Directory reports '$($vObj.displayName)'). Aborting to prevent incomplete or incorrect legacy privilege removal."
+                exit 1
+            }
+        } catch {
+            $stageResults["Stage2_LegacyPrivilegePurge"] = "Failed: InvalidConfiguredGroupId ($roleName - $($_.Exception.Message))"
+            Write-Error "[FAIL-CLOSED GATE] Configured group ID '$checkId' for role '$roleName' could not be validated in tenant: $($_.Exception.Message). Aborting mover transition."
+            exit 1
+        }
+    }
+}
+
+# F. Strict assertion: All required managed roles MUST be resolved
 $missingRoles = @($requiredManagedRoles | Where-Object { -not $resolvedRoleMap.ContainsKey($_) })
 if ($missingRoles.Count -gt 0) {
     $missingList = $missingRoles -join ", "
