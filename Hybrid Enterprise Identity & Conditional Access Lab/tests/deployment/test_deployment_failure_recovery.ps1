@@ -49,15 +49,15 @@ try {
                 state       = $b.state
             }
         }
-        $global:FaultInjectHttpCode = 0
-        $global:FaultInjectErrorOnPolId = $null
-        $global:FaultInjectTimeoutPatch = $false
-        $global:FaultInjectTimeoutPost = $false
-        $global:FaultInjectRollbackFail = $false
-        $global:FaultInjectVerifyMismatch = $false
-        $global:InRollbackMode = $false
-        $global:MockCreatedDateTimeOverride = $null
-        $global:MockCreatedDateTimeOmitted = $false
+        Set-Variable -Name FaultInjectHttpCode -Scope Global -Value 0
+        Set-Variable -Name FaultInjectErrorOnPolId -Scope Global -Value $null
+        Set-Variable -Name FaultInjectTimeoutPatch -Scope Global -Value $false
+        Set-Variable -Name FaultInjectTimeoutPost -Scope Global -Value $false
+        Set-Variable -Name FaultInjectRollbackFail -Scope Global -Value $false
+        Set-Variable -Name FaultInjectVerifyMismatch -Scope Global -Value $false
+        Set-Variable -Name InRollbackMode -Scope Global -Value $false
+        Set-Variable -Name MockCreatedDateTimeOverride -Scope Global -Value $null
+        Set-Variable -Name MockCreatedDateTimeOmitted -Scope Global -Value $false
     }
     Clear-MockTenantState
 
