@@ -4,9 +4,11 @@
 #>
 
 Describe "Conditional Access Declarative Policy Validation" {
-    $policiesPath = Join-Path $PSScriptRoot "..\policies"
-    $schemaPath   = Join-Path $policiesPath "schema\conditional-access.schema.json"
-    $deployScript = Join-Path $PSScriptRoot "..\scripts\deployment\deploy_ca_policies.ps1"
+    BeforeAll {
+        $policiesPath = Join-Path $PSScriptRoot "..\policies"
+        $schemaPath   = Join-Path $policiesPath "schema\conditional-access.schema.json"
+        $deployScript = Join-Path $PSScriptRoot "..\scripts\deployment\deploy_ca_policies.ps1"
+    }
 
     Context "Policy File Inventory" {
         It "Should contain all 11 required baseline policy files and schema" {

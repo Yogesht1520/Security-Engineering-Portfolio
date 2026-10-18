@@ -4,7 +4,10 @@
 #>
 
 Describe "Repository Hygiene & Secret Scanning" {
-    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+    BeforeAll {
+        $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+        . (Join-Path $repoRoot "scripts\deployment\evidence_sanitizer.ps1")
+    }
 
     Context "Git Hygiene & Secrets Check" {
         It "Must not contain live secrets files committed to git" {
@@ -43,8 +46,6 @@ Describe "Repository Hygiene & Secret Scanning" {
     }
 
     Context "Evidence Sanitization & Data Masking" {
-        # Dot-source the actual production evidence sanitizer module
-        . (Join-Path $repoRoot "scripts\deployment\evidence_sanitizer.ps1")
 
         It "Must sanitize all sensitive identifier types by invoking the production ConvertTo-SanitizedJson function" {
             $sampleRawObject = [PSCustomObject]@{

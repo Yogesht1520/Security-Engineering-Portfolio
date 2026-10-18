@@ -4,8 +4,10 @@
 #>
 
 Describe "Identity Lifecycle Engine & RBAC Validation" {
-    $lifecycleDir = Join-Path $PSScriptRoot "..\identity-lifecycle"
-    . (Join-Path $lifecycleDir "common\identity_validation.ps1")
+    BeforeAll {
+        $lifecycleDir = Join-Path $PSScriptRoot "..\identity-lifecycle"
+        . (Join-Path $lifecycleDir "common\identity_validation.ps1")
+    }
 
     Context "Cryptographic Credential Generation" {
         It "Generates 24-character high-entropy temporary passwords meeting complexity rules" {

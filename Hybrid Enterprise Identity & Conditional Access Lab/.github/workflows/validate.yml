@@ -37,8 +37,11 @@ jobs:
       - name: Install Pinned Test Dependencies
         shell: pwsh
         run: |
-          Write-Host "Installing Pinned Pester Framework (5.5.0)..." -ForegroundColor Cyan
-          Install-Module -Name Pester -RequiredVersion 5.5.0 -Force -SkipPublisherCheck -Scope CurrentUser
+          Write-Host "Verifying Pester Framework (5.5.0)..." -ForegroundColor Cyan
+          if (-not (Get-Module -ListAvailable -Name Pester | Where-Object { $_.Version -ge '5.0.0' })) {
+            Install-Module -Name Pester -RequiredVersion 5.5.0 -Force -SkipPublisherCheck -Scope CurrentUser
+          }
+          Import-Module Pester -MinimumVersion 5.0.0 -Force
 
       - name: Execute Master Test Runner & Generate Reproducible Evidence
         shell: pwsh
@@ -72,15 +75,17 @@ jobs:
       - name: Run PSScriptAnalyzer Linting
         shell: pwsh
         run: |
-          Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.22.0 -Force -SkipPublisherCheck -Scope CurrentUser
-          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Settings .psscriptanalyzer.psd1
-          if ($results) {
-            $results | Format-Table ScriptName, Line, Message, Severity -AutoSize
-            $issues = $results | Where-Object { $_.Severity -in @("Error", "Warning") }
-            if ($issues.Count -gt 0) {
-              Write-Error "Static analysis detected $($issues.Count) issues (Errors and Warnings are blocking gates)."
-              exit 1
-            }
+          if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
+            Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force -SkipPublisherCheck
+          }
+          Import-Module PSScriptAnalyzer -Force
+          $settingsPath = Join-Path $PWD ".psscriptanalyzer.psd1"
+          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Settings $settingsPath
+          $issues = @($results | Where-Object { $_.Severity -in @("Error", "Warning") })
+          if ($issues.Count -gt 0) {
+            $issues | Format-Table ScriptName, Line, RuleName, Message, Severity -AutoSize
+            Write-Error "Static analysis detected $($issues.Count) issues (Errors and Warnings are blocking gates)."
+            exit 1
           } else {
             Write-Host "PSScriptAnalyzer passed with zero errors or warnings!" -ForegroundColor Green
           }
