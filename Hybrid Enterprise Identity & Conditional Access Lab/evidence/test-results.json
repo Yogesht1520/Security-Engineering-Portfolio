@@ -1,7 +1,7 @@
 ﻿{
     "testSuite":  "Microsoft Entra ID Zero Trust \u0026 Identity-as-Code Engine",
-    "executedAtUtc":  "2026-10-16T20:30:06Z",
-    "gitCommitSha":  "4deff7f6431f52ed6062d7849fc5f0e60b1a2ac1",
+    "executedAtUtc":  "2026-10-18T15:40:32Z",
+    "gitCommitSha":  "91dbce524b8a38da41b24dd94bd373f6a240757c",
     "gitHubActionsRunId":  "local-dev-execution",
     "gitHubActionsRunUrl":  "local://workstation/test-execution",
     "environment":  "GitHub Actions CI/CD \u0026 Local PowerShell Engine",
@@ -13,15 +13,15 @@
                            "scopeNote":  "This report documents local AST syntax, JSON schema conformance, cryptographic snapshot integrity, and mocked Graph API deployment transactions. Live tenant state is documented independently via dedicated read-only tenant exports."
                        },
     "resultsSummary":  {
-                           "totalVerificationChecks":  58,
-                           "passed":  58,
+                           "totalVerificationChecks":  62,
+                           "passed":  62,
                            "failed":  0,
                            "skipped":  0,
-                           "durationSeconds":  14.9,
-                           "calculationMethodology":  "Itemized check count across 9 test suites: Schema validation (11), Group resolution (1), User resolution (1), Drift engine (5), Snapshot integrity (9), Deployment failure \u0026 rollback recovery (6), Lifecycle engine (9), Governance pre-flight (3), and Native Pester matrix (13).",
+                           "durationSeconds":  12.34,
+                           "calculationMethodology":  "Itemized check count across 9 test suites: Schema validation (11), Group resolution (1), User resolution (1), Drift engine (5), Snapshot integrity (9), Deployment failure \u0026 rollback recovery (10), Lifecycle engine (9), Governance pre-flight (3), and Native Pester matrix (13).",
                            "testTiersBreakdown":  {
                                                       "localUnitTestsChecks":  38,
-                                                      "mockedGraphApiIntegrationChecks":  20
+                                                      "mockedGraphApiIntegrationChecks":  24
                                                   }
                        },
     "testSuites":  [
@@ -70,8 +70,8 @@
                            "category":  "Mocked Graph API Integration Test",
                            "script":  "tests/deployment/test_deployment_failure_recovery.ps1",
                            "status":  "PASS",
-                           "count":  6,
-                           "details":  "6 transaction assertions: 5-policy batch deployment, simulated Graph API 400 failure on policy 4, fail-closed transaction halting, automated rollback execution, post-rollback live state reconciliation, and ambiguous write timeout recovery."
+                           "count":  10,
+                           "details":  "10 transaction assertions: Successful deployment, HTTP 400 rejection, HTTP 403 permission failure, HTTP 429 throttling, HTTP 500 server error, timeout after PATCH, timeout after POST, rollback failure, rollback verification mismatch, and duplicate policy matching ambiguity."
                        },
                        {
                            "suiteName":  "JML Identity Lifecycle State Machine Engine",

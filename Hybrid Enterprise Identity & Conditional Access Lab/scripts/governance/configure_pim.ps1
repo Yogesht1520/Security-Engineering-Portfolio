@@ -30,6 +30,9 @@ param (
     [string]$EligibilityExpirationType = "afterDuration",
     [string]$EligibilityDuration = "P90D",
     [string]$PermanentJustification,
+    [string]$PermanentOwner,
+    [string]$PermanentReviewDate,
+    [string]$PermanentApprovedBy,
     [switch]$ListRoles,
     [switch]$VerifyPolicyRules,
     [switch]$DeviceCode
@@ -245,9 +248,18 @@ if ($AssignEligible) {
         exit 1
     }
 
-    if ($EligibilityExpirationType -eq "noExpiration" -and [string]::IsNullOrWhiteSpace($PermanentJustification)) {
-        Write-Error "[SECURITY POLICY GATE] Permanent PIM eligibility ('noExpiration') requires an explicit -PermanentJustification. Default to bounded eligibility ('afterDuration', default P90D) or provide formal business justification."
-        exit 1
+    if ($EligibilityExpirationType -eq "noExpiration") {
+        $missingFields = [System.Collections.Generic.List[string]]::new()
+        if ([string]::IsNullOrWhiteSpace($PermanentJustification)) { $missingFields.Add("-PermanentJustification") }
+        if ([string]::IsNullOrWhiteSpace($PermanentOwner)) { $missingFields.Add("-PermanentOwner") }
+        if ([string]::IsNullOrWhiteSpace($PermanentReviewDate)) { $missingFields.Add("-PermanentReviewDate") }
+        if ([string]::IsNullOrWhiteSpace($PermanentApprovedBy)) { $missingFields.Add("-PermanentApprovedBy") }
+
+        if ($missingFields.Count -gt 0) {
+            Write-Error "[SECURITY POLICY GATE] Zero Standing Access policy restricts permanent PIM eligibility ('noExpiration'). An approved exception record is required. Missing mandatory fields: $($missingFields -join ', '). Bounded eligibility ('afterDuration', e.g. -EligibilityDuration 'P90D') is the enforced enterprise standard."
+            exit 1
+        }
+        Write-Warning "[PIM EXCEPTION ACTIVE] Permanent eligibility exception registered: Owner='$PermanentOwner', Approver='$PermanentApprovedBy', ReviewDate='$PermanentReviewDate', Justification='$PermanentJustification'."
     }
 
     Write-Host "`n[Step 1/3] Resolving Principal '$UserPrincipalName'..." -ForegroundColor Cyan
@@ -292,26 +304,37 @@ if ($AssignEligible) {
         Write-Host "     Eligibility Request ID: $($pimResp.id)" -ForegroundColor Gray
         Write-Host "     Status                 : $($pimResp.status)" -ForegroundColor Green
 
-        # Step 3: Post-Assignment Verification
+        # Step 3: Post-Assignment Verification Gate (Explicit 4-State Verification)
         Write-Host "`n[Step 3/3] Verifying Active Role Eligibility Schedule Instance..." -ForegroundColor Cyan
         $instancesUri = "https://graph.microsoft.com/v1.0/roleManagement/directory/roleEligibilityScheduleInstances?`$filter=principalId eq '$($userObj.id)' and roleDefinitionId eq '$($targetRole.id)'"
-        $instancesResp = Invoke-MgGraphRequest -Method GET -Uri $instancesUri -ErrorAction SilentlyContinue
+        $verificationState = "Unknown"
 
-        if ($instancesResp.value -and $instancesResp.value.Count -gt 0) {
-            $inst = $instancesResp.value[0]
-            Write-Host "  [VERIFIED] Role Eligibility Schedule confirmed active in tenant!" -ForegroundColor Green
-            Write-Host "  Schedule Instance ID : $($inst.id)" -ForegroundColor White
-            Write-Host "  Member Type          : $($inst.memberType)" -ForegroundColor White
-            Write-Host "  Start Date (UTC)     : $($inst.startDateTime)" -ForegroundColor White
-        } else {
-            Write-Warning "Schedule instance verification returned pending or requires directory propagation delay."
+        try {
+            $instancesResp = Invoke-MgGraphRequest -Method GET -Uri $instancesUri -ErrorAction Stop
+            if ($instancesResp.value -and @($instancesResp.value).Count -gt 0) {
+                $inst = $instancesResp.value[0]
+                $verificationState = "Assignment confirmed"
+                Write-Host "  [VERIFIED] Role Eligibility Schedule confirmed active in tenant!" -ForegroundColor Green
+                Write-Host "  Verification State   : $verificationState" -ForegroundColor Green
+                Write-Host "  Schedule Instance ID : $($inst.id)" -ForegroundColor White
+                Write-Host "  Member Type          : $($inst.memberType)" -ForegroundColor White
+                Write-Host "  Start Date (UTC)     : $($inst.startDateTime)" -ForegroundColor White
+            } else {
+                $verificationState = "Assignment pending propagation"
+                Write-Warning "  [VERIFY WARNING] Schedule instance not found immediately ($verificationState). Directory propagation may be in progress."
+            }
+        } catch {
+            $verificationState = "Verification unavailable"
+            Write-Error "  [VERIFY ERROR] Verification read failed: $($_.Exception.Message). State: $verificationState."
         }
+
+        Write-Host "  Final Eligibility State: $verificationState" -ForegroundColor $(if($verificationState -eq 'Assignment confirmed'){'Green'}elseif($verificationState -eq 'Assignment pending propagation'){'Yellow'}else{'Red'})
 
         # Step 4: Audit role activation constraints
         Test-PimRoleActivationRule -RoleDefinitionId $targetRole.id -RoleDisplayName $targetRole.displayName | Out-Null
     } catch {
-        Write-Host "  -> PIM Graph Request returned: $($_.Exception.Message)" -ForegroundColor Yellow
-        Write-Host "  -> Note: Interactive Portal assignment or Entra ID P2 license required." -ForegroundColor Yellow
+        $verificationState = "Assignment failed"
+        Write-Error "  [ASSIGNMENT FAILED] PIM Graph Request returned: $($_.Exception.Message). State: $verificationState."
     }
 }
 

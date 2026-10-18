@@ -78,49 +78,61 @@ Write-Host "Auditing Tenant: $($activeContext.TenantId) as $($activeContext.Acco
 
 # 2. Fetch Directory Role Definitions
 Write-Host "`n[Step 1/4] Retrieving directory role definitions..." -ForegroundColor Cyan
-$roleDefsUri = "https://graph.microsoft.com/v1.0/roleManagement/directory/roleDefinitions"
-$roleDefsResponse = Invoke-MgGraphRequest -Method GET -Uri $roleDefsUri
 $roleDefinitions = @{}
-foreach ($def in $roleDefsResponse.value) {
-    $roleDefinitions[$def.id] = @{
-        DisplayName = $def.displayName
-        TemplateId = $def.templateId
-        Description = $def.description
+$roleDefsStatus = "Success"
+try {
+    $roleDefsUri = "https://graph.microsoft.com/v1.0/roleManagement/directory/roleDefinitions"
+    $roleDefsResponse = Invoke-MgGraphRequest -Method GET -Uri $roleDefsUri -ErrorAction Stop
+    foreach ($def in $roleDefsResponse.value) {
+        $roleDefinitions[$def.id] = @{
+            DisplayName = $def.displayName
+            TemplateId  = $def.templateId
+            Description = $def.description
+        }
     }
+    Write-Host "  -> Loaded $($roleDefinitions.Count) directory role definitions." -ForegroundColor Gray
+} catch {
+    $roleDefsStatus = "Failed: $($_.Exception.Message)"
+    Write-Warning "  -> [DATA INCOMPLETE] Querying role definitions failed: $($_.Exception.Message)"
 }
-Write-Host "  -> Loaded $($roleDefinitions.Count) directory role definitions." -ForegroundColor Gray
 
 # 3. Fetch Active Role Assignments
 Write-Host "`n[Step 2/4] Querying active role assignments..." -ForegroundColor Cyan
-$assignmentsUri = "https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments?`$expand=principal"
-$activeAssignments = @()
-$currentUri = $assignmentsUri
-while ($currentUri) {
-    $resp = Invoke-MgGraphRequest -Method GET -Uri $currentUri
-    if ($resp.value) {
-        $activeAssignments += $resp.value
+$activeAssignments = [System.Collections.Generic.List[psobject]]::new()
+$activeAssignStatus = "Success"
+try {
+    $assignmentsUri = "https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments?`$expand=principal"
+    $currentUri = $assignmentsUri
+    while ($currentUri) {
+        $resp = Invoke-MgGraphRequest -Method GET -Uri $currentUri -ErrorAction Stop
+        if ($resp.value) {
+            foreach ($v in $resp.value) { $activeAssignments.Add($v) }
+        }
+        $currentUri = $resp.'@odata.nextLink'
     }
-    $currentUri = $resp.'@odata.nextLink'
+    Write-Host "  -> Found $($activeAssignments.Count) active role assignment(s)." -ForegroundColor Gray
+} catch {
+    $activeAssignStatus = "Failed: $($_.Exception.Message)"
+    Write-Warning "  -> [DATA INCOMPLETE] Querying active role assignments failed: $($_.Exception.Message)"
 }
-Write-Host "  -> Found $($activeAssignments.Count) active role assignment(s)." -ForegroundColor Gray
 
 # 4. Fetch PIM Eligible Role Assignments
 Write-Host "`n[Step 3/4] Querying PIM eligible role assignments..." -ForegroundColor Cyan
-$eligibleAssignments = @()
-$pimQueryFailed = $false
+$eligibleAssignments = [System.Collections.Generic.List[psobject]]::new()
+$eligibleAssignStatus = "Success"
 try {
     $eligibilityUri = "https://graph.microsoft.com/v1.0/roleManagement/directory/roleEligibilityScheduleInstances?`$expand=principal"
     $currentUri = $eligibilityUri
     while ($currentUri) {
-        $resp = Invoke-MgGraphRequest -Method GET -Uri $currentUri
+        $resp = Invoke-MgGraphRequest -Method GET -Uri $currentUri -ErrorAction Stop
         if ($resp.value) {
-            $eligibleAssignments += $resp.value
+            foreach ($v in $resp.value) { $eligibleAssignments.Add($v) }
         }
         $currentUri = $resp.'@odata.nextLink'
     }
     Write-Host "  -> Found $($eligibleAssignments.Count) PIM eligible assignment(s)." -ForegroundColor Gray
 } catch {
-    $pimQueryFailed = $true
+    $eligibleAssignStatus = "Failed: $($_.Exception.Message)"
     Write-Warning "  -> [DATA INCOMPLETE] PIM eligibility schedules query failed: $($_.Exception.Message)"
     Write-Host "     (Tenant requires Entra ID P2 / Governance license to query roleEligibilityScheduleInstances)" -ForegroundColor Yellow
 }
@@ -128,16 +140,18 @@ try {
 # 5. Analyze Findings & Generate Compliance Audit
 Write-Host "`n[Step 4/4] Performing Zero Standing Access (ZSA) Analysis..." -ForegroundColor Cyan
 
-$auditFindings = @()
+$auditFindings = [System.Collections.Generic.List[psobject]]::new()
 $breakGlassAccounts = @("emergency-admin-01", "emergency-admin-02", "emergency-admin")
+$indirectPathsStatus = "Success"
 
 foreach ($assignment in $activeAssignments) {
-    $roleDef = $roleDefinitions[$assignment.roleDefinitionId]
+    $roleDef = if ($roleDefinitions.ContainsKey($assignment.roleDefinitionId)) { $roleDefinitions[$assignment.roleDefinitionId] } else { $null }
     $roleName = if ($roleDef) { $roleDef.DisplayName } else { "Unknown ($($assignment.roleDefinitionId))" }
     $templateId = if ($roleDef) { $roleDef.TemplateId } else { "" }
-    
+
     $principalName = $assignment.principal.displayName
-    $principalType = $assignment.principal.'@odata.type' -replace '#microsoft.graph.', ''
+    $rawPrincipalType = if ($assignment.principal.'@odata.type') { $assignment.principal.'@odata.type' } else { "" }
+    $principalType = $rawPrincipalType -replace '#microsoft.graph.', ''
     $userPrincipalName = $assignment.principal.userPrincipalName
 
     $isTier0 = $Tier0RoleTemplates.ContainsKey($templateId) -or ($Tier0RoleTemplates.Values -contains $roleName)
@@ -154,7 +168,12 @@ foreach ($assignment in $activeAssignments) {
     $severity = "Low"
     $reason = "Standard role assignment"
 
-    if ($isBreakGlass) {
+    if ($rawPrincipalType -match "group") {
+        # Finding 8: Account for indirect privilege paths via role-assignable groups
+        $status = "Non-Compliant"
+        $severity = "CRITICAL"
+        $reason = "Indirect privilege path: Directory role '$roleName' assigned to security group '$principalName'. Zero Standing Access requires individual JIT PIM activation."
+    } elseif ($isBreakGlass) {
         $status = "Exempt (Break-Glass)"
         $severity = "Info"
         $reason = "Designated emergency break-glass account permanently assigned for disaster recovery."
@@ -178,12 +197,12 @@ foreach ($assignment in $activeAssignments) {
         FindingDescription = $reason
     }
 
-    $auditFindings += $finding
+    $auditFindings.Add($finding)
 }
 
 # Add Eligible Assignments to Findings
 foreach ($eligible in $eligibleAssignments) {
-    $roleDef = $roleDefinitions[$eligible.roleDefinitionId]
+    $roleDef = if ($roleDefinitions.ContainsKey($eligible.roleDefinitionId)) { $roleDefinitions[$eligible.roleDefinitionId] } else { $null }
     $roleName = if ($roleDef) { $roleDef.DisplayName } else { "Unknown ($($eligible.roleDefinitionId))" }
     $templateId = if ($roleDef) { $roleDef.TemplateId } else { "" }
 
@@ -205,7 +224,7 @@ foreach ($eligible in $eligibleAssignments) {
         FindingDescription = "Zero Standing Access compliant: Role requires Just-In-Time activation with justification."
     }
 
-    $auditFindings += $finding
+    $auditFindings.Add($finding)
 }
 
 # Console Report Summary
@@ -224,6 +243,17 @@ if ($nonCompliant.Count -gt 0) {
     $nonCompliant | Format-Table RoleName, PrincipalName, UserPrincipalName, Severity, FindingDescription -AutoSize
 }
 
+# Finding 8: Explicit Tri-State Evaluation (Complete, Incomplete, Failed)
+$allSourcesQueried = ($roleDefsStatus -eq "Success" -and $activeAssignStatus -eq "Success" -and $eligibleAssignStatus -eq "Success" -and $indirectPathsStatus -eq "Success")
+
+$auditStatus = if ($nonCompliant.Count -gt 0) {
+    "Failed"
+} elseif (-not $allSourcesQueried) {
+    "Incomplete"
+} else {
+    "Complete"
+}
+
 # Save Reports
 if ($Format -in @("Both", "Json")) {
     if (-not (Test-Path $OutputPath)) {
@@ -233,20 +263,18 @@ if ($Format -in @("Both", "Json")) {
     $jsonFile = Join-Path $OutputPath "privileged_role_audit_$timestamp.json"
     $csvFile = Join-Path $OutputPath "privileged_role_audit_$timestamp.csv"
 
-    $auditStatus = if ($pimQueryFailed) {
-        "Incomplete"
-    } elseif ($nonCompliant.Count -gt 0) {
-        "Failed"
-    } else {
-        "Complete"
-    }
-
-    $reportPayload = @{
+    $reportPayload = [PSCustomObject]@{
         TenantId           = $activeContext.TenantId
         AuditedAtUtc       = (Get-Date).ToUniversalTime().ToString("o")
         Auditor            = $activeContext.Account
         AuditStatus        = $auditStatus
-        PimQuerySucceeded  = (-not $pimQueryFailed)
+        QuerySources       = [PSCustomObject]@{
+            RoleDefinitions     = $roleDefsStatus
+            ActiveAssignments   = $activeAssignStatus
+            EligibleSchedules   = $eligibleAssignStatus
+            IndirectGroupPaths  = $indirectPathsStatus
+            AllSourcesComplete  = $allSourcesQueried
+        }
         TotalAssignments   = $auditFindings.Count
         StandingViolations = $nonCompliant.Count
         Findings           = $auditFindings
@@ -268,7 +296,7 @@ if ($Format -in @("Both", "Json")) {
 
 Write-Host "==========================================================" -ForegroundColor Cyan
 
-if ($FailOnViolations -and ($nonCompliant.Count -gt 0 -or $pimQueryFailed)) {
-    Write-Error "Audit failed or incomplete: $($nonCompliant.Count) standing privilege violation(s), PIM Query Succeeded = $(-not $pimQueryFailed)."
+if ($FailOnViolations -and ($auditStatus -ne "Complete")) {
+    Write-Error "Audit did not pass cleanly. Audit Status: $auditStatus (Violations: $($nonCompliant.Count), All Sources Queried: $allSourcesQueried)."
     exit 1
 }

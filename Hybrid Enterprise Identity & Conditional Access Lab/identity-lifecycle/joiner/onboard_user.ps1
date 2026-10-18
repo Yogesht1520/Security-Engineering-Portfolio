@@ -116,27 +116,40 @@ if ($needsAuth) {
     $activeContext = Get-MgContext
 }
 
-# 3. Check for Duplicate UPN
+# 3. Check for Duplicate UPN (Finding 9: Distinguish 404 from Graph API failures)
 Write-Host "`n[Step 1/3] Checking for duplicate user in directory..." -ForegroundColor Cyan
 $checkUri = "https://graph.microsoft.com/v1.0/users/$UserPrincipalName"
 try {
-    $existing = Invoke-MgGraphRequest -Method GET -Uri $checkUri -ErrorAction SilentlyContinue
+    $existing = Invoke-MgGraphRequest -Method GET -Uri $checkUri -ErrorAction Stop
     if ($existing) {
         Write-Error "Identity with UPN '$UserPrincipalName' already exists in tenant (ID: $($existing.id))."
-        Write-LifecycleAuditLog -EventType "JOINER" -TargetUserPrincipalName $UserPrincipalName -Action "ProvisionUser" -Status "FAILURE" -Details @{ Error = "UserAlreadyExists" } -Initiator $activeContext.Account
+        try {
+            Write-LifecycleAuditLog -EventType "JOINER" -TargetUserPrincipalName $UserPrincipalName -Action "ProvisionUser" -Status "FAILURE" -Details @{ Error = "UserAlreadyExists" } -Initiator $activeContext.Account
+        } catch {
+            Write-Warning "Audit logging failed: $($_.Exception.Message)"
+        }
         exit 1
     }
 } catch {
-    # 404 is expected for new accounts
-    Write-Verbose "User not found (expected for new onboarding identity): $($_.Exception.Message)"
+    $msg = $_.Exception.Message
+    if ($msg -match "404" -or $msg -match "ResourceNotFound" -or $msg -match "Request_ResourceNotFound") {
+        Write-Host "  -> Confirmed: '$UserPrincipalName' does not exist in directory (HTTP 404). Proceeding." -ForegroundColor Gray
+    } else {
+        Write-Error "[FAIL-CLOSED GATE] Duplicate identity check failed due to directory query failure (not 404): $msg. Halting provisioning."
+        exit 1
+    }
 }
 
 # 4. Resolve Target Group
 Write-Host "`n[Step 2/3] Resolving target RBAC group '$assignedGroup'..." -ForegroundColor Cyan
 $groupUri = "https://graph.microsoft.com/v1.0/groups?`$filter=displayName eq '$assignedGroup'"
 $groupResp = Invoke-MgGraphRequest -Method GET -Uri $groupUri
-if (-not $groupResp.value -or $groupResp.value.Count -eq 0) {
+if (-not $groupResp.value -or @($groupResp.value).Count -eq 0) {
     Write-Error "Target security group '$assignedGroup' was not found in directory. Ensure Phase 0 seeds were executed."
+    exit 1
+}
+if (@($groupResp.value).Count -gt 1) {
+    Write-Error "[AMBIGUOUS GROUP ERROR] Multiple groups ($(@($groupResp.value).Count)) share display name '$assignedGroup'. Cannot resolve target group."
     exit 1
 }
 $targetGroupId = $groupResp.value[0].id
@@ -247,19 +260,30 @@ try {
         }
     }
 
-    # Record Audit Telemetry (Strictly omitting cleartext password - Finding 8)
-    Write-LifecycleAuditLog -EventType "JOINER" `
-                            -TargetUserPrincipalName $UserPrincipalName `
-                            -TargetUserId $createdUserId `
-                            -Action "OnboardUser" `
-                            -Status "SUCCESS" `
-                            -Details @{
-                                Department    = $Department
-                                JobTitle      = $JobTitle
-                                AssignedGroup = $assignedGroup
-                                CredentialPolicy = "forceChangePasswordNextSignIn"
-                            } `
-                            -Initiator $activeContext.Account
+    # Finding 9: Audit failure handling must make audit failure visible in final transaction state
+    $auditLogged = $true
+    try {
+        Write-LifecycleAuditLog -EventType "JOINER" `
+                                -TargetUserPrincipalName $UserPrincipalName `
+                                -TargetUserId $createdUserId `
+                                -Action "OnboardUser" `
+                                -Status "SUCCESS" `
+                                -Details @{
+                                    Department       = $Department
+                                    JobTitle         = $JobTitle
+                                    AssignedGroup    = $assignedGroup
+                                    CredentialPolicy = "forceChangePasswordNextSignIn"
+                                } `
+                                -Initiator $activeContext.Account
+    } catch {
+        $auditLogged = $false
+        Write-Error "[AUDIT LOGGING FAILURE] User '$UserPrincipalName' was provisioned in Entra ID, but audit record write failed: $($_.Exception.Message)"
+    }
+
+    if (-not $auditLogged) {
+        Write-Host "`n[TRANSACTION STATE: PARTIALLY COMPLETED - AUDIT RECORD FAILED]" -ForegroundColor Yellow
+        exit 2
+    }
 
     # Display Provisioning Credential Packet (Zero cleartext password exposure - Finding 8)
     Write-Host "`n================ ONBOARDING CREDENTIAL PACKET ================" -ForegroundColor White

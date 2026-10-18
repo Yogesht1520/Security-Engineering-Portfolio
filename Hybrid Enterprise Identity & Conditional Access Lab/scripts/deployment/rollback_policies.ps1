@@ -3,13 +3,17 @@
     Automated Snapshot and Rollback Engine with Cryptographic Integrity Verification.
 .DESCRIPTION
     Provides Zero Trust safety and recovery mechanisms for Conditional Access deployments:
-    - Creates pre-deployment snapshots of live Entra ID CA policies with SHA-256 integrity checks.
+    - Creates pre-deployment SHA-256 integrity-checked snapshots of live Entra ID CA policies.
     - Implements atomic writes (.tmp staging -> atomic move) to prevent partial snapshot states.
     - Computes and records SHA-256 cryptographic hashes in both manifest.json and checksums.sha256.
     - Cross-checks manifest.json against checksums.sha256 and treats manifest as authoritative whitelist.
     - Rejects unlisted files, duplicate policy IDs, corrupted JSON, and path traversal attempts.
+    - Resolves policies by immutable ID first, falling back to unique display name candidates.
     - Deletes only session-created policies during rollback, leaving existing tenant policies intact.
-    - Restores previous policy states and executes post-restoration verification against Microsoft Graph.
+    - Restores previous policy states and executes deep canonical parity verification against Microsoft Graph.
+    - Note on snapshot authenticity: Local SHA-256 checksums provide tamper-evident integrity checking
+      against accidental corruption and local drift. Production implementations should complement local
+      integrity checks with signed manifests, isolated signing keys, restricted ACLs, and remote versioned storage.
 .PARAMETER Action
     'Snapshot', 'Restore', 'Verify', or 'List'.
 .PARAMETER SnapshotId
@@ -33,64 +37,12 @@ param (
     [string[]]$SessionCreatedPolicyIds = @()
 )
 
+. "$PSScriptRoot\deployment_engine.ps1"
+
 if (-not (Test-Path $SnapshotsDir)) {
     New-Item -ItemType Directory -Path $SnapshotsDir -Force | Out-Null
 }
 
-function Get-NormalizedPolicyConfiguration {
-    param ([Parameter(Mandatory=$true)]$Policy)
-    $obj = $Policy | ConvertTo-Json -Depth 15 | ConvertFrom-Json
-    $metadataProps = @("id", "createdDateTime", "modifiedDateTime", "@odata.context", "@odata.nextLink", "@odata.etag", "templateId")
-    foreach ($prop in $metadataProps) {
-        if ($obj.PSObject.Properties[$prop]) {
-            $obj.PSObject.Properties.Remove($prop)
-        }
-    }
-    return ($obj | ConvertTo-Json -Depth 15 -Compress)
-}
-
-function Test-PolicyConfigurationParity {
-    param (
-        [Parameter(Mandatory=$true)]$LivePolicy,
-        [Parameter(Mandatory=$true)]$SnapshotPolicy
-    )
-    $mismatches = [System.Collections.Generic.List[string]]::new()
-
-    # 1. State
-    if ($LivePolicy.state -ne $SnapshotPolicy.state) {
-        $mismatches.Add("State: Expected '$($SnapshotPolicy.state)', Actual '$($LivePolicy.state)'")
-    }
-
-    # 2. Grant Controls
-    $liveGrant = if ($LivePolicy.grantControls) { $LivePolicy.grantControls | ConvertTo-Json -Depth 10 -Compress } else { "" }
-    $snapGrant = if ($SnapshotPolicy.grantControls) { $SnapshotPolicy.grantControls | ConvertTo-Json -Depth 10 -Compress } else { "" }
-    if ($liveGrant -ne $snapGrant) {
-        $mismatches.Add("GrantControls: Expected '$snapGrant', Actual '$liveGrant'")
-    }
-
-    # 3. Session Controls
-    $liveSession = if ($LivePolicy.sessionControls) { $LivePolicy.sessionControls | ConvertTo-Json -Depth 10 -Compress } else { "" }
-    $snapSession = if ($SnapshotPolicy.sessionControls) { $SnapshotPolicy.sessionControls | ConvertTo-Json -Depth 10 -Compress } else { "" }
-    if ($liveSession -ne $snapSession) {
-        $mismatches.Add("SessionControls: Expected '$snapSession', Actual '$liveSession'")
-    }
-
-    # 4. Complete Conditions Scope (Users, Apps, Locations, Devices, Client Apps, Risk Levels)
-    $conditionProps = @("users", "applications", "clientAppTypes", "locations", "devices", "platforms", "signInRiskLevels", "userRiskLevels")
-    foreach ($cProp in $conditionProps) {
-        $liveCond = if ($LivePolicy.conditions -and $LivePolicy.conditions.PSObject.Properties[$cProp]) {
-            $LivePolicy.conditions.$cProp | ConvertTo-Json -Depth 10 -Compress
-        } else { "" }
-        $snapCond = if ($SnapshotPolicy.conditions -and $SnapshotPolicy.conditions.PSObject.Properties[$cProp]) {
-            $SnapshotPolicy.conditions.$cProp | ConvertTo-Json -Depth 10 -Compress
-        } else { "" }
-        if ($liveCond -ne $snapCond) {
-            $mismatches.Add("Conditions.$($cProp): Expected '$snapCond', Actual '$liveCond'")
-        }
-    }
-
-    return $mismatches
-}
 
 function Test-SnapshotIntegrity {
     [CmdletBinding()]
@@ -379,16 +331,32 @@ function Restore-Snapshot {
         $body.PSObject.Properties.Remove("modifiedDateTime")
         $jsonPayload = $body | ConvertTo-Json -Depth 10
 
-        $matchingLive = @($livePolicies | Where-Object { $_.id -eq $policyId -or $_.displayName -eq $displayName })
-        if ($matchingLive.Count -gt 1) {
-            throw "[ROLLBACK AMBIGUITY] Multiple policies ($($matchingLive.Count)) match target '$displayName' in live tenant. Rollback halted to prevent cross-policy corruption."
+        # Finding 3: Immutable policy ID as primary identity; fallback to unique display name candidate
+        $existingLive = $null
+        if ($policyId) {
+            $matchById = @($livePolicies | Where-Object { $_.id -eq $policyId })
+            if ($matchById.Count -eq 1) {
+                $existingLive = $matchById[0]
+            } elseif ($matchById.Count -gt 1) {
+                throw "[ROLLBACK AMBIGUITY] Critical directory error: Multiple live policies found with identical ID '$policyId'."
+            }
         }
-        $existingLive = if ($matchingLive.Count -eq 1) { $matchingLive[0] } else { $null }
+
+        # If policy ID is missing from live tenant (e.g. deleted or re-created with new ID), check for exactly 1 replacement candidate by display name
+        if (-not $existingLive) {
+            $matchByName = @($livePolicies | Where-Object { $_.displayName -eq $displayName })
+            if ($matchByName.Count -gt 1) {
+                throw "[ROLLBACK AMBIGUITY] Multiple policies ($($matchByName.Count)) match target display name '$displayName' in live tenant. Rollback halted to prevent cross-policy corruption."
+            } elseif ($matchByName.Count -eq 1) {
+                $existingLive = $matchByName[0]
+                Write-Warning "  [POLICY ID RE-MAPPING] Policy ID '$policyId' was not found; safely resolved to single permitted replacement candidate ID '$($existingLive.id)' by display name '$displayName'."
+            }
+        }
 
         if ($existingLive) {
-            $liveNorm = Get-NormalizedPolicyConfiguration -Policy $existingLive
-            $snapNorm = Get-NormalizedPolicyConfiguration -Policy $policy
-            if ($liveNorm -eq $snapNorm) {
+            # Finding 2: Canonical Policy Normalization & Parity Comparison
+            $diffs = Compare-CanonicalPolicyParity -LivePolicy $existingLive -SnapshotPolicy $policy
+            if ($diffs.Count -eq 0) {
                 Write-Host "  [In Parity] '$displayName' (ID: $($existingLive.id)) matches snapshot baseline. No patch required." -ForegroundColor Gray
                 continue
             }
@@ -415,7 +383,7 @@ function Restore-Snapshot {
         }
     }
 
-    # 3. Post-Rollback Live Graph Verification Gate (Full Configuration Parity)
+    # 3. Post-Rollback Live Graph Verification Gate (Full Canonical Parity)
     Write-Host "`n[POST-ROLLBACK VERIFICATION] Querying Graph to verify live tenant state against snapshot..." -ForegroundColor Cyan
     $verifyPolicies = @()
     $verifyUri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies"
@@ -427,7 +395,7 @@ function Restore-Snapshot {
 
     $allVerified = $true
     foreach ($sp in $snapshotPolicies) {
-        $matching = @($verifyPolicies | Where-Object { $_.displayName -eq $sp.displayName })
+        $matching = @($verifyPolicies | Where-Object { ($sp.id -and $_.id -eq $sp.id) -or ($_.displayName -eq $sp.displayName) })
         if ($matching.Count -eq 0) {
             Write-Error "  [VERIFY FAIL] Restored policy '$($sp.displayName)' not found in live tenant!"
             $allVerified = $false
@@ -440,7 +408,7 @@ function Restore-Snapshot {
         }
 
         $livePolicy = $matching[0]
-        $mismatches = Test-PolicyConfigurationParity -LivePolicy $livePolicy -SnapshotPolicy $sp
+        $mismatches = Compare-CanonicalPolicyParity -LivePolicy $livePolicy -SnapshotPolicy $sp
 
         if ($mismatches.Count -gt 0) {
             Write-Warning "  [VERIFY CONFIG DRIFT] Policy '$($sp.displayName)' configuration mismatch between snapshot and live tenant ($($mismatches.Count) field(s) drifted):"
@@ -449,7 +417,7 @@ function Restore-Snapshot {
             }
             $allVerified = $false
         } else {
-            Write-Host "  [VERIFY PASS] '$($sp.displayName)' full configuration verified in 100% parity with snapshot (state, conditions, grantControls, sessionControls)." -ForegroundColor Green
+            Write-Host "  [VERIFY PASS] '$($sp.displayName)' full canonical configuration verified in 100% parity with snapshot." -ForegroundColor Green
         }
     }
 

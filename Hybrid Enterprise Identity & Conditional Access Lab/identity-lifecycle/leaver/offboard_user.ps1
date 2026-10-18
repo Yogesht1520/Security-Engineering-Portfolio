@@ -2,12 +2,23 @@
 .SYNOPSIS
     Enterprise Leaver Automation Engine (State-Machine Offboarding Workflow).
 .DESCRIPTION
-    Zero Trust comprehensive employee termination and offboarding pipeline:
+    Zero Trust employee termination and offboarding pipeline:
     - Stage 1: Immediate Token & Session Revocation (mitigates stolen PRT and cookie replay).
+      Note: Revoking sessions issues a Graph revocation request; active access tokens may remain valid
+      until standard expiry (up to 60-90 min) unless Continuous Access Evaluation (CAE) applies.
     - Stage 2: Account Disablement & High-Entropy Password Scrambling (fail-closed credential lock).
-    - Stage 3: Complete Privilege Stripping (all security groups and directory roles removed).
-    - Stage 4: Metadata Quarantine & Offboarding Auditing.
-    - Stage 5: Export Immutable Offboarding Compliance Receipt.
+    - Stage 3: Complete Privilege Stripping (all security groups purged with post-removal verification).
+    - Stage 4: Administrative Role Revocation (standing active roles and eligible PIM schedules).
+    - Stage 5: Export Immutable Offboarding Compliance Receipt & Audit Telemetry.
+
+    COVERAGE BOUNDARIES & SCOPE LIMITATIONS:
+    This workflow automates core Entra ID directory deprovisioning. The following boundaries
+    require separate resource-specific deprovisioning controls:
+    - Azure RBAC assignments (Azure subscriptions / management groups / resource groups)
+    - Application role assignments & Enterprise application assignments
+    - Group and application ownership
+    - M365 license assignment & mailbox archiving
+    - Exchange Online, SharePoint site, and Teams-specific permissions
 .PARAMETER UserPrincipalName
     Target User Principal Name to offboard.
 .PARAMETER TicketId
@@ -202,7 +213,31 @@ try {
             }
         }
     }
-    $stageResults["Stage3_GroupsStripped"] = if ($stripFailed) { "PartiallyCompleted" } else { "Completed" }
+    
+    # Finding 9: Independent post-removal group membership verification
+    Write-Host "  Verifying group memberships are completely purged from directory..." -ForegroundColor Gray
+    $remainingGroups = [System.Collections.Generic.List[string]]::new()
+    $verifyMemberUri = "https://graph.microsoft.com/v1.0/users/$($user.id)/memberOf"
+    do {
+        $vResp = Invoke-MgGraphRequest -Method GET -Uri $verifyMemberUri -ErrorAction Stop
+        if ($vResp.value) {
+            foreach ($vg in $vResp.value) {
+                if ($vg.'@odata.type' -eq "#microsoft.graph.group") {
+                    $remainingGroups.Add($vg.displayName)
+                }
+            }
+        }
+        $verifyMemberUri = $vResp.'@odata.nextLink'
+    } while ($verifyMemberUri)
+
+    if ($remainingGroups.Count -gt 0 -or $stripFailed) {
+        $lingeringStr = $remainingGroups -join ", "
+        $stageResults["Stage3_GroupsStripped"] = "PartiallyCompleted: RemainingGroups=($lingeringStr)"
+        Write-Warning "  -> [WARNING] Group purge incomplete! Remaining memberships: $lingeringStr"
+    } else {
+        $stageResults["Stage3_GroupsStripped"] = "Completed"
+        Write-Host "  -> [VERIFIED] All security group memberships confirmed purged." -ForegroundColor Green
+    }
 } catch {
     Write-Warning "  -> Error querying group memberships: $($_.Exception.Message)"
     $stageResults["Stage3_GroupsStripped"] = "Failed: $($_.Exception.Message)"
@@ -320,13 +355,19 @@ $offboardingAuditDetails["StageBreakdown"] = $stageResults
 $offboardingAuditDetails["GroupsStripped"] = $groupsStripped
 $offboardingAuditDetails["RolesStripped"]  = $rolesStripped
 
-Write-LifecycleAuditLog -EventType "LEAVER" `
-                        -TargetUserPrincipalName $UserPrincipalName `
-                        -TargetUserId $user.id `
-                        -Action "OffboardUser" `
-                        -Status $overallState `
-                        -Details $offboardingAuditDetails `
-                        -Initiator $activeContext.Account
+$auditLogged = $true
+try {
+    Write-LifecycleAuditLog -EventType "LEAVER" `
+                            -TargetUserPrincipalName $UserPrincipalName `
+                            -TargetUserId $user.id `
+                            -Action "OffboardUser" `
+                            -Status $overallState `
+                            -Details $offboardingAuditDetails `
+                            -Initiator $activeContext.Account
+} catch {
+    $auditLogged = $false
+    Write-Error "[AUDIT LOGGING FAILURE] Offboarding actions executed, but writing the audit log record failed: $($_.Exception.Message)"
+}
 
 $receiptsDir = Join-Path $PSScriptRoot "..\..\reports"
 if (-not (Test-Path $receiptsDir)) {
@@ -336,10 +377,20 @@ if (-not (Test-Path $receiptsDir)) {
 $safeUpn = $UserPrincipalName -replace "[@.]", "_"
 $timestampStr = Get-Date -Format "yyyyMMdd-HHmmss"
 $receiptPath = Join-Path $receiptsDir "leaver_receipt_${safeUpn}_${timestampStr}.json"
+$receiptSaved = $true
 
-$offboardingAuditDetails | ConvertTo-Json -Depth 6 | Set-Content -Path $receiptPath -Encoding utf8
+try {
+    $offboardingAuditDetails | ConvertTo-Json -Depth 6 | Set-Content -Path $receiptPath -Encoding utf8
+    Write-Host "  -> Compliance Receipt exported: $receiptPath" -ForegroundColor Green
+} catch {
+    $receiptSaved = $false
+    Write-Error "[RECEIPT EXPORT FAILURE] Writing the compliance receipt file failed: $($_.Exception.Message)"
+}
 
-Write-Host "  -> Compliance Receipt exported: $receiptPath" -ForegroundColor Green
+if (-not $auditLogged -or -not $receiptSaved) {
+    $overallState = "PartiallyCompleted: AuditRecordOrReceiptFailed"
+    Write-Warning "  -> [TRANSACTION WARNING] Transaction marked PartiallyCompleted due to audit/receipt failure."
+}
 
 $statusColor = switch ($overallState) {
     "Completed"          { "Green" }

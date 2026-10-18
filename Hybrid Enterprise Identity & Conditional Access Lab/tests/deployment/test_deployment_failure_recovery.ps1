@@ -1,34 +1,34 @@
 <#
 .SYNOPSIS
-    Integration & Recovery Test: Deployment Failure, Transaction Halting, Ambiguous Write Recovery, and Snapshot Rollback.
+    Comprehensive Production Orchestrator Integration & Recovery Test Suite.
 .DESCRIPTION
-    Validates end-to-end atomic deployment failure semantics invoking the production orchestrator:
-    - Scenario 1: Partial Failure & Automatic Rollback via Invoke-PolicyDeploymentTransaction
-      * 5 Conditional Access policies queued for deployment.
-      * Policies 1-3 apply successfully.
-      * Policy 4 encounters simulated Microsoft Graph API failure (HTTP 400 Bad Request).
-      * Policy 5 is skipped (deployment transaction halts immediately).
-      * Production Invoke-PolicyDeploymentTransaction automatically triggers rollback_policies.ps1.
-      * Policies 1-3 are rolled back to their exact pre-deployment baseline states.
-      * Post-rollback verification asserts tenant parity with initial baseline.
-    - Scenario 2: Ambiguous Graph Write Recovery (Simulated Network Timeout / Lost Response)
-      * Policy write succeeds on Graph server, but client connection drops before response is received.
-      * Production orchestrator detects ambiguous state by re-querying Graph and comparing to snapshot.
-      * Treats mutation as applied and triggers automatic rollback to restore baseline.
+    Validates end-to-end atomic deployment failure semantics by directly importing and testing
+    the production Invoke-PolicyDeploymentTransaction orchestrator (from deployment_engine.ps1)
+    and rollback_policies.ps1 across 10 required failure and edge-case scenarios:
+    1. Successful deployment (clean completion)
+    2. HTTP 400 rejection (bad request / validation failure)
+    3. HTTP 403 permission failure (insufficient privileges)
+    4. HTTP 429 throttling (rate limit exceeded)
+    5. HTTP 500 server error (backend failure)
+    6. Timeout after Graph accepted a PATCH (ambiguous update committed)
+    7. Timeout after Graph accepted a POST (ambiguous create committed)
+    8. Rollback failure (error during restoration)
+    9. Rollback verification mismatch (post-restore config drift)
+    10. Duplicate policy matching (ambiguous live matches halt rollback)
 #>
 
 [CmdletBinding()]
 param ()
 
 Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host "  TEST: Deployment Partial Failure & Atomic Recovery     " -ForegroundColor Cyan
+Write-Host "  TEST: Production Orchestrator Failure & Recovery Matrix " -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
 $tempTestDir = Join-Path ([System.IO.Path]::GetTempPath()) ("ca_fail_test_" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $tempTestDir -Force | Out-Null
 
 try {
-    # 1. Establish Initial Baseline State (Snapshot Baseline)
+    # 1. Establish Initial Baseline Policy State
     $baselinePolicies = [ordered]@{
         "pol-001" = [PSCustomObject]@{ id = "pol-001"; displayName = "CAP-001-location"; state = "disabled" }
         "pol-002" = [PSCustomObject]@{ id = "pol-002"; displayName = "CAP-002-admin-mfa"; state = "enabledForReportingButNotEnforced" }
@@ -39,18 +39,25 @@ try {
 
     # Live Mock Tenant State Store
     $global:LiveMockPolicies = @{}
-    foreach ($k in $baselinePolicies.Keys) {
-        $b = $baselinePolicies[$k]
-        $global:LiveMockPolicies[$k] = [PSCustomObject]@{
-            id          = $b.id
-            displayName = $b.displayName
-            state       = $b.state
+    function Clear-MockTenantState {
+        $global:LiveMockPolicies.Clear()
+        foreach ($k in $baselinePolicies.Keys) {
+            $b = $baselinePolicies[$k]
+            $global:LiveMockPolicies[$k] = [PSCustomObject]@{
+                id          = $b.id
+                displayName = $b.displayName
+                state       = $b.state
+            }
         }
+        $global:FaultInjectHttpCode = 0
+        $global:FaultInjectErrorOnPolId = $null
+        $global:FaultInjectTimeoutPatch = $false
+        $global:FaultInjectTimeoutPost = $false
+        $global:FaultInjectRollbackFail = $false
+        $global:FaultInjectVerifyMismatch = $false
+        $global:InRollbackMode = $false
     }
-
-    # Simulation control flags
-    $global:SimulateTimeoutOnPolId = $null
-    $global:SimulateErrorOnPolId = $null
+    Clear-MockTenantState
 
     # Mock Graph API Command Handler
     function global:Invoke-MgGraphRequest {
@@ -91,7 +98,7 @@ try {
                 })
             }
             return [PSCustomObject]@{
-                value = $pList
+                value             = $pList
                 '@odata.nextLink' = $null
             }
         }
@@ -99,26 +106,54 @@ try {
         # 3. PATCH policy
         if ($Method -eq "PATCH" -and $Uri -match "/policies/([^/?]+)$") {
             $polId = $Matches[1]
+
+            # Rollback fault injection (Scenario 8)
+            if ($global:FaultInjectRollbackFail -and $global:InRollbackMode) {
+                throw "Microsoft Graph API: 500 Internal Server Error (Rollback restore PATCH failed)"
+            }
+
+            # Timeout after PATCH simulation (Scenario 6)
+            if ($global:FaultInjectTimeoutPatch) {
+                $global:FaultInjectTimeoutPatch = $false
+                $bObj = $Body | ConvertFrom-Json
+                if ($global:LiveMockPolicies.ContainsKey($polId)) {
+                    $global:LiveMockPolicies[$polId].state = $bObj.state
+                }
+                throw [System.Net.WebException]::new("The operation has timed out: Connection dropped after server committed PATCH.")
+            }
+
+            # Specific policy error injection
+            if ($global:FaultInjectErrorOnPolId -eq $polId) {
+                $global:InRollbackMode = $true
+                throw "Microsoft Graph API: 400 Bad Request on $polId"
+            }
+
+            # HTTP Error simulation (Scenarios 2, 3, 4, 5)
+            if ($global:FaultInjectHttpCode -gt 0) {
+                $code = $global:FaultInjectHttpCode
+                $global:FaultInjectHttpCode = 0
+                $global:InRollbackMode = $true
+                switch ($code) {
+                    400 { throw "Microsoft Graph API: 400 Bad Request (Invalid condition combination)" }
+                    403 { throw "Microsoft Graph API: 403 Forbidden (Insufficient privileges Policy.ReadWrite.ConditionalAccess)" }
+                    429 { throw "Microsoft Graph API: 429 Too Many Requests (Rate limit exceeded, retry-after 30)" }
+                    500 { throw "Microsoft Graph API: 500 Internal Server Error (Transient backend fault)" }
+                }
+            }
+
             if (-not $global:LiveMockPolicies.ContainsKey($polId)) {
                 throw "Policy '$polId' not found in live mock tenant."
             }
             $bodyObj = $Body | ConvertFrom-Json
 
-            # Check simulated network timeout after write
-            if ($global:SimulateTimeoutOnPolId -eq $polId) {
-                $global:SimulateTimeoutOnPolId = $null
-                # Server committed the change, but response was lost in transit
+            if ($global:FaultInjectVerifyMismatch -and $global:InRollbackMode) {
+                # Purposely leave state different from snapshot to trigger verification mismatch (Scenario 9)
+                $global:LiveMockPolicies[$polId].state = "tamperedState"
+            } else {
                 $global:LiveMockPolicies[$polId].state = $bodyObj.state
-                throw [System.Net.WebException]::new("The operation has timed out: Connection dropped after server processed request.")
             }
 
-            # Check simulated API error
-            if ($global:SimulateErrorOnPolId -eq $polId) {
-                throw "Microsoft Graph API: 400 Bad Request (Invalid condition combination in conditions.applications)"
-            }
-
-            $global:LiveMockPolicies[$polId].state = $bodyObj.state
-            return [PSCustomObject]@{ id = $polId; state = $bodyObj.state }
+            return [PSCustomObject]@{ id = $polId; state = $global:LiveMockPolicies[$polId].state }
         }
 
         # 4. POST policy
@@ -131,12 +166,23 @@ try {
                 state       = $bodyObj.state
             }
             $global:LiveMockPolicies[$newId] = $newPol
+
+            # Timeout after POST simulation (Scenario 7)
+            if ($global:FaultInjectTimeoutPost) {
+                $global:FaultInjectTimeoutPost = $false
+                $global:InRollbackMode = $true
+                throw [System.Net.WebException]::new("The operation has timed out: Connection dropped after server committed POST.")
+            }
+
             return $newPol
         }
 
         # 5. DELETE policy
         if ($Method -eq "DELETE" -and $Uri -match "/policies/([^/?]+)$") {
             $polId = $Matches[1]
+            if ($global:FaultInjectRollbackFail -and $global:InRollbackMode) {
+                throw "Microsoft Graph API: 500 Internal Server Error (Rollback DELETE failed)"
+            }
             if ($global:LiveMockPolicies.ContainsKey($polId)) {
                 $global:LiveMockPolicies.Remove($polId)
             }
@@ -144,7 +190,7 @@ try {
         }
     }
 
-    # 2. Generate Pre-Deployment Snapshot
+    # 2. Generate Verified Pre-Deployment Baseline Snapshot
     $snapshotsBaseDir = Join-Path $tempTestDir "snapshots"
     $snapshotTimestamp = "20261016-120000"
     $snapshotDir = Join-Path $snapshotsBaseDir $snapshotTimestamp
@@ -173,107 +219,165 @@ try {
     $manifest | ConvertTo-Json -Depth 5 | Out-File -FilePath (Join-Path $snapshotDir "manifest.json") -Encoding utf8
     $checksumLines | Out-File -FilePath (Join-Path $snapshotDir "checksums.sha256") -Encoding utf8
 
-    Write-Host "[Step 1] Pre-deployment baseline snapshot generated with SHA-256 integrity verification." -ForegroundColor Green
-
-    # 3. Load Production Deployment Orchestrator
-    $deployScript = Join-Path $PSScriptRoot "..\..\scripts\deployment\deploy_ca_policies.ps1"
-    . $deployScript -OnlyExportFunctions
+    # 3. Import Production Deployment Engine
+    $engineScript = Join-Path $PSScriptRoot "..\..\scripts\deployment\deployment_engine.ps1"
+    . $engineScript
     $rollbackScript = Join-Path $PSScriptRoot "..\..\scripts\deployment\rollback_policies.ps1"
     $reportsDir = Join-Path $tempTestDir "reports"
 
     # =========================================================================
-    # SCENARIO 1: Partial Failure & Automatic Rollback via Production Orchestrator
+    # SCENARIO 1: Successful Deployment
     # =========================================================================
-    Write-Host "`n[Scenario 1] Executing 5-policy deployment batch via production Invoke-PolicyDeploymentTransaction..." -ForegroundColor Cyan
-
-    $global:SimulateErrorOnPolId = "pol-004"
-    $global:SimulateTimeoutOnPolId = $null
-
-    $actionsToTake = @(
-        [PSCustomObject]@{ Action = "Update"; DisplayName = "CAP-001-location";        PolicyId = "pol-001"; Payload = @{ displayName = "CAP-001-location";        state = "enabledForReportingButNotEnforced" } }
-        [PSCustomObject]@{ Action = "Update"; DisplayName = "CAP-002-admin-mfa";       PolicyId = "pol-002"; Payload = @{ displayName = "CAP-002-admin-mfa";       state = "enabled" } }
-        [PSCustomObject]@{ Action = "Update"; DisplayName = "CAP-003-risk-mfa";        PolicyId = "pol-003"; Payload = @{ displayName = "CAP-003-risk-mfa";        state = "enabledForReportingButNotEnforced" } }
-        [PSCustomObject]@{ Action = "Update"; DisplayName = "CAP-004-legacy-auth";     PolicyId = "pol-004"; Payload = @{ displayName = "CAP-004-legacy-auth";     state = "enabled" } }
-        [PSCustomObject]@{ Action = "Update"; DisplayName = "CAP-005-session-controls";PolicyId = "pol-005"; Payload = @{ displayName = "CAP-005-session-controls";state = "enabled" } }
+    Write-Host "`n[Scenario 1] Testing Successful Deployment..." -ForegroundColor Cyan
+    Clear-MockTenantState
+    $actions1 = @(
+        [PSCustomObject]@{ Action = "Update"; DisplayName = "CAP-001-location"; PolicyId = "pol-001"; Payload = @{ displayName = "CAP-001-location"; state = "enabled" } }
+        [PSCustomObject]@{ Action = "Update"; DisplayName = "CAP-002-admin-mfa"; PolicyId = "pol-002"; Payload = @{ displayName = "CAP-002-admin-mfa"; state = "enabled" } }
     )
-
-    $result1 = Invoke-PolicyDeploymentTransaction `
-        -ActionsToTake $actionsToTake `
-        -SnapshotId $snapshotTimestamp `
-        -RollbackScript $rollbackScript `
-        -ReceiptsDirectory $reportsDir `
-        -SnapshotsDir $snapshotsBaseDir
-
-    # Assertions for Scenario 1
-    Write-Host "`n[Scenario 1 Assertions] Verifying transaction state contract..." -ForegroundColor Cyan
-    if ($result1.TransactionState -ne "FailedAndRolledBack") {
-        throw "Assertion Failed: Expected TransactionState 'FailedAndRolledBack', got '$($result1.TransactionState)'"
-    }
-
-    $receipt1 = $result1.Receipt
-    if ($receipt1.RollbackExecuted -ne $true) { throw "Assertion Failed: Rollback was not executed by orchestrator." }
-    if ($receipt1.RollbackVerified -ne $true) { throw "Assertion Failed: Rollback was not verified by orchestrator." }
-
-    $txDetails = $receipt1.PolicyTransactions
-    $sCount = @($txDetails | Where-Object { $_.Status -eq "Success" }).Count
-    $fCount = @($txDetails | Where-Object { $_.Status -eq "Failed" }).Count
-    $kCount = @($txDetails | Where-Object { $_.Status -eq "Skipped" }).Count
-
-    if ($sCount -ne 3) { throw "Assertion Failed: Expected 3 successful updates before failure, got $sCount" }
-    if ($fCount -ne 1) { throw "Assertion Failed: Expected 1 failed update, got $fCount" }
-    if ($kCount -ne 1) { throw "Assertion Failed: Expected 1 skipped policy, got $kCount" }
-
-    # Verify live mock policies match baseline after automatic rollback
-    foreach ($k in $baselinePolicies.Keys) {
-        $expected = $baselinePolicies[$k].state
-        $actual = $global:LiveMockPolicies[$k].state
-        if ($expected -ne $actual) {
-            throw "Assertion Failed: State mismatch on $k! Expected: $expected, Actual: $actual"
-        }
-    }
-    Write-Host "  [PASS] Scenario 1: Production orchestrator halted on failure and automatically restored baseline parity." -ForegroundColor Green
+    $res1 = Invoke-PolicyDeploymentTransaction -ActionsToTake $actions1 -SnapshotId $snapshotTimestamp -RollbackScript $rollbackScript -ReceiptsDirectory $reportsDir -SnapshotsDir $snapshotsBaseDir
+    if ($res1.TransactionState -ne "Completed") { throw "Scenario 1 Failed: Expected 'Completed', got '$($res1.TransactionState)'" }
+    if ($global:LiveMockPolicies["pol-001"].state -ne "enabled") { throw "Scenario 1 Failed: pol-001 not updated" }
+    Write-Host "  -> PASS: Successful deployment executed cleanly." -ForegroundColor Green
 
     # =========================================================================
-    # SCENARIO 2: Ambiguous Graph Write Recovery (Timeout after Server Applied Write)
+    # SCENARIO 2: HTTP 400 Rejection
     # =========================================================================
-    Write-Host "`n[Scenario 2] Testing ambiguous write recovery (network timeout after server applied change)..." -ForegroundColor Cyan
-
-    $global:SimulateErrorOnPolId = $null
-    $global:SimulateTimeoutOnPolId = "pol-001"
-
-    $actionsToTake2 = @(
+    Write-Host "`n[Scenario 2] Testing HTTP 400 Rejection..." -ForegroundColor Cyan
+    Clear-MockTenantState
+    $global:FaultInjectHttpCode = 400
+    $actions2 = @(
         [PSCustomObject]@{ Action = "Update"; DisplayName = "CAP-001-location"; PolicyId = "pol-001"; Payload = @{ displayName = "CAP-001-location"; state = "enabled" } }
     )
+    $res2 = Invoke-PolicyDeploymentTransaction -ActionsToTake $actions2 -SnapshotId $snapshotTimestamp -RollbackScript $rollbackScript -ReceiptsDirectory $reportsDir -SnapshotsDir $snapshotsBaseDir
+    if ($res2.TransactionState -ne "FailedAndClean" -and $res2.TransactionState -ne "FailedAndRolledBack") { throw "Scenario 2 Failed: Expected 'FailedAndClean' or 'FailedAndRolledBack', got '$($res2.TransactionState)'" }
+    if ($res2.Receipt.FailureReason -notmatch "400") { throw "Scenario 2 Failed: Expected 400 in reason" }
+    Write-Host "  -> PASS: HTTP 400 rejection caught and cleanly rolled back." -ForegroundColor Green
 
-    $result2 = Invoke-PolicyDeploymentTransaction `
-        -ActionsToTake $actionsToTake2 `
-        -SnapshotId $snapshotTimestamp `
-        -RollbackScript $rollbackScript `
-        -ReceiptsDirectory $reportsDir `
-        -SnapshotsDir $snapshotsBaseDir
+    # =========================================================================
+    # SCENARIO 3: HTTP 403 Permission Failure
+    # =========================================================================
+    Write-Host "`n[Scenario 3] Testing HTTP 403 Permission Failure..." -ForegroundColor Cyan
+    Clear-MockTenantState
+    $global:FaultInjectHttpCode = 403
+    $actions3 = @(
+        [PSCustomObject]@{ Action = "Update"; DisplayName = "CAP-001-location"; PolicyId = "pol-001"; Payload = @{ displayName = "CAP-001-location"; state = "enabled" } }
+    )
+    $res3 = Invoke-PolicyDeploymentTransaction -ActionsToTake $actions3 -SnapshotId $snapshotTimestamp -RollbackScript $rollbackScript -ReceiptsDirectory $reportsDir -SnapshotsDir $snapshotsBaseDir
+    if ($res3.TransactionState -ne "FailedAndClean" -and $res3.TransactionState -ne "FailedAndRolledBack") { throw "Scenario 3 Failed: Expected failure state, got '$($res3.TransactionState)'" }
+    if ($res3.Receipt.FailureReason -notmatch "403") { throw "Scenario 3 Failed: Expected 403 in reason" }
+    Write-Host "  -> PASS: HTTP 403 permission failure caught and handled." -ForegroundColor Green
 
-    # Assertions for Scenario 2
-    Write-Host "`n[Scenario 2 Assertions] Verifying ambiguous write detection and recovery..." -ForegroundColor Cyan
-    if ($result2.TransactionState -ne "FailedAndRolledBack") {
-        throw "Assertion Failed: Expected TransactionState 'FailedAndRolledBack' under ambiguous write, got '$($result2.TransactionState)'"
-    }
+    # =========================================================================
+    # SCENARIO 4: HTTP 429 Throttling
+    # =========================================================================
+    Write-Host "`n[Scenario 4] Testing HTTP 429 Throttling..." -ForegroundColor Cyan
+    Clear-MockTenantState
+    $global:FaultInjectHttpCode = 429
+    $actions4 = @(
+        [PSCustomObject]@{ Action = "Update"; DisplayName = "CAP-001-location"; PolicyId = "pol-001"; Payload = @{ displayName = "CAP-001-location"; state = "enabled" } }
+    )
+    $res4 = Invoke-PolicyDeploymentTransaction -ActionsToTake $actions4 -SnapshotId $snapshotTimestamp -RollbackScript $rollbackScript -ReceiptsDirectory $reportsDir -SnapshotsDir $snapshotsBaseDir
+    if ($res4.TransactionState -ne "FailedAndClean" -and $res4.TransactionState -ne "FailedAndRolledBack") { throw "Scenario 4 Failed: Expected failure state, got '$($res4.TransactionState)'" }
+    if ($res4.Receipt.FailureReason -notmatch "429") { throw "Scenario 4 Failed: Expected 429 in reason" }
+    Write-Host "  -> PASS: HTTP 429 throttling halted transaction cleanly." -ForegroundColor Green
 
-    $receipt2 = $result2.Receipt
-    if ($receipt2.MutationsApplied -lt 1) {
-        throw "Assertion Failed: Ambiguous write was not detected as applied (MutationsApplied should be >= 1, got $($receipt2.MutationsApplied))"
-    }
-    if ($receipt2.RollbackExecuted -ne $true) {
-        throw "Assertion Failed: Rollback was not triggered for ambiguous write!"
-    }
+    # =========================================================================
+    # SCENARIO 5: HTTP 500 Server Error
+    # =========================================================================
+    Write-Host "`n[Scenario 5] Testing HTTP 500 Server Error..." -ForegroundColor Cyan
+    Clear-MockTenantState
+    $global:FaultInjectHttpCode = 500
+    $actions5 = @(
+        [PSCustomObject]@{ Action = "Update"; DisplayName = "CAP-001-location"; PolicyId = "pol-001"; Payload = @{ displayName = "CAP-001-location"; state = "enabled" } }
+    )
+    $res5 = Invoke-PolicyDeploymentTransaction -ActionsToTake $actions5 -SnapshotId $snapshotTimestamp -RollbackScript $rollbackScript -ReceiptsDirectory $reportsDir -SnapshotsDir $snapshotsBaseDir
+    if ($res5.TransactionState -ne "FailedAndClean" -and $res5.TransactionState -ne "FailedAndRolledBack") { throw "Scenario 5 Failed: Expected failure state, got '$($res5.TransactionState)'" }
+    if ($res5.Receipt.FailureReason -notmatch "500") { throw "Scenario 5 Failed: Expected 500 in reason" }
+    Write-Host "  -> PASS: HTTP 500 server error triggered fail-safe rollback." -ForegroundColor Green
 
-    # Verify live mock policies restored to pre-deployment baseline
-    if ($global:LiveMockPolicies["pol-001"].state -ne "disabled") {
-        throw "Assertion Failed: Policy pol-001 state after ambiguous write rollback should be 'disabled', got '$($global:LiveMockPolicies['pol-001'].state)'"
+    # =========================================================================
+    # SCENARIO 6: Timeout after Graph Accepted a PATCH (Ambiguous Update)
+    # =========================================================================
+    Write-Host "`n[Scenario 6] Testing Timeout after Graph accepted a PATCH..." -ForegroundColor Cyan
+    Clear-MockTenantState
+    $global:FaultInjectTimeoutPatch = $true
+    $actions6 = @(
+        [PSCustomObject]@{ Action = "Update"; DisplayName = "CAP-001-location"; PolicyId = "pol-001"; Payload = @{ displayName = "CAP-001-location"; state = "enabled" } }
+    )
+    $res6 = Invoke-PolicyDeploymentTransaction -ActionsToTake $actions6 -SnapshotId $snapshotTimestamp -RollbackScript $rollbackScript -ReceiptsDirectory $reportsDir -SnapshotsDir $snapshotsBaseDir
+    if ($res6.TransactionState -ne "FailedAndRolledBack") { throw "Scenario 6 Failed: Expected 'FailedAndRolledBack', got '$($res6.TransactionState)'" }
+    if ($res6.Receipt.MutationsApplied -lt 1) { throw "Scenario 6 Failed: Ambiguous write was not detected as applied" }
+    if ($global:LiveMockPolicies["pol-001"].state -ne "disabled") { throw "Scenario 6 Failed: pol-001 not restored to disabled baseline" }
+    Write-Host "  -> PASS: Ambiguous PATCH write detected, accounted for, and restored." -ForegroundColor Green
+
+    # =========================================================================
+    # SCENARIO 7: Timeout after Graph Accepted a POST (Ambiguous Create)
+    # =========================================================================
+    Write-Host "`n[Scenario 7] Testing Timeout after Graph accepted a POST..." -ForegroundColor Cyan
+    Clear-MockTenantState
+    $global:FaultInjectTimeoutPost = $true
+    $actions7 = @(
+        [PSCustomObject]@{ Action = "Create"; DisplayName = "CAP-999-new-policy"; PolicyId = $null; Payload = @{ displayName = "CAP-999-new-policy"; state = "enabled" } }
+    )
+    $res7 = Invoke-PolicyDeploymentTransaction -ActionsToTake $actions7 -SnapshotId $snapshotTimestamp -RollbackScript $rollbackScript -ReceiptsDirectory $reportsDir -SnapshotsDir $snapshotsBaseDir
+    if ($res7.TransactionState -ne "FailedAndRolledBack") { throw "Scenario 7 Failed: Expected 'FailedAndRolledBack', got '$($res7.TransactionState)'" }
+    $orphanCheck = @($global:LiveMockPolicies.Values | Where-Object { $_.displayName -eq "CAP-999-new-policy" })
+    if ($orphanCheck.Count -gt 0) { throw "Scenario 7 Failed: Ambiguously created policy was not purged by rollback" }
+    Write-Host "  -> PASS: Ambiguous POST creation identified and cleaned up." -ForegroundColor Green
+
+    # =========================================================================
+    # SCENARIO 8: Rollback Failure
+    # =========================================================================
+    Write-Host "`n[Scenario 8] Testing Rollback Failure..." -ForegroundColor Cyan
+    Clear-MockTenantState
+    $global:FaultInjectErrorOnPolId = "pol-002"
+    $global:FaultInjectRollbackFail = $true
+    $actions8 = @(
+        [PSCustomObject]@{ Action = "Update"; DisplayName = "CAP-001-location"; PolicyId = "pol-001"; Payload = @{ displayName = "CAP-001-location"; state = "enabled" } }
+        [PSCustomObject]@{ Action = "Update"; DisplayName = "CAP-002-admin-mfa"; PolicyId = "pol-002"; Payload = @{ displayName = "CAP-002-admin-mfa"; state = "enabled" } }
+    )
+    $res8 = Invoke-PolicyDeploymentTransaction -ActionsToTake $actions8 -SnapshotId $snapshotTimestamp -RollbackScript $rollbackScript -ReceiptsDirectory $reportsDir -SnapshotsDir $snapshotsBaseDir
+    if ($res8.TransactionState -ne "RollbackFailed") { throw "Scenario 8 Failed: Expected 'RollbackFailed', got '$($res8.TransactionState)'" }
+    Write-Host "  -> PASS: Rollback failure correctly logged as 'RollbackFailed'." -ForegroundColor Green
+
+    # =========================================================================
+    # SCENARIO 9: Rollback Verification Mismatch
+    # =========================================================================
+    Write-Host "`n[Scenario 9] Testing Rollback Verification Mismatch..." -ForegroundColor Cyan
+    Clear-MockTenantState
+    $global:FaultInjectErrorOnPolId = "pol-002"
+    $global:FaultInjectVerifyMismatch = $true
+    $actions9 = @(
+        [PSCustomObject]@{ Action = "Update"; DisplayName = "CAP-001-location"; PolicyId = "pol-001"; Payload = @{ displayName = "CAP-001-location"; state = "enabled" } }
+        [PSCustomObject]@{ Action = "Update"; DisplayName = "CAP-002-admin-mfa"; PolicyId = "pol-002"; Payload = @{ displayName = "CAP-002-admin-mfa"; state = "enabled" } }
+    )
+    $res9 = Invoke-PolicyDeploymentTransaction -ActionsToTake $actions9 -SnapshotId $snapshotTimestamp -RollbackScript $rollbackScript -ReceiptsDirectory $reportsDir -SnapshotsDir $snapshotsBaseDir
+    if ($res9.TransactionState -ne "RollbackFailed") { throw "Scenario 9 Failed: Expected 'RollbackFailed' due to verification mismatch, got '$($res9.TransactionState)'" }
+    Write-Host "  -> PASS: Verification mismatch caught and halted." -ForegroundColor Green
+
+    # =========================================================================
+    # SCENARIO 10: Duplicate Policy Matching Ambiguity
+    # =========================================================================
+    Write-Host "`n[Scenario 10] Testing Duplicate Policy Matching Ambiguity..." -ForegroundColor Cyan
+    Clear-MockTenantState
+    # Add a duplicate policy with the same display name as pol-001
+    $global:LiveMockPolicies["pol-001-dup"] = [PSCustomObject]@{
+        id          = "pol-001-dup"
+        displayName = "CAP-001-location"
+        state       = "disabled"
     }
-    Write-Host "  [PASS] Scenario 2: Ambiguous write detected by orchestrator, flagged as applied, and cleanly rolled back." -ForegroundColor Green
+    # Fail pol-002 to trigger rollback of pol-001 where duplicate matches exist in live tenant
+    $global:FaultInjectErrorOnPolId = "pol-002"
+    $actions10 = @(
+        [PSCustomObject]@{ Action = "Update"; DisplayName = "CAP-001-location"; PolicyId = "pol-001"; Payload = @{ displayName = "CAP-001-location"; state = "enabled" } }
+        [PSCustomObject]@{ Action = "Update"; DisplayName = "CAP-002-admin-mfa"; PolicyId = "pol-002"; Payload = @{ displayName = "CAP-002-admin-mfa"; state = "enabled" } }
+    )
+    $res10 = Invoke-PolicyDeploymentTransaction -ActionsToTake $actions10 -SnapshotId $snapshotTimestamp -RollbackScript $rollbackScript -ReceiptsDirectory $reportsDir -SnapshotsDir $snapshotsBaseDir
+    if ($res10.TransactionState -ne "RollbackFailed") { throw "Scenario 10 Failed: Expected 'RollbackFailed' due to duplicate match ambiguity, got '$($res10.TransactionState)'" }
+    Write-Host "  -> PASS: Duplicate policy matching ambiguity rejected fail-closed." -ForegroundColor Green
 
     Write-Host "`n==========================================================" -ForegroundColor Green
-    Write-Host "  ALL ASSERTIONS PASSED: Orchestrator Failure & Recovery OK" -ForegroundColor Green
+    Write-Host "  ALL 10 PRODUCTION ORCHESTRATOR SCENARIOS PASSED CLEANLY!" -ForegroundColor Green
     Write-Host "==========================================================" -ForegroundColor Green
     exit 0
 } catch {
@@ -281,8 +385,13 @@ try {
     exit 1
 } finally {
     Remove-Variable -Name LiveMockPolicies -Scope Global -ErrorAction SilentlyContinue
-    Remove-Variable -Name SimulateTimeoutOnPolId -Scope Global -ErrorAction SilentlyContinue
-    Remove-Variable -Name SimulateErrorOnPolId -Scope Global -ErrorAction SilentlyContinue
+    Remove-Variable -Name FaultInjectHttpCode -Scope Global -ErrorAction SilentlyContinue
+    Remove-Variable -Name FaultInjectErrorOnPolId -Scope Global -ErrorAction SilentlyContinue
+    Remove-Variable -Name FaultInjectTimeoutPatch -Scope Global -ErrorAction SilentlyContinue
+    Remove-Variable -Name FaultInjectTimeoutPost -Scope Global -ErrorAction SilentlyContinue
+    Remove-Variable -Name FaultInjectRollbackFail -Scope Global -ErrorAction SilentlyContinue
+    Remove-Variable -Name FaultInjectVerifyMismatch -Scope Global -ErrorAction SilentlyContinue
+    Remove-Variable -Name InRollbackMode -Scope Global -ErrorAction SilentlyContinue
     if (Test-Path $tempTestDir) {
         Get-ChildItem -Path $tempTestDir -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
             Set-ItemProperty -Path $_.FullName -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue

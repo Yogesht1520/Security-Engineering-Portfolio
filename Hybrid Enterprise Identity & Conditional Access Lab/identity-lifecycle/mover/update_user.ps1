@@ -38,6 +38,8 @@ param (
 
     [string]$GroupNameOverride,
 
+    [string]$TargetGroupId,
+
     [Parameter(Mandatory=$false)]
     [ValidateSet("FailClosedOnPrivilegePurge", "Permissive")]
     [string]$TransactionPolicy = "FailClosedOnPrivilegePurge",
@@ -128,22 +130,42 @@ $stageResults = [ordered]@{
     Stage6_FinalDirectoryReconciliation = "Pending"
 }
 
-# 4. Resolve Target Group ID
+# 4. Resolve Target Group ID (Finding 9: Support immutable ID & fail closed on duplicate display names)
 Write-Host "`n[Step 2/5] Resolving target group '$targetGroup'..." -ForegroundColor Cyan
-$targetGroupUri = "https://graph.microsoft.com/v1.0/groups?`$filter=displayName eq '$targetGroup'"
-try {
-    $targetGroupResp = Invoke-MgGraphRequest -Method GET -Uri $targetGroupUri -ErrorAction Stop
-    if (-not $targetGroupResp.value -or $targetGroupResp.value.Count -eq 0) {
-        $stageResults["Stage1_TargetGroupResolution"] = "Failed: GroupNotFound"
-        Write-Error "Target security group '$targetGroup' not found in tenant."
+if ($TargetGroupId) {
+    $targetGroupId = $TargetGroupId
+    $targetGroupUri = "https://graph.microsoft.com/v1.0/groups/$TargetGroupId"
+    try {
+        $tgObj = Invoke-MgGraphRequest -Method GET -Uri $targetGroupUri -ErrorAction Stop
+        $targetGroup = $tgObj.displayName
+        Write-Host "  -> Resolved by immutable ID: $targetGroup ($targetGroupId)" -ForegroundColor Gray
+        $stageResults["Stage1_TargetGroupResolution"] = "Completed"
+    } catch {
+        $stageResults["Stage1_TargetGroupResolution"] = "Failed: InvalidGroupId ($($_.Exception.Message))"
+        Write-Error "Target group ID '$TargetGroupId' not found in tenant: $($_.Exception.Message)"
         exit 1
     }
-    $targetGroupId = $targetGroupResp.value[0].id
-    $stageResults["Stage1_TargetGroupResolution"] = "Completed"
-} catch {
-    $stageResults["Stage1_TargetGroupResolution"] = "Failed: $($_.Exception.Message)"
-    Write-Error "Error querying target group '$targetGroup': $($_.Exception.Message)"
-    exit 1
+} else {
+    $targetGroupUri = "https://graph.microsoft.com/v1.0/groups?`$filter=displayName eq '$targetGroup'"
+    try {
+        $targetGroupResp = Invoke-MgGraphRequest -Method GET -Uri $targetGroupUri -ErrorAction Stop
+        if (-not $targetGroupResp.value -or @($targetGroupResp.value).Count -eq 0) {
+            $stageResults["Stage1_TargetGroupResolution"] = "Failed: GroupNotFound"
+            Write-Error "Target security group '$targetGroup' not found in tenant."
+            exit 1
+        }
+        if (@($targetGroupResp.value).Count -gt 1) {
+            $stageResults["Stage1_TargetGroupResolution"] = "Failed: DuplicateGroupAmbiguity"
+            Write-Error "[FAIL-CLOSED GATE] Multiple groups ($(@($targetGroupResp.value).Count)) match target display name '$targetGroup'. Cannot determine target group identity! Provide -TargetGroupId."
+            exit 1
+        }
+        $targetGroupId = $targetGroupResp.value[0].id
+        $stageResults["Stage1_TargetGroupResolution"] = "Completed"
+    } catch {
+        $stageResults["Stage1_TargetGroupResolution"] = "Failed: $($_.Exception.Message)"
+        Write-Error "Error querying target group '$targetGroup': $($_.Exception.Message)"
+        exit 1
+    }
 }
 
 # 5. Privilege Creep Remediation: Remove Legacy RBAC Groups
@@ -272,12 +294,13 @@ try {
 
     # Re-query user profile to assert department and jobTitle
     $reconUser = Invoke-MgGraphRequest -Method GET -Uri $userUri -ErrorAction Stop
-    if ($reconUser.department -ne $NewDepartment -or $reconUser.jobTitle -ne $NewJobTitle) {
+    $profileMatch = ($reconUser.department -eq $NewDepartment -and $reconUser.jobTitle -eq $NewJobTitle)
+    if (-not $profileMatch) {
         $stageResults["Stage4_ProfileUpdate"] = "Failed: Attribute parity failure (Dept: $($reconUser.department), Title: $($reconUser.jobTitle))"
     }
 
-    Write-Host "  -> Directory State Reconciliation: TargetPresent=$targetPresent, LingeringLegacyCount=$($lingeringLegacy.Count)" -ForegroundColor Green
-    $stageResults["Stage6_FinalDirectoryReconciliation"] = if ($targetPresent -and $lingeringLegacy.Count -eq 0) { "Completed" } else { "Incomplete: ParityMismatch" }
+    Write-Host "  -> Directory State Reconciliation: TargetPresent=$targetPresent, LingeringLegacyCount=$($lingeringLegacy.Count), ProfileMatch=$profileMatch" -ForegroundColor Green
+    $stageResults["Stage6_FinalDirectoryReconciliation"] = if ($targetPresent -and $lingeringLegacy.Count -eq 0 -and $profileMatch) { "Completed" } else { "Incomplete: ParityMismatch" }
 } catch {
     Write-Warning "  -> [WARNING] Independent final reconciliation query failed: $($_.Exception.Message)"
     $stageResults["Stage6_FinalDirectoryReconciliation"] = "Incomplete: $($_.Exception.Message)"

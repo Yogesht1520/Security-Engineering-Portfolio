@@ -62,9 +62,18 @@ $groupObjects = @{}
 
 foreach ($gName in $managedGroups) {
     $uri = "https://graph.microsoft.com/v1.0/groups?`$filter=displayName eq '$gName'"
-    $res = Invoke-MgGraphRequest -Method GET -Uri $uri -ErrorAction SilentlyContinue
-    if ($res.value -and $res.value.Count -gt 0) {
-        $groupObjects[$gName] = $res.value[0]
+    try {
+        $res = Invoke-MgGraphRequest -Method GET -Uri $uri -ErrorAction Stop
+        if (-not $res.value -or @($res.value).Count -eq 0) {
+            Write-Warning "Managed group '$gName' was not found in directory."
+        } elseif (@($res.value).Count -gt 1) {
+            throw "[DUPLICATE GROUP AMBIGUITY] Multiple groups ($(@($res.value).Count)) match '$gName' in tenant. Cannot safely reconcile."
+        } else {
+            $groupObjects[$gName] = $res.value[0]
+        }
+    } catch {
+        Write-Error "[FAIL-CLOSED GATE] Failed querying managed group '$gName': $($_.Exception.Message)"
+        throw
     }
 }
 

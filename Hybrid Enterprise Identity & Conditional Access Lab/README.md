@@ -1,23 +1,23 @@
 # Enterprise Identity Security & Conditional Access Lab
 
 > **Framework Alignment:** NIST Zero Trust Architecture (SP 800-207) & Microsoft SC-300  
-> **Environment:** Microsoft Entra ID (P2) Cloud Tenant *(Live Verified)* + AD DS Hybrid Reference Architecture  
+> **Environment:** Microsoft Entra ID (P2) Cloud Tenant *(Live Verified Staging)* + AD DS Hybrid Reference Architecture  
 > **Implementation Methodology:** Declarative Identity-as-Code (IaC), Safe Staging & Continuous Governance  
-> **Operational Verification:** Automated Verification Checks Passing Across Master Test Suite | 11 Live Policies in Report-Only Mode | SHA-256 Integrity-Checked Snapshots  
+> **Operational Verification:** 62 Automated Verification Checks Passing Across 9 Test Suites | 11 Live Policies Staged in Report-Only Mode | SHA-256 Integrity-Checked Snapshots  
 
 ---
 
 ## 1. Executive Summary
 
-This repository delivers an enterprise **Zero Trust Identity and Access Management (IAM)** reference implementation engineered in **Microsoft Entra ID**. Built on the principle that **Identity is the primary security boundary**, all authentication and authorization requests are evaluated dynamically using real-time signals, adaptive session controls, and least-privilege boundaries.
+This repository delivers an enterprise **Zero Trust Identity and Access Management (IAM)** reference implementation engineered in **Microsoft Entra ID**. Built on the principle that **Identity is the primary security boundary**, authentication and authorization requests are evaluated dynamically using real-time signals, adaptive session controls, and least-privilege boundaries.
 
 ### Core Implemented Capabilities:
-* **Declarative Identity-as-Code (IaC):** 11 report-only Conditional Access baseline policy definitions maintained in version-controlled JSON schemas ([`policies/`](./policies/)) and deployed programmatically via the Microsoft Graph API with pre-flight schema validation ([`validate_schema.ps1`](./scripts/deployment/validate_schema.ps1)).
+* **Declarative Identity-as-Code (IaC):** 11 Conditional Access baseline policy definitions maintained in version-controlled JSON schemas ([`policies/`](./policies/)) and deployed programmatically via the Microsoft Graph API with pre-flight schema validation ([`validate_schema.ps1`](./scripts/deployment/validate_schema.ps1)).
 * **Zero Trust Safe Staging:** All policies deploy in `Report-only` mode (`enabledForReportingButNotEnforced`) to evaluate live sign-in telemetry without risking user disruption.
 * **Dual Break-Glass Disaster Recovery:** Two independent, cloud-only emergency accounts (`emergency-admin-01`, `emergency-admin-02`) excluded via `SEC-BreakGlass-Exclusion` with fail-closed programmatic verification to eliminate administrative lockout risk.
-* **Privileged Identity Management (PIM):** Implementation of Zero Standing Access (ZSA). Administrative roles require Just-in-Time (JIT) activation with a 4-hour max window, mandatory justification, and phishing-resistant MFA (itemized in [`privileged-role-inventory.md`](./evidence/live-tenant-state/privileged-role-inventory.md)).
+* **Privileged Identity Management (PIM):** Zero Standing Access (ZSA) reference implementation with PIM eligibility controls, policy validation, and privileged-role auditing. Administrative roles require Just-in-Time (JIT) activation with a 4-hour max window, mandatory justification, and phishing-resistant MFA (itemized in [`privileged-role-inventory.md`](./evidence/live-tenant-state/privileged-role-inventory.md)). Permanent eligibility is treated as a high-risk exception requiring documented ownership, business justification, review date, and approver.
 * **Verified Snapshot Rollback Engine:** Pre-deployment state captures with SHA-256 integrity checksums and authoritative manifests ([`rollback_policies.ps1`](./scripts/deployment/rollback_policies.ps1)), providing verified rollback with documented failure boundaries upon mid-flight deployment failures.
-* **Automated JML Lifecycle Engine:** Deterministic Joiner, Mover, and Leaver workflows ([`identity-lifecycle/`](./identity-lifecycle/)) featuring cryptographic temporary passwords, privilege creep prevention, compensating quarantine actions, and 5-stage offboarding with session revocation requests.
+* **Automated JML Lifecycle Engine:** Deterministic Joiner, Mover, and Leaver workflows ([`identity-lifecycle/`](./identity-lifecycle/)) featuring cryptographic temporary passwords, privilege creep prevention, compensating quarantine actions, and 5-stage offboarding with session revocation requests (documenting boundaries for non-Entra cloud entitlements and token revocation lifetimes).
 * **Detection Engineering (KQL):** KQL detection queries ([`monitoring/kql/`](./monitoring/kql/)) and incident response playbooks ([`monitoring/playbooks/`](./monitoring/playbooks/)) monitoring break-glass account sign-ins, policy drift, and MFA fatigue.
 * **Automated Testing & CI/CD:** Unified master test runner ([`tests/run_all_tests.ps1`](./tests/run_all_tests.ps1)) executing test suites across schema validation, resolution, deployment recovery, lifecycle, and Pester assertions, supported by a GitHub Actions workflow ([`.github/workflows/validate.yml`](./.github/workflows/validate.yml)) enforcing schema validity, linting, and blocking secret scanning.
 
@@ -108,7 +108,7 @@ flowchart TB
 
 ## 3. Conditional Access Policy Baseline
 
-All 11 policies are deployed and active in the live tenant in **Report-only** (`enabledForReportingButNotEnforced`) mode:
+All 11 policies are deployed in the reference staging tenant in **Report-only** (`enabledForReportingButNotEnforced`) mode to evaluate real-world sign-in telemetry before full enforcement. Live tenant state is preserved in [`evidence/live-tenant-state/live-tenant-state.json`](./evidence/live-tenant-state/live-tenant-state.json) as a point-in-time baseline snapshot, while continuous CI/CD validates schema conformance and deployment safety offline:
 
 | Policy ID | Policy Display Name | Scoped Target | Signals Evaluated | Grant / Session Controls | Enforcement State |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -151,6 +151,7 @@ Hybrid Enterprise Identity & Conditional Access Lab/
 │   ├── THREAT_MODEL.md                # Threat Model & MITRE ATT&CK Matrix
 │   └── USER_GROUP_MODEL.md            # User, Group, and Role Architecture
 ├── evidence/
+│   ├── live-tenant-state/             # Point-in-time live tenant baseline exports
 │   └── test-results.json              # Machine-readable test verification evidence
 ├── identity-lifecycle/
 │   ├── common/
@@ -159,6 +160,7 @@ Hybrid Enterprise Identity & Conditional Access Lab/
 │   ├── joiner/
 │   │   └── onboard_user.ps1           # Automated Joiner with cryptographic credentials
 │   ├── mover/
+│   │   ├── reconcile_mover_failures.ps1 # Reconciliation worker for interrupted moves
 │   │   └── update_user.ps1            # Privilege creep remediation & session flush
 │   └── leaver/
 │       └── offboard_user.ps1          # 5-stage state-machine termination pipeline
@@ -179,11 +181,12 @@ Hybrid Enterprise Identity & Conditional Access Lab/
 │   ├── deployment/
 │   │   ├── compare_policies.ps1       # Live vs. Desired drift detection engine
 │   │   ├── deploy_ca_policies.ps1     # Core IaC deployment orchestrator
+│   │   ├── deployment_engine.ps1      # Modular transaction orchestrator & canonical parity engine
 │   │   └── rollback_policies.ps1      # SHA-256 integrity-checked snapshot & rollback engine
 │   ├── governance/
-│   │   ├── access_review.ps1          # Privileged group attestation audit engine
+│   │   ├── access_review.ps1          # Privileged Group Membership Audit & Attestation Engine
 │   │   ├── configure_pim.ps1          # Programmatic PIM eligibility assignment
-│   │   └── privileged_role_audit.ps1  # Zero Standing Access compliance scanner
+│   │   └── privileged_role_audit.ps1  # Tri-state Zero Standing Access compliance scanner
 │   ├── identity/
 │   │   ├── resolve_groups.ps1         # Dynamic group reference resolver
 │   │   ├── resolve_locations.ps1      # Named location reference resolver
@@ -191,8 +194,8 @@ Hybrid Enterprise Identity & Conditional Access Lab/
 │   ├── deploy_ca_policies.ps1         # Root pipeline wrapper
 │   └── seed_users.ps1                 # Synthetic persona & group provisioning
 └── tests/
-    ├── deployment/                    # Drift engine unit tests
-    ├── governance/                    # Script syntax & token validation tests
+    ├── deployment/                    # Drift engine & 10-scenario recovery test suites
+    ├── governance/                    # Script syntax, token & audit validation tests
     ├── identity/                      # Identity resolver tests
     ├── lifecycle/                     # JML state-machine tests
     ├── schema/                        # Policy JSON schema tests
@@ -207,11 +210,11 @@ Hybrid Enterprise Identity & Conditional Access Lab/
 ## 5. Operational Commands & Quickstart
 
 ### 5.1 Execute Master Test Suite (Locally)
-To run all 58 automated verification checks across the 9 specialized test suites (including 13 Native Pester assertions):
+To run all 62 automated verification checks across the 9 specialized test suites (including 13 Native Pester assertions):
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tests\run_all_tests.ps1 -ExportEvidence
 ```
-The test runner itemizes verification checks across two distinct offline tiers (38 Local Unit Tests and 20 Mocked Graph API Integration Tests) and generates machine-readable execution telemetry in [`evidence/test-results.json`](./evidence/test-results.json). Independently exported live staging tenant baseline state is preserved separately in [`evidence/live-tenant-state/`](./evidence/live-tenant-state/).
+The test runner itemizes verification checks across two distinct offline tiers (38 Local Unit Tests and 24 Mocked Graph API Integration Tests) and generates machine-readable execution telemetry in [`evidence/test-results.json`](./evidence/test-results.json). Independently exported live staging tenant baseline state is preserved separately in [`evidence/live-tenant-state/`](./evidence/live-tenant-state/).
 
 ### 5.2 Plan & Deploy Conditional Access Policies
 ```powershell
