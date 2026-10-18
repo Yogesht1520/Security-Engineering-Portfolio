@@ -379,13 +379,15 @@ function Invoke-PolicyDeploymentTransaction {
                         # Automatic deletion is prohibited on display-name and ID-difference evidence alone.
                         $payloadDiffs = Compare-CanonicalPolicyParity -LivePolicy $candidate -SnapshotPolicy $item.Payload
 
-                        $timestampValid = $true
+                        # Timestamp correlation check: Must fail closed if createdDateTime is missing, unparseable, or outside window
+                        $timestampValid = $false
                         if ($candidate.createdDateTime) {
                             try {
                                 $createdDt = [DateTime]::Parse($candidate.createdDateTime).ToUniversalTime()
-                                if ($createdDt -lt $transactionStartTime.AddSeconds(-30)) {
-                                    $timestampValid = $false
-                                }
+                                $timestampValid = (
+                                    $createdDt -ge $transactionStartTime.AddSeconds(-30) -and
+                                    $createdDt -le [DateTime]::UtcNow.AddSeconds(30)
+                                )
                             } catch {
                                 $timestampValid = $false
                             }

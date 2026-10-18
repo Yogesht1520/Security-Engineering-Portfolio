@@ -56,6 +56,8 @@ try {
         $global:FaultInjectRollbackFail = $false
         $global:FaultInjectVerifyMismatch = $false
         $global:InRollbackMode = $false
+        $global:MockCreatedDateTimeOverride = $null
+        $global:MockCreatedDateTimeOmitted = $false
     }
     Clear-MockTenantState
 
@@ -78,9 +80,10 @@ try {
             if ($global:LiveMockPolicies.ContainsKey($polId)) {
                 $p = $global:LiveMockPolicies[$polId]
                 return [PSCustomObject]@{
-                    id          = $p.id
-                    displayName = $p.displayName
-                    state       = $p.state
+                    id              = $p.id
+                    displayName     = $p.displayName
+                    state           = $p.state
+                    createdDateTime = $p.createdDateTime
                 }
             } else {
                 throw "Policy '$polId' not found."
@@ -92,9 +95,10 @@ try {
             $pList = [System.Collections.Generic.List[PSObject]]::new()
             foreach ($v in $global:LiveMockPolicies.Values) {
                 $pList.Add([PSCustomObject]@{
-                    id          = $v.id
-                    displayName = $v.displayName
-                    state       = $v.state
+                    id              = $v.id
+                    displayName     = $v.displayName
+                    state           = $v.state
+                    createdDateTime = $v.createdDateTime
                 })
             }
             return [PSCustomObject]@{
@@ -160,10 +164,19 @@ try {
         if ($Method -eq "POST" -and $Uri -match "/identity/conditionalAccess/policies") {
             $bodyObj = $Body | ConvertFrom-Json
             $newId = "pol-" + [Guid]::NewGuid().ToString("N").Substring(0, 8)
+            $createdDtStr = if ($global:MockCreatedDateTimeOverride) {
+                $global:MockCreatedDateTimeOverride
+            } elseif ($global:MockCreatedDateTimeOmitted) {
+                $null
+            } else {
+                [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
+            }
+
             $newPol = [PSCustomObject]@{
-                id          = $newId
-                displayName = $bodyObj.displayName
-                state       = $bodyObj.state
+                id              = $newId
+                displayName     = $bodyObj.displayName
+                state           = $bodyObj.state
+                createdDateTime = $createdDtStr
             }
             $global:LiveMockPolicies[$newId] = $newPol
 
@@ -326,14 +339,32 @@ try {
     $preserveCheck = @($global:LiveMockPolicies.Values | Where-Object { $_.displayName -eq "CAP-999-new-policy" })
     if ($preserveCheck.Count -ne 1) { throw "Scenario 7A Failed: Ambiguously created policy was deleted instead of being preserved for operator verification" }
 
-    # 7B. Automated Lab / CI Policy (AutoPurgeCorrelated): Strict correlation purges orphan
+    # 7B. Automated Lab / CI Policy (AutoPurgeCorrelated): Strict correlation purges orphan when timestamp is valid
     Clear-MockTenantState
     $global:FaultInjectTimeoutPost = $true
     $res7B = Invoke-PolicyDeploymentTransaction -ActionsToTake $actions7 -SnapshotId $snapshotTimestamp -RollbackScript $rollbackScript -ReceiptsDirectory $reportsDir -SnapshotsDir $snapshotsBaseDir -AmbiguousPostPolicy "AutoPurgeCorrelated"
     if ($res7B.TransactionState -ne "FailedAndRolledBack") { throw "Scenario 7B Failed: Expected 'FailedAndRolledBack', got '$($res7B.TransactionState)'" }
     $orphanCheck = @($global:LiveMockPolicies.Values | Where-Object { $_.displayName -eq "CAP-999-new-policy" })
     if ($orphanCheck.Count -gt 0) { throw "Scenario 7B Failed: Ambiguously created policy was not purged under AutoPurgeCorrelated" }
-    Write-Host "  -> PASS: Ambiguous POST creation verified: preserved under FailClosedPreserve and purged under AutoPurgeCorrelated." -ForegroundColor Green
+
+    # 7C. Missing Timestamp Fail-Closed Gate: When createdDateTime is omitted from Graph response, AutoPurge must fail closed
+    Clear-MockTenantState
+    $global:FaultInjectTimeoutPost = $true
+    $global:MockCreatedDateTimeOmitted = $true
+    $res7C = Invoke-PolicyDeploymentTransaction -ActionsToTake $actions7 -SnapshotId $snapshotTimestamp -RollbackScript $rollbackScript -ReceiptsDirectory $reportsDir -SnapshotsDir $snapshotsBaseDir -AmbiguousPostPolicy "AutoPurgeCorrelated"
+    if ($res7C.TransactionState -ne "PendingVerification") { throw "Scenario 7C Failed: Expected 'PendingVerification' when timestamp missing, got '$($res7C.TransactionState)'" }
+    $missingTsCheck = @($global:LiveMockPolicies.Values | Where-Object { $_.displayName -eq "CAP-999-new-policy" })
+    if ($missingTsCheck.Count -ne 1) { throw "Scenario 7C Failed: Candidate policy with missing timestamp was deleted instead of preserved fail-closed" }
+
+    # 7D. Stale / Concurrent Creation Fail-Closed Gate: When timestamp falls outside transaction window, AutoPurge must fail closed
+    Clear-MockTenantState
+    $global:FaultInjectTimeoutPost = $true
+    $global:MockCreatedDateTimeOverride = [DateTime]::UtcNow.AddHours(-2).ToString("yyyy-MM-ddTHH:mm:ssZ")
+    $res7D = Invoke-PolicyDeploymentTransaction -ActionsToTake $actions7 -SnapshotId $snapshotTimestamp -RollbackScript $rollbackScript -ReceiptsDirectory $reportsDir -SnapshotsDir $snapshotsBaseDir -AmbiguousPostPolicy "AutoPurgeCorrelated"
+    if ($res7D.TransactionState -ne "PendingVerification") { throw "Scenario 7D Failed: Expected 'PendingVerification' when timestamp outside window, got '$($res7D.TransactionState)'" }
+    $staleTsCheck = @($global:LiveMockPolicies.Values | Where-Object { $_.displayName -eq "CAP-999-new-policy" })
+    if ($staleTsCheck.Count -ne 1) { throw "Scenario 7D Failed: Candidate policy with outside-window timestamp was deleted instead of preserved fail-closed" }
+    Write-Host "  -> PASS: Ambiguous POST creation verified: FailClosedPreserve, AutoPurgeCorrelated, missing-timestamp, and stale-timestamp fail-closed gates all validated." -ForegroundColor Green
 
     # =========================================================================
     # SCENARIO 8: Rollback Failure

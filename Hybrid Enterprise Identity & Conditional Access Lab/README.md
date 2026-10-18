@@ -3,7 +3,7 @@
 > **Framework Alignment:** NIST Zero Trust Architecture (SP 800-207) & Microsoft SC-300  
 > **Environment:** Microsoft Entra ID (P2) Cloud Tenant *(Live Verified Staging)* + AD DS Hybrid Reference Architecture  
 > **Implementation Methodology:** Declarative Identity-as-Code (IaC), Safe Staging & Continuous Governance  
-> **Operational Verification:** 64 Automated Verification Checks Passing Across 9 Test Suites | 11 Live Policies Staged in Report-Only Mode | SHA-256 Integrity-Checked Snapshots  
+> **Operational Verification:** 72 Automated Verification Checks Passing Across 9 Test Suites | 11 Live Policies Staged in Report-Only Mode | SHA-256 Integrity-Checked Snapshots  
 
 ---
 
@@ -207,11 +207,11 @@ Hybrid Enterprise Identity & Conditional Access Lab/
 ## 5. Operational Commands & Quickstart
 
 ### 5.1 Execute Master Test Suite (Locally)
-To run all 64 automated verification checks across the 9 specialized test suites (including 13 Native Pester assertions):
+To run all 72 automated verification checks across the 9 specialized test suites (including 14 Native Pester assertions):
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tests\run_all_tests.ps1 -ExportEvidence
 ```
-The test runner itemizes verification checks across two distinct offline tiers (38 Local Unit Tests and 26 Mocked Graph API Integration Tests) and generates machine-readable execution telemetry in [`evidence/test-results.json`](./evidence/test-results.json). Independently exported live staging tenant baseline state is preserved separately in [`evidence/live-tenant-state/`](./evidence/live-tenant-state/).
+The test runner itemizes verification checks across two distinct offline tiers (46 Local Unit Tests and 26 Mocked Graph API Integration Tests) and generates machine-readable execution telemetry in [`evidence/test-results.json`](./evidence/test-results.json). Independently exported live staging tenant baseline state is preserved separately in [`evidence/live-tenant-state/`](./evidence/live-tenant-state/).
 
 ### 5.2 Plan & Deploy Conditional Access Policies
 ```powershell

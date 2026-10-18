@@ -156,21 +156,28 @@ Invoke-GuardedTestSuite -SuiteName "Governance & PIM Pre-Flight Syntax & Paramet
                        -Description "3 pre-flight tests verifying AST syntax and parameter definitions for access_review.ps1, configure_pim.ps1, and privileged_role_audit.ps1."
 
 # 6. Pester Native Test Matrix
+$expectedPesterCount = 14
 $script:totalTestSteps++
-$script:totalVerificationChecks += 14
 Write-Host "`n----------------------------------------------------------" -ForegroundColor Gray
 Write-Host "[Master Runner] Executing Native Pester Assertion Matrix" -ForegroundColor Cyan
-Write-Host "Category: Local Unit Test | Checks: 14" -ForegroundColor DarkCyan
-Write-Host "----------------------------------------------------------" -ForegroundColor Gray
 
 $pesterResult = Invoke-Pester -Path "$PSScriptRoot\" -PassThru
+$pDiscovered = if ($null -ne $pesterResult.TotalCount) { $pesterResult.TotalCount } else { ($pesterResult.PassedCount + $pesterResult.FailedCount) }
+$script:totalVerificationChecks += $pDiscovered
+Write-Host "Category: Local Unit Test | Expected: $expectedPesterCount | Discovered: $pDiscovered" -ForegroundColor DarkCyan
+Write-Host "----------------------------------------------------------" -ForegroundColor Gray
+
 $pesterStatus = "PASS"
 $pPassed = $pesterResult.PassedCount
 $pFailed = $pesterResult.FailedCount
 $script:totalPassedChecks += $pPassed
 $script:totalFailedChecks += $pFailed
 
-if ($pFailed -gt 0) {
+if ($pDiscovered -ne $expectedPesterCount) {
+    $pesterStatus = "FAIL"
+    $suiteFailures.Add("Pester Matrix (Discovery count mismatch: expected $expectedPesterCount assertions, discovered $pDiscovered)")
+    Write-Host "  [RESULT] FAILED: Discovered assertion count ($pDiscovered) does not match expected matrix count ($expectedPesterCount)." -ForegroundColor Red
+} elseif ($pFailed -gt 0) {
     $pesterStatus = "FAIL"
     $suiteFailures.Add("Pester Matrix ($pFailed failed assertions)")
     Write-Host "  [RESULT] FAILED: $pFailed Pester assertion(s) failed." -ForegroundColor Red
@@ -182,10 +189,10 @@ if ($pFailed -gt 0) {
 $suiteRecords.Add([PSCustomObject]@{
     suiteName = "Native Pester Assertion Matrix"
     category  = "Local Unit Test"
-    script    = "tests/identity_suite.Tests.ps1"
+    script    = "tests/*.Tests.ps1"
     status    = $pesterStatus
-    count     = 14
-    details   = "14 Pester assertions covering credential entropy, RBAC department routing, break-glass safeguard gates, policy file inventories, schema compliance, report-only default states, break-glass exclusion checks, git hygiene, secret scanning, and evidence exporter data sanitization."
+    count     = $pDiscovered
+    details   = "$pDiscovered Pester assertions covering credential entropy, RBAC department routing, break-glass safeguard gates, policy file inventories, schema compliance, report-only default states, break-glass exclusion checks, git hygiene, secret scanning, and evidence exporter data sanitization."
 })
 
 $elapsed = ((Get-Date) - $testStartTime).TotalSeconds
@@ -219,6 +226,9 @@ if ($ExportEvidence -or $ExportEvidencePath) {
         "local://workstation/test-execution"
     }
 
+    $unitChecks = ($suiteRecords | Where-Object { $_.category -eq "Local Unit Test" } | Measure-Object -Property count -Sum).Sum
+    $integrationChecks = ($suiteRecords | Where-Object { $_.category -eq "Mocked Graph API Integration Test" } | Measure-Object -Property count -Sum).Sum
+
     $evidenceObject = [PSCustomObject]@{
         testSuite         = "Microsoft Entra ID Zero Trust & Identity-as-Code Engine"
         executedAtUtc     = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
@@ -241,8 +251,8 @@ if ($ExportEvidence -or $ExportEvidencePath) {
             durationSeconds         = [math]::Round($elapsed, 2)
             calculationMethodology  = "Itemized check count across 9 test suites: Schema validation (11), Group resolution (1), User resolution (1), Drift & canonical normalization engine (7), Snapshot integrity (9), Deployment failure & rollback recovery (10), Lifecycle engine (16), Governance pre-flight (3), and Native Pester matrix (14)."
             testTiersBreakdown      = [PSCustomObject]@{
-                localUnitTestsChecks            = 46
-                mockedGraphApiIntegrationChecks = 26
+                localUnitTestsChecks            = [int]$unitChecks
+                mockedGraphApiIntegrationChecks = [int]$integrationChecks
             }
         }
         testSuites        = $suiteRecords

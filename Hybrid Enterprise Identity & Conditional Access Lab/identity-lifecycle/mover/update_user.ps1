@@ -191,56 +191,82 @@ if ($TargetGroupId) {
 }
 
 # 5. Privilege Creep Remediation: Remove Legacy RBAC Groups
-Write-Host "`n[Step 3/5] Resolving managed RBAC group immutable IDs and inspecting memberships..." -ForegroundColor Cyan
+Write-Host "`n[Step 3/5] Resolving and validating complete managed RBAC group immutable IDs..." -ForegroundColor Cyan
 
-$resolvedManagedGroupIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+$requiredManagedRoles = @("SEC-StandardUsers", "SEC-Admins", "SEC-Contractors")
+$resolvedRoleMap = [ordered]@{}
 
-# A. Direct parameter input of immutable IDs
-if ($ManagedRbacGroupIds -and $ManagedRbacGroupIds.Count -gt 0) {
-    foreach ($gid in $ManagedRbacGroupIds) {
+# A. Direct parameter input of immutable IDs (if caller provided specific mapping)
+if ($ManagedRbacGroupIds -and $ManagedRbacGroupIds.Count -ge $requiredManagedRoles.Count) {
+    for ($i = 0; $i -lt $requiredManagedRoles.Count; $i++) {
+        $gid = $ManagedRbacGroupIds[$i]
         if (-not [string]::IsNullOrWhiteSpace($gid)) {
-            [void]$resolvedManagedGroupIds.Add($gid.Trim())
+            $resolvedRoleMap[$requiredManagedRoles[$i]] = $gid.Trim()
         }
     }
 }
 
-# B. Configuration file input of immutable IDs
+# B. Configuration file input of immutable IDs (evaluated per individual role)
 $mappingPath = if ($MappingConfigFile) { $MappingConfigFile } else { Join-Path $PSScriptRoot "..\..\config\identity-mapping.json" }
-if ($resolvedManagedGroupIds.Count -eq 0 -and (Test-Path $mappingPath)) {
+$mapContent = $null
+if (Test-Path $mappingPath) {
     try {
         $mapContent = Get-Content -Path $mappingPath -Raw | ConvertFrom-Json
-        if ($mapContent.groups) {
-            $managedNames = @("SEC-StandardUsers", "SEC-Admins", "SEC-Contractors")
-            foreach ($prop in $mapContent.groups.PSObject.Properties) {
-                if ($managedNames -contains $prop.Name -and $prop.Value -and $prop.Value -notmatch "^<.*>$") {
-                    [void]$resolvedManagedGroupIds.Add($prop.Value.Trim())
-                }
-            }
-        }
     } catch {
-        Write-Warning "Failed reading mapping config at '$mappingPath': $($_.Exception.Message)"
+        Write-Warning "Could not read mapping config at '$mappingPath': $($_.Exception.Message)"
     }
 }
 
-# C. Fallback: Resolve managed role names in Graph with strict fail-closed uniqueness check
-if ($resolvedManagedGroupIds.Count -eq 0) {
-    $managedRoleNames = @("SEC-StandardUsers", "SEC-Admins", "SEC-Contractors")
-    foreach ($mName in $managedRoleNames) {
-        $mUri = "https://graph.microsoft.com/v1.0/groups?`$filter=displayName eq '$mName'"
-        try {
-            $mResp = Invoke-MgGraphRequest -Method GET -Uri $mUri -ErrorAction Stop
-            $matched = @($mResp.value)
-            if ($matched.Count -eq 1) {
-                [void]$resolvedManagedGroupIds.Add($matched[0].id)
-            } elseif ($matched.Count -gt 1) {
-                $stageResults["Stage2_LegacyPrivilegePurge"] = "Failed: DuplicateGroupAmbiguity ($mName)"
-                Write-Error "[FAIL-CLOSED GATE] Multiple groups ($($matched.Count)) match managed role name '$mName'. Risk of unintended removal due to naming collision! Supply -ManagedRbacGroupIds."
-                exit 1
-            }
-        } catch {
-            Write-Warning "Could not resolve immutable ID for managed role group '$mName': $($_.Exception.Message)"
+# C. Resolve each individual required managed role (from config mapping first, then Graph with fail-closed checks)
+foreach ($roleName in $requiredManagedRoles) {
+    if ($resolvedRoleMap.ContainsKey($roleName)) {
+        continue
+    }
+
+    # Check mapping config for this specific role
+    if ($mapContent -and $mapContent.groups -and $mapContent.groups.PSObject.Properties[$roleName]) {
+        $confVal = $mapContent.groups.PSObject.Properties[$roleName].Value
+        if ($confVal -and $confVal -notmatch "^<.*>$") {
+            $resolvedRoleMap[$roleName] = $confVal.Trim()
+            continue
         }
     }
+
+    # Fallback to Graph resolution for this role with strict fail-closed validation
+    $mUri = "https://graph.microsoft.com/v1.0/groups?`$filter=displayName eq '$roleName'"
+    try {
+        $mResp = Invoke-MgGraphRequest -Method GET -Uri $mUri -ErrorAction Stop
+        $matched = @($mResp.value)
+        if ($matched.Count -eq 1) {
+            $resolvedRoleMap[$roleName] = $matched[0].id
+        } elseif ($matched.Count -gt 1) {
+            $stageResults["Stage2_LegacyPrivilegePurge"] = "Failed: DuplicateGroupAmbiguity ($roleName)"
+            Write-Error "[FAIL-CLOSED GATE] Multiple groups ($($matched.Count)) match managed role name '$roleName'. Cannot resolve unambiguous immutable ID! Supply -ManagedRbacGroupIds."
+            exit 1
+        } else {
+            $stageResults["Stage2_LegacyPrivilegePurge"] = "Failed: ManagedRoleNotFound ($roleName)"
+            Write-Error "[FAIL-CLOSED GATE] Required managed RBAC group '$roleName' was not found in tenant. Aborting mover transition to prevent incomplete privilege reconciliation."
+            exit 1
+        }
+    } catch {
+        $stageResults["Stage2_LegacyPrivilegePurge"] = "Failed: GraphQueryError ($roleName - $($_.Exception.Message))"
+        Write-Error "[FAIL-CLOSED GATE] Failed querying Graph for required managed group '$roleName': $($_.Exception.Message). Aborting mover transition."
+        exit 1
+    }
+}
+
+# D. Strict assertion: All required managed roles MUST be resolved
+$missingRoles = @($requiredManagedRoles | Where-Object { -not $resolvedRoleMap.ContainsKey($_) })
+if ($missingRoles.Count -gt 0) {
+    $missingList = $missingRoles -join ", "
+    $stageResults["Stage2_LegacyPrivilegePurge"] = "Failed: IncompleteManagedRoleResolution ($missingList)"
+    Write-Error "[FAIL-CLOSED GATE] Incomplete managed RBAC group set. Could not resolve required role(s): $missingList. Halting transition before tenant state modification."
+    exit 1
+}
+
+$resolvedManagedGroupIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+foreach ($roleId in $resolvedRoleMap.Values) {
+    [void]$resolvedManagedGroupIds.Add($roleId)
 }
 
 Write-Host "  -> Tracking $($resolvedManagedGroupIds.Count) managed RBAC group immutable IDs for privilege creep remediation." -ForegroundColor Gray

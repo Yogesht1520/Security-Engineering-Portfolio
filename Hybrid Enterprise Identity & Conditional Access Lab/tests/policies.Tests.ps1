@@ -8,6 +8,8 @@ Describe "Conditional Access Declarative Policy Validation" {
         $policiesPath = Join-Path $PSScriptRoot "..\policies"
         $schemaPath   = Join-Path $policiesPath "schema\conditional-access.schema.json"
         $deployScript = Join-Path $PSScriptRoot "..\scripts\deployment\deploy_ca_policies.ps1"
+        [void]$schemaPath
+        [void]$deployScript
     }
 
     Context "Policy File Inventory" {

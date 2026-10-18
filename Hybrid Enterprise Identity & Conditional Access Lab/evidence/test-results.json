@@ -1,7 +1,7 @@
 ﻿{
     "testSuite":  "Microsoft Entra ID Zero Trust \u0026 Identity-as-Code Engine",
-    "executedAtUtc":  "2026-10-18T17:50:12Z",
-    "gitCommitSha":  "96acfa8002d0ba3e63f7365c16a7ced3d2b70743",
+    "executedAtUtc":  "2026-10-18T18:31:07Z",
+    "gitCommitSha":  "31c991257f59936f572135a1fe9dd22e8da3f678",
     "gitHubActionsRunId":  "local-dev-execution",
     "gitHubActionsRunUrl":  "local://workstation/test-execution",
     "environment":  "GitHub Actions CI/CD \u0026 Local PowerShell Engine",
@@ -17,7 +17,7 @@
                            "passed":  72,
                            "failed":  0,
                            "skipped":  0,
-                           "durationSeconds":  12.41,
+                           "durationSeconds":  15.46,
                            "calculationMethodology":  "Itemized check count across 9 test suites: Schema validation (11), Group resolution (1), User resolution (1), Drift \u0026 canonical normalization engine (7), Snapshot integrity (9), Deployment failure \u0026 rollback recovery (10), Lifecycle engine (16), Governance pre-flight (3), and Native Pester matrix (14).",
                            "testTiersBreakdown":  {
                                                       "localUnitTestsChecks":  46,
@@ -92,7 +92,7 @@
                        {
                            "suiteName":  "Native Pester Assertion Matrix",
                            "category":  "Local Unit Test",
-                           "script":  "tests/identity_suite.Tests.ps1",
+                           "script":  "tests/*.Tests.ps1",
                            "status":  "PASS",
                            "count":  14,
                            "details":  "14 Pester assertions covering credential entropy, RBAC department routing, break-glass safeguard gates, policy file inventories, schema compliance, report-only default states, break-glass exclusion checks, git hygiene, secret scanning, and evidence exporter data sanitization."
