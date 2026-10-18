@@ -14,7 +14,7 @@ Describe "Conditional Access Declarative Policy Validation" {
 
     Context "Policy File Inventory" {
         It "Should contain all 11 required baseline policy files and schema" {
-            (Test-Path $schemaPath) | Should Be $true
+            (Test-Path $schemaPath) | Should -Be $true
             $expectedPolicies = @(
                 "CAP-001-location.json",
                 "CAP-002-admin-mfa.json",
@@ -30,7 +30,7 @@ Describe "Conditional Access Declarative Policy Validation" {
             )
 
             foreach ($pol in $expectedPolicies) {
-                (Test-Path (Join-Path $policiesPath $pol)) | Should Be $true
+                (Test-Path (Join-Path $policiesPath $pol)) | Should -Be $true
             }
         }
     }
@@ -38,14 +38,14 @@ Describe "Conditional Access Declarative Policy Validation" {
     Context "Schema Conformance" {
         It "Must validate all policy definitions with zero schema errors (-ValidateOnly)" {
             $null = & $deployScript -ValidateOnly
-            $LASTEXITCODE | Should Be 0
+            $LASTEXITCODE | Should -Be 0
         }
 
         It "All policies must default to Report-only mode during staging" {
             $policyFiles = Get-ChildItem -Path $policiesPath -Filter "*.json"
             foreach ($file in $policyFiles) {
                 $json = Get-Content $file.FullName -Raw | ConvertFrom-Json
-                $json.state | Should Be "enabledForReportingButNotEnforced"
+                $json.state | Should -Be "enabledForReportingButNotEnforced"
             }
         }
 
@@ -56,7 +56,7 @@ Describe "Conditional Access Declarative Policy Validation" {
             foreach ($file in $policyFiles) {
                 if ($file.Name -notin $excludedExemptionPolicies) {
                     $json = Get-Content $file.FullName -Raw | ConvertFrom-Json
-                    ($json.conditions.users.excludeGroups -contains "SEC-BreakGlass-Exclusion") | Should Be $true
+                    ($json.conditions.users.excludeGroups -contains "SEC-BreakGlass-Exclusion") | Should -Be $true
                 }
             }
         }
