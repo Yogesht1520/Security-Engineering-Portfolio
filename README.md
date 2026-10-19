@@ -31,9 +31,8 @@ documented like a real engineering deliverable, and designed to connect to the o
 this isn't 8 disconnected tutorials, it's one security stack built in layers:
 
 ```
-Detection Fundamentals  →  Automation & CI/CD  →  Cloud Infrastructure  →
-Live Monitoring (SIEM)  →  Network Segmentation  →  Identity & Access  →
-Incident Response
+Detection Fundamentals  →  Automation & CI/CD  →  Cloud Infrastructure  →  Live Monitoring (SIEM)  →
+Network Segmentation  →  Identity & Access  →  Incident Response
 ```
 
 ---
