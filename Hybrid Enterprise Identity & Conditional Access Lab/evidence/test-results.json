@@ -1,9 +1,9 @@
 ﻿{
   "testSuite": "Microsoft Entra ID Zero Trust & Identity-as-Code Engine",
-  "executedAtUtc": "2026-10-19T10:58:23Z",
-  "gitCommitSha": "3bfd613663b94ae292f90fa5a32b0a0e95973c54",
-  "gitHubActionsRunId": "39241166287",
-  "gitHubActionsRunUrl": "https://github.com/Yogesht1520/Security-Engineering-Portfolio/actions/runs/39241166287",
+  "executedAtUtc": "2026-10-19T11:31:58Z",
+  "gitCommitSha": "abe1d7bf00e72b2c60bb7b6a8fc51d7f011cc200",
+  "gitHubActionsRunId": "39245227262",
+  "gitHubActionsRunUrl": "https://github.com/Yogesht1520/Security-Engineering-Portfolio/actions/runs/39245227262",
   "environment": "GitHub Actions CI/CD & Local PowerShell Engine",
   "executionScope": {
     "mode": "Automated Offline CI/CD Test Matrix",
@@ -17,7 +17,7 @@
     "passed": 72,
     "failed": 0,
     "skipped": 0,
-    "durationSeconds": 12.1,
+    "durationSeconds": 9.28,
     "calculationMethodology": "Itemized check count across 9 test suites: Schema validation (11), Group resolution (1), User resolution (1), Drift & canonical normalization engine (7), Snapshot integrity (9), Deployment failure & rollback recovery (10), Lifecycle engine (16), Governance pre-flight (3), and Native Pester matrix (14).",
     "testTiersBreakdown": {
       "localUnitTestsChecks": 46,
