@@ -3,15 +3,15 @@
 ## 1. Executive Summary & Policy Matrix
 
 > **Staging & Governance Standard:** All policies follow strict enterprise change governance:
-> 1. `Report-only` (`enabledForReportingButNotEnforced`): Continuous telemetry gathering, impact assessment, and zero user disruption.
+> 1. `Report-only` (`enabledForReportingButNotEnforced`): Continuous telemetry gathering, impact assessment, and zero user disruption. (Current verified live deployment state across all 11 baseline policies).
 > 2. `Simulated`: Deterministic validation via Entra ID What-If evaluation engine.
-> 3. `Controlled Pilot`: Progressive enforcement on non-critical test groups.
-> 4. `Enforced`: Production enforcement backed by automated rollback snapshots.
+> 3. `Controlled Pilot`: Progressive enforcement on designated pilot test groups (planned rollout stage).
+> 4. `Enforced`: Production-wide enforcement backed by automated rollback snapshots (planned target stage).
 
 | Policy ID | Policy Name | Target Scope | Conditions / Signals | Grant / Session Control | Primary Threat Mitigated | Deployment State |
 |---|---|---|---|---|---|---|
 | **CAP-001** | Block Sign-in Outside Allowed Regions | All Users (Excl: `SEC-BreakGlass-Exclusion`) | Location: All locations, Exclude Trusted Countries | **Block Access** | Foreign credential-stuffing, adversary botnets (T1110.004) | **Report-only** (Simulated in What-If) |
-| **CAP-002** | Require Phishing-Resistant MFA for Admins | Directory Roles & `SEC-Admins` (Excl: `SEC-BreakGlass-Exclusion`) | All cloud apps, Any device | **Grant: Phishing-Resistant MFA (FIDO2 / WHfB)** | AiTM phishing, session hijack, credential replay (T1078.004) | **Report-only / Pilot** (Verified) |
+| **CAP-002** | Require Phishing-Resistant MFA for Privileged Roles | Directory Roles & `SEC-Admins` (Excl: `SEC-BreakGlass-Exclusion`) | All cloud apps, Any device | **Grant: Phishing-Resistant MFA (FIDO2 / WHfB)** | AiTM phishing, session hijack, credential replay (T1078.004) | **Report-only** (Baseline) |
 | **CAP-003** | Risk-Based Step-Up MFA | All Users (Excl: `SEC-BreakGlass-Exclusion`) | Sign-in risk: Medium & High (Entra ID Protection) | **Grant: Require MFA** | Anomalous sign-in tokens, impossible travel (T1078) | **Report-only** (Telemetry Audited) |
 | **CAP-004** | Block Legacy Authentication Protocols | All Users (Excl: `SEC-BreakGlass-Exclusion`) | Client apps: Exchange ActiveSync, Other legacy clients | **Block Access** | Basic auth spray, lack of MFA support (T1110.001) | **Report-only** (Simulated in What-If) |
 | **CAP-005** | Privileged Session Reauthentication | `SEC-Admins` & `SEC-Contractors` | Cloud apps: All | **Session: Sign-in frequency (8 hours), Never Persistent** | Session hijacking, stolen cookie replay (T1539) | **Report-only** (Telemetry Audited) |
@@ -43,7 +43,7 @@
 - **Conditions:** Any platform, any network
 - **Grant Controls:** Require Authentication Strength (`00000000-0000-0000-0000-000000000004` — Phishing-resistant MFA: FIDO2 Security Keys, Windows Hello for Business).
 - **Real-World Threat Mitigated:** Adversary-in-the-Middle (AiTM) reverse-proxy phishing kits (e.g. Evilginx) that capture session cookies and bypass standard SMS/Push MFA (MITRE ATT&CK T1078.004, T1556).
-- **Deployment State:** **Report-only** baseline; tested via interactive challenge.
+- **Deployment State:** Deployed in **Report-only** (`enabledForReportingButNotEnforced`) baseline mode; verified via interactive challenge. Staged for controlled pilot group validation prior to production-wide enforcement.
 
 ### CAP-003: Require MFA for Risky Sign-ins
 - **Assignment:** All Users

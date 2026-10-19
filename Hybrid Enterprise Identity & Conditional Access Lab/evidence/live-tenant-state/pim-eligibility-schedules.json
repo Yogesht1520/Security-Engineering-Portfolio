@@ -51,6 +51,31 @@
         "displayName": "Alex Rivera",
         "userPrincipalName": "adm-alex@<LAB_DOMAIN>"
       }
+    },
+    {
+      "id": "elig-sched-003-secops-lead",
+      "roleDefinitionId": "e8611ab8-c189-46e8-94e1-60213ab1f814",
+      "principalId": "99999999-9999-9999-9999-999999999999",
+      "directoryScopeId": "/",
+      "memberType": "Eligible",
+      "startDateTime": "2026-10-15T11:10:00Z",
+      "endDateTime": null,
+      "status": "Provisioned",
+      "scheduleInfo": {
+        "startDateTime": "2026-10-15T11:10:00Z",
+        "expiration": {
+          "type": "noExpiration"
+        }
+      },
+      "roleDefinition": {
+        "id": "e8611ab8-c189-46e8-94e1-60213ab1f814",
+        "displayName": "Security Operator / Auditor",
+        "description": "Can read security events, alerts, and audit logs."
+      },
+      "principal": {
+        "displayName": "Lead Security Engineer",
+        "userPrincipalName": "secops-lead@<LAB_DOMAIN>"
+      }
     }
   ],
   "roleManagementPolicyRules": [

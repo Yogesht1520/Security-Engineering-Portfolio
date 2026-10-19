@@ -30,16 +30,16 @@ flowchart TD
 
 ## 2. Privileged Role Tiering & Policy Matrix
 
-Administrative roles in this enterprise architecture are partitioned into strict tiers. Standing active permissions for human operators are prohibited; all roles require Just-in-Time (JIT) activation with strict controls:
+Administrative roles in this enterprise architecture are partitioned into strict tiers. Standing active permissions for human operators are prohibited; all roles require Just-in-Time (JIT) activation with strict controls matching the verified tenant-wide 4-hour maximum duration and approval governance:
 
 | Role Name | Tier | Assignment Type | Max Duration | Step-Up MFA | Justification / Ticket | Approver Required |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Global Administrator** | Tier-0 | **Eligible** (PIM) | 2 Hours | Phishing-Resistant | Mandatory Ticket # | Dual Approval (SecOps Lead) |
-| **Privileged Role Admin** | Tier-0 | **Eligible** (PIM) | 4 Hours | Phishing-Resistant | Mandatory Ticket # | Dual Approval |
-| **Security Administrator** | Tier-0 | **Eligible** (PIM) | 4 Hours | Phishing-Resistant | Mandatory Justification | Single Approver |
-| **Conditional Access Admin**| Tier-0 | **Eligible** (PIM) | 4 Hours | Phishing-Resistant | Mandatory Justification | Self-Approved with Audit |
-| **User Administrator** | Tier-1 | **Eligible** (PIM) | 8 Hours | Standard MFA | Mandatory Justification | None |
-| **Exchange / SharePoint** | Tier-1 | **Eligible** (PIM) | 8 Hours | Standard MFA | Mandatory Justification | None |
+| **Global Administrator** | Tier-0 | **Eligible** (PIM) | 4 Hours | Phishing-Resistant | Mandatory Ticket # | Dual Approval (SecOps Lead) |
+| **Privileged Role Admin** | Tier-0 | **Eligible** (PIM) | 4 Hours | Phishing-Resistant | Mandatory Ticket # | Dual Approval (SecOps Lead) |
+| **Security Administrator** | Tier-0 | **Eligible** (PIM) | 4 Hours | Phishing-Resistant | Mandatory Ticket # | Designated Approver (SecOps Lead) |
+| **Conditional Access Admin**| Tier-0 | **Eligible** (PIM) | 4 Hours | Phishing-Resistant | Mandatory Ticket # | Designated Approver (SecOps Lead) |
+| **User Administrator** | Tier-1 | **Eligible** (PIM) | 4 Hours | Standard MFA | Mandatory Justification | Designated Approver (IT Lead) |
+| **Exchange / SharePoint** | Tier-1 | **Eligible** (PIM) | 4 Hours | Standard MFA | Mandatory Justification | Designated Approver (IT Lead) |
 | **Emergency Break-Glass** | Tier-0 | **Active (Permanent)** | Permanent | Excluded from CA* | Physical Safe Procedure | Excluded from PIM |
 
 > [!IMPORTANT]
