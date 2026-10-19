@@ -1,101 +1,101 @@
-{
-    "testSuite":  "Microsoft Entra ID Zero Trust \u0026 Identity-as-Code Engine",
-    "executedAtUtc":  "2026-10-18T21:10:45Z",
-    "gitCommitSha":  "098248eaa577d5e3bf9e71421127c721da15c53a",
-    "gitHubActionsRunId":  "39166615646",
-    "gitHubActionsRunUrl":  "https://github.com/Yogesht1520/Security-Engineering-Portfolio/actions/runs/39166615646",
-    "environment":  "GitHub Actions Hosted Runner (windows-latest)",
-    "executionScope":  {
-                           "mode":  "Automated Offline CI/CD Test Matrix",
-                           "liveTenantConnected":  false,
-                           "mockedGraphApiEmulation":  true,
-                           "independentLiveEvidence":  "evidence/live-tenant-state/live-tenant-state.json",
-                           "scopeNote":  "This report documents local AST syntax, JSON schema conformance, cryptographic snapshot integrity, and mocked Graph API deployment transactions. Live tenant state is documented independently via dedicated read-only tenant exports."
-                       },
-    "resultsSummary":  {
-                           "totalVerificationChecks":  72,
-                           "passed":  72,
-                           "failed":  0,
-                           "skipped":  0,
-                           "durationSeconds":  7.5,
-                           "calculationMethodology":  "Itemized check count across 9 test suites: Schema validation (11), Group resolution (1), User resolution (1), Drift \u0026 canonical normalization engine (7), Snapshot integrity (9), Deployment failure \u0026 rollback recovery (10), Lifecycle engine (16), Governance pre-flight (3), and Native Pester matrix (14).",
-                           "testTiersBreakdown":  {
-                                                      "localUnitTestsChecks":  46,
-                                                      "mockedGraphApiIntegrationChecks":  26
-                                                  }
-                       },
-    "testSuites":  [
-                       {
-                           "suiteName":  "Declarative Policy Schema \u0026 Baseline Conformance",
-                           "category":  "Local Unit Test",
-                           "script":  "tests/schema/test_policy_schema.ps1",
-                           "status":  "PASS",
-                           "count":  11,
-                           "details":  "All 11 baseline policy definitions validate cleanly against Draft-07 JSON Schema (conditional-access.schema.json) with strict type checking, regex patterns, and required property constraints."
-                       },
-                       {
-                           "suiteName":  "Group Reference Resolution Gate",
-                           "category":  "Local Unit Test",
-                           "script":  "tests/identity/test_group_resolution.ps1",
-                           "status":  "PASS",
-                           "count":  1,
-                           "details":  "Resolves declarative security group display names to tenant object IDs and validates group existence."
-                       },
-                       {
-                           "suiteName":  "User Reference Resolution Gate",
-                           "category":  "Local Unit Test",
-                           "script":  "tests/identity/test_user_resolution.ps1",
-                           "status":  "PASS",
-                           "count":  1,
-                           "details":  "Resolves break-glass user identities and emergency exclusion references to directory object IDs."
-                       },
-                       {
-                           "suiteName":  "Declarative Policy Drift Detection Engine",
-                           "category":  "Mocked Graph API Integration Test",
-                           "script":  "tests/deployment/test_compare_policies.ps1",
-                           "status":  "PASS",
-                           "count":  7,
-                           "details":  "7 drift \u0026 canonical normalization tests: Identity equivalence, state drift, array-order normalization, key-order normalization, server metadata stripping, null vs missing property handling, and deep field-level difference reporting."
-                       },
-                       {
-                           "suiteName":  "Snapshot Cryptographic Integrity \u0026 Anti-Tamper Engine",
-                           "category":  "Mocked Graph API Integration Test",
-                           "script":  "tests/deployment/test_snapshot_integrity.ps1",
-                           "status":  "PASS",
-                           "count":  9,
-                           "details":  "9 security test assertions: Valid sealed snapshot, modified policy payload, tampered manifest, tampered checksums, unlisted extraneous file injection, missing file, duplicate policy ID, corrupt JSON, and path traversal rejection."
-                       },
-                       {
-                           "suiteName":  "Deployment Failure \u0026 In-Flight Atomic Rollback",
-                           "category":  "Mocked Graph API Integration Test",
-                           "script":  "tests/deployment/test_deployment_failure_recovery.ps1",
-                           "status":  "PASS",
-                           "count":  10,
-                           "details":  "10 transaction assertions: Successful deployment, HTTP 400 rejection, HTTP 403 permission failure, HTTP 429 throttling, HTTP 500 server error, timeout after PATCH, timeout after POST, rollback failure, rollback verification mismatch, and duplicate policy matching ambiguity."
-                       },
-                       {
-                           "suiteName":  "JML Identity Lifecycle State Machine Engine",
-                           "category":  "Local Unit Test",
-                           "script":  "tests/lifecycle/test_lifecycle_engine.ps1",
-                           "status":  "PASS",
-                           "count":  16,
-                           "details":  "16 unit tests: 24-character cryptographic password entropy, department-to-RBAC mappings, emergency break-glass account safeguard, AST parser syntax checks across all lifecycle scripts, and duplicate identity lookup error matrix (404 proceed, 200 exist, 403, 429, 500, timeout, and malformed fail-closed)."
-                       },
-                       {
-                           "suiteName":  "Governance \u0026 PIM Pre-Flight Syntax \u0026 Parameter Engine",
-                           "category":  "Local Unit Test",
-                           "script":  "tests/governance/test_governance_scripts.ps1",
-                           "status":  "PASS",
-                           "count":  3,
-                           "details":  "3 pre-flight tests verifying AST syntax and parameter definitions for access_review.ps1, configure_pim.ps1, and privileged_role_audit.ps1."
-                       },
-                       {
-                           "suiteName":  "Native Pester Assertion Matrix",
-                           "category":  "Local Unit Test",
-                           "script":  "tests/*.Tests.ps1",
-                           "status":  "PASS",
-                           "count":  14,
-                           "details":  "14 Pester assertions covering credential entropy, RBAC department routing, break-glass safeguard gates, policy file inventories, schema compliance, report-only default states, break-glass exclusion checks, git hygiene, secret scanning, and evidence exporter data sanitization."
-                       }
-                   ]
+﻿{
+  "testSuite": "Microsoft Entra ID Zero Trust & Identity-as-Code Engine",
+  "executedAtUtc": "2026-10-19T10:58:23Z",
+  "gitCommitSha": "3bfd613663b94ae292f90fa5a32b0a0e95973c54",
+  "gitHubActionsRunId": "39241166287",
+  "gitHubActionsRunUrl": "https://github.com/Yogesht1520/Security-Engineering-Portfolio/actions/runs/39241166287",
+  "environment": "GitHub Actions CI/CD & Local PowerShell Engine",
+  "executionScope": {
+    "mode": "Automated Offline CI/CD Test Matrix",
+    "liveTenantConnected": false,
+    "mockedGraphApiEmulation": true,
+    "independentLiveEvidence": "evidence/live-tenant-state/live-tenant-state.json",
+    "scopeNote": "This report documents local AST syntax, JSON schema conformance, cryptographic snapshot integrity, and mocked Graph API deployment transactions. Live tenant state is documented independently via dedicated read-only tenant exports."
+  },
+  "resultsSummary": {
+    "totalVerificationChecks": 72,
+    "passed": 72,
+    "failed": 0,
+    "skipped": 0,
+    "durationSeconds": 12.1,
+    "calculationMethodology": "Itemized check count across 9 test suites: Schema validation (11), Group resolution (1), User resolution (1), Drift & canonical normalization engine (7), Snapshot integrity (9), Deployment failure & rollback recovery (10), Lifecycle engine (16), Governance pre-flight (3), and Native Pester matrix (14).",
+    "testTiersBreakdown": {
+      "localUnitTestsChecks": 46,
+      "mockedGraphApiIntegrationChecks": 26
+    }
+  },
+  "testSuites": [
+    {
+      "suiteName": "Declarative Policy Schema & Baseline Conformance",
+      "category": "Local Unit Test",
+      "script": "tests/schema/test_policy_schema.ps1",
+      "status": "PASS",
+      "count": 11,
+      "details": "All 11 baseline policy definitions validate cleanly against Draft-07 JSON Schema (conditional-access.schema.json) with strict type checking, regex patterns, and required property constraints."
+    },
+    {
+      "suiteName": "Group Reference Resolution Gate",
+      "category": "Local Unit Test",
+      "script": "tests/identity/test_group_resolution.ps1",
+      "status": "PASS",
+      "count": 1,
+      "details": "Resolves declarative security group display names to tenant object IDs and validates group existence."
+    },
+    {
+      "suiteName": "User Reference Resolution Gate",
+      "category": "Local Unit Test",
+      "script": "tests/identity/test_user_resolution.ps1",
+      "status": "PASS",
+      "count": 1,
+      "details": "Resolves break-glass user identities and emergency exclusion references to directory object IDs."
+    },
+    {
+      "suiteName": "Declarative Policy Drift Detection Engine",
+      "category": "Mocked Graph API Integration Test",
+      "script": "tests/deployment/test_compare_policies.ps1",
+      "status": "PASS",
+      "count": 7,
+      "details": "7 drift & canonical normalization tests: Identity equivalence, state drift, array-order normalization, key-order normalization, server metadata stripping, null vs missing property handling, and deep field-level difference reporting."
+    },
+    {
+      "suiteName": "Snapshot Cryptographic Integrity & Anti-Tamper Engine",
+      "category": "Mocked Graph API Integration Test",
+      "script": "tests/deployment/test_snapshot_integrity.ps1",
+      "status": "PASS",
+      "count": 9,
+      "details": "9 security test assertions: Valid sealed snapshot, modified policy payload, tampered manifest, tampered checksums, unlisted extraneous file injection, missing file, duplicate policy ID, corrupt JSON, and path traversal rejection."
+    },
+    {
+      "suiteName": "Deployment Failure & In-Flight Atomic Rollback",
+      "category": "Mocked Graph API Integration Test",
+      "script": "tests/deployment/test_deployment_failure_recovery.ps1",
+      "status": "PASS",
+      "count": 10,
+      "details": "10 transaction assertions: Successful deployment, HTTP 400 rejection, HTTP 403 permission failure, HTTP 429 throttling, HTTP 500 server error, timeout after PATCH, timeout after POST, rollback failure, rollback verification mismatch, and duplicate policy matching ambiguity."
+    },
+    {
+      "suiteName": "JML Identity Lifecycle State Machine Engine",
+      "category": "Local Unit Test",
+      "script": "tests/lifecycle/test_lifecycle_engine.ps1",
+      "status": "PASS",
+      "count": 16,
+      "details": "16 unit tests: 24-character cryptographic password entropy, department-to-RBAC mappings, emergency break-glass account safeguard, AST parser syntax checks across all lifecycle scripts, and duplicate identity lookup error matrix (404 proceed, 200 exist, 403, 429, 500, timeout, and malformed fail-closed)."
+    },
+    {
+      "suiteName": "Governance & PIM Pre-Flight Syntax & Parameter Engine",
+      "category": "Local Unit Test",
+      "script": "tests/governance/test_governance_scripts.ps1",
+      "status": "PASS",
+      "count": 3,
+      "details": "3 pre-flight tests verifying AST syntax and parameter definitions for access_review.ps1, configure_pim.ps1, and privileged_role_audit.ps1."
+    },
+    {
+      "suiteName": "Native Pester Assertion Matrix",
+      "category": "Local Unit Test",
+      "script": "tests/*.Tests.ps1",
+      "status": "PASS",
+      "count": 14,
+      "details": "14 Pester assertions covering credential entropy, RBAC department routing, break-glass safeguard gates, policy file inventories, schema compliance, report-only default states, break-glass exclusion checks, git hygiene, secret scanning, and evidence exporter data sanitization."
+    }
+  ]
 }
