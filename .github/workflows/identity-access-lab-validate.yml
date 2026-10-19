@@ -161,7 +161,7 @@ jobs:
             IGNORE_FILE="../$IGNORE_FILE"
           fi
           echo "Active ignore baseline: $IGNORE_FILE"
-          $GITLEAKS_CMD git --source=. --verbose --log-opts="--all" --gitleaks-ignore-path="$IGNORE_FILE" --redact
+          $GITLEAKS_CMD git --verbose --log-opts="--all" --gitleaks-ignore-path="$IGNORE_FILE" --redact .
 
       - name: Verify No Sensitive Files Committed
         shell: bash
