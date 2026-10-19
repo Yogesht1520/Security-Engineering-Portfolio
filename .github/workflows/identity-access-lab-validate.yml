@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate-policies:
@@ -36,6 +36,8 @@ jobs:
   master-test-matrix:
     name: "Comprehensive Master Test Suite & Pester Matrix"
     runs-on: windows-latest
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: 'Hybrid Enterprise Identity & Conditional Access Lab'
