@@ -34,10 +34,10 @@ This project demonstrates a **complete, end-to-end Digital Forensics & Incident 
 |  (8.13 GB ELF64 Core Dump)       (35.74 GB VDI Clone)   Restoration      |
 |           |                               |                              |
 |           v                               v                              |
-|   [Volatility 3 v2.26.0]         [Autopsy 4.23.1 via VMDK]               |
-|   - Process Tree & Cmdline       - NTFS $MFT Cryptographic Listing       |
-|   - No socket artifacts in RAM   - 4-Second File Transformation Burst    |
-|   - Clean Memory Protections     - Extension Mismatch Detection          |
+|   [Volatility 3 Framework 2.28.2] [Autopsy 4.23.1 via VMDK]              |
+|   - Process Tree & Cmdline        - NTFS $MFT Cryptographic Listing      |
+|   - 0 Active Sockets (netscan)    - 4-Second File Transformation Burst   |
+|   - Clean Memory Protections      - Extension Mismatch Detection         |
 |           +-------------------------------+                              |
 |                           v                                              |
 |      [Incident Response Report: docs/INCIDENT_RESPONSE_REPORT.md]        |
@@ -58,7 +58,8 @@ ransomware-dfir-lab/
 ├── simulation/
 │   ├── custom_behavior_sim.py           <- Controlled ransomware simulation tool (v1.2.12)
 │   ├── test_crash_recovery.py           <- 15-scenario automated unit & crash recovery suite
-│   └── atomic_red_team_tests.md         <- MITRE ATT&CK test procedure plan
+│   ├── TEST_RESULTS.md                  <- 15/15 passed unit test execution record & environment
+│   └── atomic_red_team_tests.md         <- MITRE ATT&CK test procedure plan (Reference-only)
 ├── forensics/
 │   ├── acquisition/
 │   │   ├── EVIDENCE_MANIFEST.md         <- Master evidence inventory & chain-of-custody ledger
@@ -100,7 +101,7 @@ To ensure forensic reproducibility, exact tool versions and verified binary dige
 
 | Tool | Exact Release Version | Binary Executable SHA-256 Digest | Role | Execution Host | Invocation Method |
 |---|---|---|---|---|---|
-| **Volatility 3** | Framework 2.26.0 | `664102407BC13906AC0A401A737028334907C0E235AB9DFAAF94A301A50687B3` | Volatile Memory Forensics | Windows 11 Physical Host | `vol.exe -f <raw> <plugin>` |
+| **Volatility 3** | Framework 2.28.2 | `664102407BC13906AC0A401A737028334907C0E235AB9DFAAF94A301A50687B3` | Volatile Memory Forensics | Windows 11 Physical Host | `vol.exe -f <raw> <plugin>` |
 | **Autopsy** | 4.23.1 (TSK 4.12.1) | `EE790ADFCF8436D7B128DDB43D6F6DF1A8404DF7612972B2BEF7022B4F27BF69` | Post-Mortem Disk & MFT Analysis | Windows 11 Physical Host | GUI / SQLite Timeline Engine |
 | **VirtualBox** | 7.1.6 r167084 | `178E016ED38CB6E369A5C17C6C960C176674B9C864030D8CE0AD2867613BECFF` | Hypervisor & Acquisition | Windows 11 Physical Host | `VBoxManage.exe` CLI |
 | **Python (Host)** | 3.13.1 | Built-in CPython Host Distribution | Volatility & Hash Runtime | Windows 11 Physical Host | Host Python Runtime |
@@ -144,7 +145,7 @@ To ensure strict network isolation without contaminating the environment:
 | Phase | Description | Deliverable / Artifact | Status |
 |---|---|---|---|
 | **Phase 0** | Safe Environment Setup | Network isolation confirmed, baseline snapshot captured | ✅ **COMPLETE** |
-| **Phase 1** | Controlled Simulation Execution | 8 canary files transformed, run ID `B67F15E3`, test harness passed | ✅ **COMPLETE** |
+| **Phase 1** | Controlled Simulation Execution | 8 canary files transformed, run ID `B67F15E3`, test harness passed ([TEST_RESULTS.md](./simulation/TEST_RESULTS.md)) | ✅ **COMPLETE** |
 | **Phase 2** | Evidence Acquisition | 8.13 GB RAM (`.raw`) + 35.74 GB Disk (`.vmdk`), cryptographically hashed | ✅ **COMPLETE** |
 | **Phase 3** | Memory Forensics (Volatility 3) | Process tree, Notepad session decode, no active socket structures in RAM, clean memory | ✅ **COMPLETE** |
 | **Phase 4** | Disk Forensics (Autopsy 4.23.1) | MFT extraction, 4-second file transformation timeline, extension mismatch analysis | ✅ **COMPLETE** |
@@ -154,8 +155,13 @@ To ensure strict network isolation without contaminating the environment:
 ---
 
 ## Primary Deliverable
+ 
+The primary deliverable is **[`docs/INCIDENT_RESPONSE_REPORT.md`](./docs/INCIDENT_RESPONSE_REPORT.md)** — a formal, consulting-grade Incident Response Report structured around the SANS PICERL lifecycle. 
 
-The primary deliverable is **[`docs/INCIDENT_RESPONSE_REPORT.md`](./docs/INCIDENT_RESPONSE_REPORT.md)** — a formal, consulting-grade Incident Response Report structured around the SANS PICERL lifecycle. It covers:
+> **Deliverable Format Notice:**  
+> The report is maintained directly in GitHub-flavored Markdown (`docs/INCIDENT_RESPONSE_REPORT.md`) for version control, interactive file/code linking, and GitHub web viewing. For client presentation or archival submission, it renders seamlessly to a formal corporate PDF (e.g., via Pandoc, VS Code Markdown PDF, or browser print-to-PDF).
+
+It covers:
 * **Executive Summary:** Incident scope, blast radius, and business impact for leadership and legal counsel.
 * **Correlated Timeline:** Correlating Volatility memory structures and Autopsy NTFS MFT records down to the second.
 * **Cryptographic Recovery Verification:** Complete before-and-after SHA-256 verification proving 100% data recovery without paying extortion.

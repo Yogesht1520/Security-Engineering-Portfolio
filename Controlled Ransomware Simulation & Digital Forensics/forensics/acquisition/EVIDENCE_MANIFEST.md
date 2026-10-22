@@ -44,7 +44,7 @@ All tool binaries were verified with cryptographic SHA-256 digests prior to evid
 
 | Tool Name | Exact Release Version | Binary Executable SHA-256 Digest | Role in Evidence Handling | Execution Environment |
 |---|---|---|---|---|
-| **Volatility 3** | Framework 2.26.0 | `664102407BC13906AC0A401A737028334907C0E235AB9DFAAF94A301A50687B3` | Volatile Memory Forensics | Host (Win 11 x64, Python 3.13) |
+| **Volatility 3** | Framework 2.28.2 | `664102407BC13906AC0A401A737028334907C0E235AB9DFAAF94A301A50687B3` | Volatile Memory Forensics | Host (Win 11 x64, Python 3.13) |
 | **Autopsy** | 4.23.1 (TSK 4.12.1) | `EE790ADFCF8436D7B128DDB43D6F6DF1A8404DF7612972B2BEF7022B4F27BF69` | Post-Mortem Disk & MFT Analysis | Host (Win 11 x64) |
 | **VirtualBox** | 7.1.6 r167084 | `178E016ED38CB6E369A5C17C6C960C176674B9C864030D8CE0AD2867613BECFF` | Hypervisor, Memory Dump, Disk Clone | Host (Win 11 x64) |
 | **PowerShell** | 7.x / 5.1 | Built-in Windows Runtime (`powershell.exe`) | Cryptographic Verification (`Get-FileHash`) | Host (Win 11 x64) |
@@ -58,6 +58,6 @@ All tool binaries were verified with cryptographic SHA-256 digests prior to evid
 | 2026-10-22 22:40:12 | **EVD-001** | Live RAM core dump acquired via hypervisor CLI | Guest VM `DFIR-SimVM` | Analyst Yogesh T | `E:\ForensicEvidence\DFIR-Lab-001\DFIR-SimVM-memory.raw` | SHA-256 recorded: `198A69B7...` |
 | 2026-10-22 22:45:00 | **EVD-002** | Target VM powered down; bitstream VDI disk cloned | Hypervisor Storage | Analyst Yogesh T | `E:\ForensicEvidence\DFIR-Lab-001\DFIR-SimVM-disk.vdi` | SHA-256 recorded: `33695DE6...` |
 | 2026-10-22 23:00:15 | **EVD-003** | EVD-002 converted to VMDK container for Autopsy | Analyst Yogesh T | Analyst Yogesh T | `E:\ForensicEvidence\DFIR-Lab-001\DFIR-SimVM-disk.vmdk` | Independent SHA-256: `98E32CEA...` |
-| 2026-10-23 00:30:00 | **EVD-001** | Memory analysis executed via Volatility 3 v2.26.0 | Analyst Yogesh T | Volatility Engine | Workstation In-Memory / Analysis Scratch | Re-verified hash before plugin execution |
+| 2026-10-23 00:30:00 | **EVD-001** | Memory analysis executed via Volatility 3 Framework 2.28.2 | Analyst Yogesh T | Volatility Engine | Workstation In-Memory / Analysis Scratch | Re-verified hash before plugin execution |
 | 2026-10-23 01:15:00 | **EVD-003** | VMDK ingested into Autopsy Case `DFIR-Lab-001` | Analyst Yogesh T | Autopsy / TSK | `E:\ForensicEvidence\DFIR-Lab-001\AutopsyCase\` | Partition vol6 mounted; MFT parsed |
 | 2026-10-23 01:41:00 | Target VM | VM restored to clean pre-simulation baseline | Analyst Yogesh T | VirtualBox Hypervisor | VirtualBox VM Directory | Snapshot restored 100% verified |

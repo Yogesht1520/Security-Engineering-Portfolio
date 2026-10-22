@@ -1,19 +1,29 @@
 # Atomic Red Team Test Plan
 # Ransomware Behavior Simulation — MITRE ATT&CK Mapped
 
-> **Status:** To be executed inside the air-gapped VM only.
-> **Prerequisites:** Atomic Red Team installed on VM, network adapter verified as "Not Attached," clean baseline snapshot taken.
-> **Reference:** https://github.com/redcanaryco/atomic-red-team
+> **Scope Notice:** **REFERENCE-ONLY TEST PROCEDURE PLAN**  
+> **Reference Repository:** https://github.com/redcanaryco/atomic-red-team  
+>
+> ### Execution Scope & Test Exclusion Status for Primary Run (Run ID `B67F15E3`)
+> The primary investigation documented in this repository (`DFIR-Lab-001`) was driven **exclusively** by the purpose-built script [`simulation/custom_behavior_sim.py`](./custom_behavior_sim.py) to maintain a deterministic, tightly bounded single-script telemetry baseline. 
+>
+> The Atomic Red Team test procedures defined in this document serve as **technical benchmark specifications** for future expansion and were **NOT executed** during the primary forensic capture.
+>
+> | Atomic Test ID | Technique Name | Planned Command / Tool | Status in Run `B67F15E3` | Reason for Exclusion / Alternative Used |
+> |---|---|---|---|---|
+> | **T1490 #1** | Inhibit System Recovery: Shadow Deletion | `vssadmin.exe delete shadows /all /quiet` | ❌ **EXCLUDED** | Evaluated via simulated log mode in `custom_behavior_sim.py` |
+> | **T1490 #2** | Inhibit System Recovery: Disable WinRE | `bcdedit.exe /set {default} recoveryenabled No` | ❌ **EXCLUDED** | Excluded to prevent VM unbootability; evaluated in safe log mode |
+> | **T1486 #1** | Data Encrypted for Impact | `cipher.exe` / batch file encryption | ❌ **EXCLUDED** | Replaced by deterministic XOR loop in `custom_behavior_sim.py` |
+> | **Manual** | Ransom Note Drop via PowerShell | PowerShell `Set-Content` script | ❌ **EXCLUDED** | Replaced by python file drop (`READ_ME_RECOVER.txt`) |
+> | **T1003.001** | OS Credential Dumping: LSASS | `Invoke-AtomicTest T1003.001 -TestNumbers 1` | ❌ **EXCLUDED** | Excluded; no credential dumping performed in primary scope |
 
 ---
 
 ## Overview
 
-This document lists the specific Atomic Red Team tests to execute in the VM to generate forensic
-artifacts matching ransomware-adjacent TTPs. Each test maps to a MITRE ATT&CK technique and produces
-specific, measurable forensic evidence for later analysis in Phase 3 (Volatility) and Phase 4 (Autopsy).
+This document provides reference Atomic Red Team test definitions mapped to ransomware-adjacent MITRE ATT&CK techniques. It outlines how individual command invocations produce specific forensic observables for threat hunting and detection engineering.
 
-The tests are executed in the order below to create a realistic, chronologically coherent attack timeline.
+The procedures below are cataloged for reference, comparative analysis, and follow-up lab iterations.
 
 ---
 
@@ -172,12 +182,12 @@ Remove-Item -Recurse -Force "C:\Users\Public\test_ransomware_sim"
 
 ---
 
-## Evidence Mapping Summary
+## Evidence Mapping Summary (Reference Specification)
 
-| Test | Technique | Expected Memory Artifact | Expected Disk Artifact |
-|---|---|---|---|
-| T1490 #1 | Shadow Copy Deletion | `vssadmin.exe` in pslist/pstree, Event 4688 | Prefetch file for vssadmin.exe |
-| T1490 #2 | Recovery Disable | `bcdedit.exe` in pslist, cmd args in cmdline | BCD registry hive change |
-| T1486 #1 | File Encryption Sim | Script process in pslist | Mass file modification timestamps in timeline |
-| Manual | Ransom Note Drop | PowerShell args in cmdline | Ransom note file with precise creation time |
-| T1003.001 | LSASS Dump Attempt | lsass.exe handle access, malfind | ProcDump binary (if used), lsass.dmp |
+| Test ID | MITRE Technique | Planned Memory Observable | Planned Disk Observable | Run `B67F15E3` Status |
+|---|---|---|---|---|
+| **T1490 #1** | Shadow Copy Deletion | `vssadmin.exe` in pslist/pstree, Event 4688 | Prefetch file for vssadmin.exe | ❌ Excluded (Simulated log mode) |
+| **T1490 #2** | Recovery Disable | `bcdedit.exe` in pslist, cmd args in cmdline | BCD registry hive change | ❌ Excluded (Simulated log mode) |
+| **T1486 #1** | File Encryption Sim | Script process in pslist | Mass file modification timestamps in timeline | ❌ Excluded (Custom Python XOR used) |
+| **Manual** | Ransom Note Drop | PowerShell args in cmdline | Ransom note file with precise creation time | ❌ Excluded (Python file drop used) |
+| **T1003.001** | LSASS Dump Attempt | lsass.exe handle access, malfind | ProcDump binary (if used), lsass.dmp | ❌ Excluded (Out of scope) |

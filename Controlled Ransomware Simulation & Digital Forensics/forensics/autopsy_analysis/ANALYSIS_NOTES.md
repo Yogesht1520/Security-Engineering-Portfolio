@@ -8,7 +8,7 @@
 > **Analysis Date:** 2026-10-23  
 > **Tool:** Autopsy 4.23.1 (with The Sleuth Kit 4.12.1 backend)  
 >
-> **BLIND INVESTIGATION PROTOCOL:** Reconstructed attack timeline, file creation/modification events, and persistence/impact indicators purely from disk structures and MFT records.
+> **INVESTIGATION METHODOLOGY:** Attack timeline, file creation/modification events, and impact indicators were evaluated from disk structures and NTFS $MFT records following a structured forensic approach, and cross-referenced with memory findings and simulation execution logs.
 
 ---
 
@@ -83,7 +83,7 @@
 
 - Autopsy's **Extension Mismatch Detector** flagged all 8 `.locked` files.
 - The files retain generic MIME declarations (`application/octet-stream`), but their original signatures (`PK\x03\x04` for docx/xlsx, `%PDF` for pdf, `\x89PNG` for png) were replaced by the XOR transformation.
-- This represents file signature stomping and entropy disruption characteristic of ransomware.
+- This represents file signature modification and header alteration characteristic of ransomware file transformations.
 
 ---
 
@@ -101,9 +101,9 @@
 |---|---|---|---|
 | **Malware Script** | `custom_behavior_sim.py` in Notepad session descriptor | `C:\Users\Public\custom_behavior_sim.py` MFT entry | **Confirmed** staged script |
 | **Execution Window** | Memory captured at 22:40:12 IST (17:10:12 UTC) | File modification burst at 22:26:49 – 22:26:55 IST | **Confirmed** timing |
-| **Network & Exfiltration**| 0 active/listening sockets in `netscan` | 0 external network connection records in registry/logs | **Confirmed** air-gap held; zero exfiltration |
-| **Recovery Inhibition** | Simulated log command in script stdout | `/EFI/Microsoft/Boot/BCD` access event in timeline | **Confirmed** T1490 evaluated in safe log mode |
-| **Ransomware Note** | Inspected in Notepad PID 6312 | Dropped at `22:26:55 IST`, size 1,144 B | **Confirmed** extortion artifact |
+| **Network & Exfiltration**| 0 active/listening sockets in `netscan` | 0 external network connection records in registry/logs | **Consistent with isolation**; zero outbound network activity observed across examined artifacts |
+| **Recovery Inhibition** | Simulated log command in script stdout | `/EFI/Microsoft/Boot/BCD` access event in timeline | **Corroborated** T1490 evaluated in safe log mode |
+| **Ransomware Note / Inspection** | Inspected via Notepad (analyst administrative review) | Dropped by simulation at `22:26:55 IST`, size 1,144 B | **Corroborated** extortion artifact dropped by script and inspected by analyst |
 
 ---
 

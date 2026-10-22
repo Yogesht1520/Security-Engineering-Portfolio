@@ -100,7 +100,7 @@ All tool binaries were verified with cryptographic SHA-256 digests prior to evid
 
 | Tool Name | Exact Version | Executable SHA-256 Digest | Role in Investigation | Execution Environment |
 |---|---|---|---|---|
-| **Volatility 3** | Framework 2.26.0 | `664102407BC13906AC0A401A737028334907C0E235AB9DFAAF94A301A50687B3` | Volatile Memory Forensics | Host (Win 11 x64, Python 3.13) |
+| **Volatility 3** | Framework 2.28.2 | `664102407BC13906AC0A401A737028334907C0E235AB9DFAAF94A301A50687B3` | Volatile Memory Forensics | Host (Win 11 x64, Python 3.13) |
 | **Autopsy** | 4.23.1 (TSK 4.12.1) | `EE790ADFCF8436D7B128DDB43D6F6DF1A8404DF7612972B2BEF7022B4F27BF69` | Post-Mortem Disk & MFT Analysis | Host (Win 11 x64) |
 | **VirtualBox** | 7.1.6 r167084 | `178E016ED38CB6E369A5C17C6C960C176674B9C864030D8CE0AD2867613BECFF` | Hypervisor, Memory Dump, Disk Clone | Host (Win 11 x64) |
 | **PowerShell** | 7.x / 5.1 | Built-in Windows Runtime (`powershell.exe`) | Cryptographic Verification (`Get-FileHash`) | Host (Win 11 x64) |
@@ -168,7 +168,7 @@ All tool binaries were verified with cryptographic SHA-256 digests prior to evid
 
 ## 5.1 Memory Forensics (Volatility 3 Analysis)
 
-Memory analysis of `EVD-001` was performed using Volatility 3 (Framework 2.26.0) with symbols resolved against Windows 11 24H2 Build 26100 (`ntkrnlmp.pdb`).
+Memory analysis of `EVD-001` was performed using Volatility 3 (Framework 2.28.2) with symbols resolved against Windows 11 24H2 Build 26100 (`ntkrnlmp.pdb`).
 
 ### 5.1.1 Process Architecture (`windows.pslist` / `windows.pstree`)
 
@@ -185,8 +185,13 @@ explorer.exe (PID 4500) — Interactive Desktop Shell
   │     └── conhost.exe (PID 7260)
   ├── powershell.exe (PID 4704) — Secondary Operator Terminal
   │     └── conhost.exe (PID 1948)
+  ├── SnippingTool.exe (PID 2616) — Analyst Diagnostic Screenshot Tool
   └── Notepad.exe (PID 6312) — Script Source Inspection Session
 ```
+
+**Forensic Attribution (Analyst Actions vs. Simulation Behavior):**
+- **Analyst Administrative & Diagnostic Actions:** `powershell.exe` (PIDs 2428 & 4704) were interactive console sessions spawned by the investigator to prepare test artifacts and trigger execution; `Notepad.exe` (PID 6312) was opened by the analyst to inspect the Python source script; `SnippingTool.exe` (PID 2616) was invoked to preserve photographic proof of network adapter disablement and execution output.
+- **Simulated Adversary Activity:** The malicious ransomware behavior executed inside an ephemeral Python interpreter process (`python.exe`, unprivileged user `SimUser`), which spawned from terminal PID 4704, modified the 8 target canary files within a 4-second burst, generated `recovery_journal.json`, dropped `README_YOUR_FILES.txt`, and cleanly exited prior to memory dumping.
 
 ### 5.1.2 Command-Line Reconstruction (`windows.cmdline`)
 
@@ -213,7 +218,7 @@ Running `windows.malfind` identified memory regions with `PAGE_EXECUTE_READWRITE
 * `TextInputHost.exe` (PID 5652) — Windows XAML input subsystem JIT compiler.
 * `powershell.exe` (PID 2428) — .NET CLR runtime JIT engine.
 
-**Crucial Negative Finding:** Zero unbacked PE executables (`MZ` / `PE\0\0`), zero reflective DLL injection stagers, and zero hollowed processes were detected. The attack executed purely as a userland script without rootkit persistence or in-memory process hijacking.
+**Crucial Negative Finding:** Zero unbacked PE executables (`MZ` / `PE\0\0`), zero reflective DLL injection stagers, and zero hollowed processes were detected. The attack executed strictly as a userland script without rootkit persistence or in-memory process hijacking.
 
 ---
 
@@ -420,7 +425,7 @@ tags:
 ## Appendix B — Raw Volatility 3 Execution Log
 
 ```powershell
-# Volatility 3 Framework 2.26.0 commands executed on Host Workstation:
+# Volatility 3 Framework 2.28.2 commands executed on Host Workstation:
 vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.info
 vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.pslist > pslist_output.txt
 vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.pstree > pstree_output.txt

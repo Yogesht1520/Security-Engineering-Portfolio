@@ -5,9 +5,9 @@
 > **Evidence Item:** `EVD-001` (`forensics/acquisition/DFIR-SimVM-memory.raw`)  
 > **Evidence SHA-256:** `198A69B7412A7FD05CD88271E7C223C8F02D03DA14D3436AE715EB2FD0D5EFD3`  
 > **Analysis Date:** 2026-10-22  
-> **Tool:** Volatility 3 (Framework 2.26.0)  
+> **Tool:** Volatility 3 (Framework 2.28.2)  
 >
-> **BLIND INVESTIGATION PROTOCOL:** Reconstructed attack timeline, processes, command lines, and network posture purely from memory structures without prior assumption.
+> **INVESTIGATION METHODOLOGY:** Attack timeline, processes, command lines, and network posture were evaluated from volatile memory structures following a structured forensic approach, and subsequently correlated with filesystem artifacts and simulation execution records for verification.
 
 ---
 
@@ -15,7 +15,7 @@
 
 | Tool Parameter | Value | Notes |
 |---|---|---|
-| **Framework Version** | Volatility 3 Framework 2.26.0 | Standalone binary / Python 3.13 runtime |
+| **Framework Version** | Volatility 3 Framework 2.28.2 | Standalone binary (SHA-256: `664102407BC13906AC0A401A737028334907C0E235AB9DFAAF94A301A50687B3`) / Python 3.13 runtime |
 | **Analysis Host OS** | Windows 11 Enterprise (64-bit) | Workstation forensic environment |
 | **Symbol Table** | `ntkrnlmp.pdb/C29EBFB06B78B3C020DCA66D99713F9E-1.json.xz` | Windows 11 24H2 Build 26100 kernel symbols |
 | **Evidence Path** | `forensics/acquisition/DFIR-SimVM-memory.raw` | 8.13 GB ELF64 Hypervisor Core Dump |
@@ -52,16 +52,28 @@ vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.pslist > pslist_o
 
 **Raw Output:** [`pslist_output.txt`](./pslist_output.txt)
 
-**Notable Processes Identified:**
-| PID | PPID | ImageFileName | Create Time (UTC) | Forensic Significance |
+**Notable Processes Identified (Categorized by Origin):**
+
+*A. Analyst Administrative & Diagnostic Artifacts:*
+| PID | PPID | ImageFileName | Create Time (UTC) | Role / Attribution |
 |---|---|---|---|---|
-| **4500** | 4348 | `explorer.exe` | 2026-10-21 19:01:36 | Primary interactive user desktop shell |
-| **2428** | 4500 | `powershell.exe` | 2026-10-22 11:35:00 | Interactive console window session |
-| **7260** | 2428 | `conhost.exe` | 2026-10-22 11:35:00 | Console host attached to PowerShell session |
-| **4704** | 4500 | `powershell.exe` | 2026-10-22 11:36:56 | Second interactive terminal session |
-| **1948** | 4704 | `conhost.exe` | 2026-10-22 11:36:56 | Console host for second PowerShell terminal |
-| **6312** | 7892 | `Notepad.exe` | 2026-10-22 11:29:42 | Active text editor session inspecting script/ransom artifacts |
-| **3124** | 820 | `MsMpEng.exe` | 2026-10-21 19:01:30 | Windows Defender Antivirus engine |
+| **4500** | 4348 | `explorer.exe` | 2026-10-21 19:01:36 | Primary interactive desktop session (`SimUser`) |
+| **2428** | 4500 | `powershell.exe` | 2026-10-22 11:35:00 | Analyst interactive shell used for staging & pre-simulation verification |
+| **7260** | 2428 | `conhost.exe` | 2026-10-22 11:35:00 | Console host attached to PowerShell session (PID 2428) |
+| **4704** | 4500 | `powershell.exe` | 2026-10-22 11:36:56 | Analyst interactive shell used to trigger simulation run & monitor execution |
+| **1948** | 4704 | `conhost.exe` | 2026-10-22 11:36:56 | Console host attached to PowerShell session (PID 4704) |
+| **6312** | 7892 | `Notepad.exe` | 2026-10-22 11:29:42 | Analyst text inspection session reviewing script configuration |
+| **2616** | 4500 | `SnippingTool.exe` | 2026-10-22 06:46:03 | Analyst screen capture utility preserving visual verification evidence |
+
+*B. Background Operating System & Defensive Services:*
+| PID | PPID | ImageFileName | Create Time (UTC) | Role / Attribution |
+|---|---|---|---|---|
+| **3124** | 820 | `MsMpEng.exe` | 2026-10-21 19:01:30 | Microsoft Defender Antivirus real-time core protection engine |
+
+*C. Simulated Threat Actor Activity (Ephemeral):*
+| PID | PPID | ImageFileName | Execution Window | Role / Attribution |
+|---|---|---|---|---|
+| — | 4704 | `python.exe` | 22:26:48 – 22:26:55 IST | Rapid ephemeral process (Run ID `B67F15E3`); terminated prior to memory acquisition |
 
 ---
 
@@ -77,11 +89,11 @@ vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.pstree > pstree_o
 **Observed Execution Chain:**
 ```text
 explorer.exe (PID 4500)
-  ├── powershell.exe (PID 2428)
+  ├── powershell.exe (PID 2428) [Analyst Terminal 1]
   │     └── conhost.exe (PID 7260)
-  ├── powershell.exe (PID 4704)
+  ├── powershell.exe (PID 4704) [Analyst Terminal 2: Simulation Harness Launch]
   │     └── conhost.exe (PID 1948)
-  └── SnippingTool.exe (PID 2616) — Captured evidence screenshots
+  └── SnippingTool.exe (PID 2616) [Analyst Diagnostic Capture]
 ```
 
 ---
@@ -96,14 +108,14 @@ vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.cmdline > cmdline
 **Raw Output:** [`cmdline_output.txt`](./cmdline_output.txt)
 
 **Key Findings:**
-1. **Notepad Session Inspection (PID 6312):**
+1. **Analyst Inspection Session (PID 6312):**
    - Command line:
      ```text
      "C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2607.14.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe" /SESSION:...
      ```
    - Decoded session payload (UTF-16LE inside base64 session descriptor):
      `C:\Users\Public\custom_behavior_sim.py`
-   - Confirms that the simulation script source was actively inspected within the user profile.
+   - Attribution: Analyst administrative review of the simulation script source prior to execution.
 2. **Interactive PowerShell Sessions (PID 2428 & 4704):**
    - Both shells ran under user context `SimUser`.
 
@@ -119,14 +131,14 @@ vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.netscan > netscan
 **Raw Output:** [`netscan_output.txt`](./netscan_output.txt)
 
 **Findings:**
-- **Active Sockets:** `0`
+- **Active Sockets in Acquired Memory:** `0`
 - **Listening Ports:** `0`
 - **Foreign / Remote Endpoints:** `0`
 
 **Defensible Forensic Evaluation:**
-- No active, listening, or lingering network socket artifacts were identified in the acquired memory image.
-- This finding is consistent with the verified disconnected network configuration in VirtualBox.
-- No network exfiltration or C2 beaconing was identified in the evidence examined.
+- Within the scope of the examined memory dump, `windows.netscan` identified zero active, listening, or residual TCP/UDP socket structures.
+- This finding is consistent with the verified disconnected network configuration in VirtualBox and guest ping failures.
+- No evidence of outbound command-and-control communication or data exfiltration was identified within the examined memory structures; this evaluation is qualified by the specific sources inspected and does not independently exclude transient prior activity.
 
 ---
 
@@ -155,7 +167,7 @@ vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.malfind > malfind
 |---|---|---|
 | **What script was executed?** | `custom_behavior_sim.py` | Notepad session descriptor + PowerShell process trees |
 | **Where was it staged?** | `C:\Users\Public\` | Command-line session data |
-| **Were network sockets observed?** | **NO** | `netscan` reported 0 open sockets; consistent with air-gap controls |
+| **Were network sockets observed?** | **NO** | `netscan` reported 0 open/listening sockets in RAM; consistent with hypervisor adapter disconnection |
 | **Was code injected into system processes?** | **NO** | `malfind` found only legitimate JIT runtime memory |
 | **What active user artifacts remain?** | Interactive PowerShell shells + Notepad session | PIDs 2428, 4704, 6312 |
 

@@ -66,7 +66,7 @@ Path      : forensics\acquisition\DFIR-SimVM-memory.raw
 
 Once acquired and verified, proceed to **Phase 3: Volatile Memory Forensics**:
 ```powershell
-# Analyze with Volatility 3 Framework 2.26.0:
+# Analyze with Volatility 3 Framework 2.28.2:
 vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.info
 vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.pslist
 vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.pstree

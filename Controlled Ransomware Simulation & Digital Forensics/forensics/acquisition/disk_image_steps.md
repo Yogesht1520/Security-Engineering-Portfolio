@@ -84,7 +84,7 @@ Get-FileHash "forensics\acquisition\DFIR-SimVM-disk.vmdk" -Algorithm SHA256
    - Sector Size: 512 bytes (default auto-detect)
 4. Configure Ingest Modules:
    - File Type Identification
-   - Extension Mismatch Detector (flags `.locked` files with stomped headers)
+   - Extension Mismatch Detector (flags `.locked` files with altered magic numbers / signatures)
    - Recent Activity
    - Hash Lookup
 5. Timeline Analysis:
