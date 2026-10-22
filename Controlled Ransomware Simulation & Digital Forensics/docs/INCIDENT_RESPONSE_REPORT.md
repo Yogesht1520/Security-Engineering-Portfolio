@@ -15,7 +15,7 @@
 | **Role** | DFIR Analyst / Security Engineer |
 | **Organization** | Security Engineering Portfolio |
 | **Classification** | Portfolio / Educational Deliverable |
-| **Report Version** | 1.2 — FINAL (Peer-Review Reconciled) |
+| **Report Version** | 1.3 — FINAL (Audited & Calibrated) |
 
 > *This report documents a controlled forensic investigation of an operator-staged ransomware behavioral simulation executed inside an air-gapped virtual machine (`DFIR-SimVM`). No production systems, live malware samples, or unauthorized networks were involved. The technical methodology is structured around the SANS PICERL incident response lifecycle.*
 
@@ -27,7 +27,7 @@
 
 On **22-Oct-2026 at 22:26:35 IST (16:56:35 UTC)**, anomalous host-level activity consistent with ransomware behavior was initiated on endpoint `DFIR-SimVM`. A forensic investigation was launched using volatile memory analysis and post-mortem disk forensic methodologies.
 
-* **Incident Nature:** An operator-staged Python execution payload (`custom_behavior_sim.py`) executed within an unprivileged user session (`SimUser`), enumerating canary business documents, executing an atomic file transformation loop (reversible XOR with byte key `0xAB`), appending `.locked` extensions, stomping file magic headers, and dropping an extortion notice demanding 0.5 BTC.
+* **Incident Nature:** An operator-staged Python execution payload (`custom_behavior_sim.py`) executed within an unprivileged user session (`SimUser`), enumerating canary business documents, executing an atomic file transformation loop (reversible XOR with byte key `0xAB`), appending `.locked` extensions, altering the original file signature bytes (magic numbers), and dropping an extortion notice demanding 0.5 BTC.
 * **TTPs Evaluated & Observed:** 
   * Execution: Python Script Interpreter ([MITRE T1059.006](https://attack.mitre.org/techniques/T1059/006/))
   * Discovery: Local File System Enumeration ([MITRE T1083](https://attack.mitre.org/techniques/T1083/))
@@ -35,8 +35,10 @@ On **22-Oct-2026 at 22:26:35 IST (16:56:35 UTC)**, anomalous host-level activity
   * Defense Evasion / Impact: Inhibit System Recovery ([MITRE T1490](https://attack.mitre.org/techniques/T1490/)) — **evaluated in safe log-only mode; destructive subprocesses were not dispatched.**
 * **Scope & Blast Radius:** The intrusion was strictly confined to a single isolated endpoint (`DFIR-SimVM`). Volatile memory socket analysis (`windows.netscan`) identified zero active, listening, or residual network sockets. Triangulated against the hypervisor's disconnected adapter configuration and guest ping test failures, **no evidence of outbound command-and-control communication or data exfiltration was identified within the scope of the artifacts examined.** This conclusion is limited to the available evidence and does not independently exclude all prior or transient network activity.
 * **Data Impact:** 8 canary business files spanning spreadsheet, database, presentation, word processing, and graphic formats were transformed into `.locked` files within a 4.0-second burst window.
-* **Containment & Recovery:** The host was immediately contained. An 8.13 GB live volatile RAM capture (`DFIR-SimVM-memory.raw`) was acquired prior to shutdown. The endpoint was subsequently powered down and cloned to a 35.74 GB forensic disk image (`DFIR-SimVM-disk.vdi`), converted to a sparse VMDK container (`DFIR-SimVM-disk.vmdk`) for Autopsy ingest, with independent SHA-256 verification for each image. Complete recovery was verified via both cryptographic journal reversal and baseline snapshot rollback.
-* **Confidence Level:** **HIGH** — Volatile memory structures (Volatility 3 Framework 2.26.0) and Master File Table records (Autopsy 4.23.1) are mutually corroborating and chronologically synchronized down to the second.
+* **Containment & Recovery:** The host was immediately contained. An 8.13 GB live volatile RAM capture (`DFIR-SimVM-memory.raw`) was acquired prior to shutdown. The endpoint was subsequently powered down and cloned to a 35.74 GB forensic disk image (`DFIR-SimVM-disk.vdi`), converted to a sparse VMDK container (`DFIR-SimVM-disk.vmdk`) for Autopsy ingest, with independent SHA-256 verification for each image. Two distinct recovery operations were performed and verified:
+  1. *File-Level Data Recovery:* 100% cryptographic restoration of all 8 canary files via `recovery_journal.json`.
+  2. *Endpoint Disaster Recovery:* Clean VM rollback to pre-simulation baseline snapshot (`baseline-pre-simulation-2026-10-22`).
+* **Confidence Level:** **HIGH** — specifically regarding the forensic reconstruction and sequence of the controlled simulation activity on endpoint `DFIR-SimVM`.
 
 ---
 
@@ -65,8 +67,8 @@ The investigation was structured around the SANS Incident Response lifecycle, ma
                                                                       |
   +------------------+       +----------------------+                 v
   | 6. LESSONS       | <---- | 5. RECOVERY          | <---- +-------------------+
-  | LEARNED / SIGMA  |       | 100% Cryptographic   |       | 4. ERADICATION    |
-  | Hardening & ASR  |       | verification & snap  |       | VM power-off,     |
+  | LEARNED / SIGMA  |       | (1) Journal restore  |       | 4. ERADICATION    |
+  | Hardening & ASR  |       | (2) VM snap rollback |       | VM power-off,     |
   +------------------+       +----------------------+       | DISK CLONING post |
                                                             +-------------------+
 ```
@@ -75,7 +77,9 @@ The investigation was structured around the SANS Incident Response lifecycle, ma
 2. **Identification:** Detected rapid batch file modifications and extortion note delivery (`README_YOUR_FILES.txt`) in `C:\Users\Public\test_ransomware_sim\B67F15E3\`.
 3. **Containment:** System state was secured immediately by acquiring an 8.13 GB live RAM dump (`DFIR-SimVM-memory.raw`) via the hypervisor while the guest operating system remained live. Network isolation was re-audited.
 4. **Eradication:** The target VM was cleanly powered down (ACPI shutdown) to prevent post-simulation disk writes. A bitstream forensic clone of the virtual disk (`DFIR-SimVM-disk.vdi`) was acquired post-mortem, and malicious script execution processes were terminated.
-5. **Recovery:** Data reversibility was proven by verifying 100% cryptographic restoration across all 8 files via `recovery_journal.json`, followed by complete endpoint rollback to the pre-simulation baseline snapshot (`baseline-pre-simulation-2026-10-22`).
+5. **Recovery:** Two separate recovery operations were performed:
+   * *File-level Data Recovery:* Proved complete data reversibility across all 8 files via `recovery_journal.json`.
+   * *Endpoint Disaster Recovery:* Clean VM rollback to pre-simulation baseline snapshot (`baseline-pre-simulation-2026-10-22`).
 6. **Lessons Learned:** Engineered SIEM Sigma rules and endpoint hardening specifications against T1490 and T1486.
 
 ## 2.3 Evidence Integrity & Chain of Custody
@@ -92,11 +96,13 @@ All primary and derived evidence items were hashed with SHA-256 immediately upon
 
 ## 2.4 Forensic Tool Version & Executable Provenance
 
+All tool binaries were verified with cryptographic SHA-256 digests prior to evidence analysis:
+
 | Tool Name | Exact Version | Executable SHA-256 Digest | Role in Investigation | Execution Environment |
 |---|---|---|---|---|
 | **Volatility 3** | Framework 2.26.0 | `664102407BC13906AC0A401A737028334907C0E235AB9DFAAF94A301A50687B3` | Volatile Memory Forensics | Host (Win 11 x64, Python 3.13) |
-| **Autopsy** | 4.23.1 (TSK 4.12.1) | Vendor MSI Installed (`autopsy64.exe`) | Post-Mortem Disk & MFT Analysis | Host (Win 11 x64) |
-| **VirtualBox** | 7.1.6 r167084 | Vendor MSI Installed (`VBoxManage.exe`) | Hypervisor, Memory Dump, Disk Clone | Host (Win 11 x64) |
+| **Autopsy** | 4.23.1 (TSK 4.12.1) | `EE790ADFCF8436D7B128DDB43D6F6DF1A8404DF7612972B2BEF7022B4F27BF69` | Post-Mortem Disk & MFT Analysis | Host (Win 11 x64) |
+| **VirtualBox** | 7.1.6 r167084 | `178E016ED38CB6E369A5C17C6C960C176674B9C864030D8CE0AD2867613BECFF` | Hypervisor, Memory Dump, Disk Clone | Host (Win 11 x64) |
 | **PowerShell** | 7.x / 5.1 | Built-in Windows Runtime (`powershell.exe`) | Cryptographic Verification (`Get-FileHash`) | Host (Win 11 x64) |
 
 ---
@@ -231,7 +237,7 @@ Investigation of `/vol_vol6/Users/Public/test_ransomware_sim/B67F15E3/` verified
 
 ![Autopsy Encrypted Directory Listing](../screenshots/autopsy-encrypted-directory.png)
 
-* **Extension Mismatch Detector:** Flagged all `.locked` files as severe format mismatches. While the filenames and extensions implied standard office documents and images, the internal magic bytes (`PK\x03\x04`, `%PDF`, `\x89PNG`) were replaced with XOR ciphertext bytes.
+* **Extension Mismatch Detector:** Flagged all `.locked` files as severe format mismatches. While the filenames and extensions implied standard office documents and images, the internal magic bytes (`PK\x03\x04`, `%PDF`, `\x89PNG`) were altered by the XOR transformation.
 
 ### 5.2.3 Recovery-Inhibition Forensics (T1490 Actual Execution-State Check)
 
@@ -261,7 +267,7 @@ The dropped extortion note was recovered from disk:
 | Category | Lab Finding | Forensic Severity |
 |---|---|---|
 | **Confidentiality** | Zero active/residual sockets in RAM; air-gap verified; zero data exfiltration observed. | NONE |
-| **Integrity** | 8 canary files transformed via XOR obfuscation with stomped headers. | HIGH (Directory Scope) |
+| **Integrity** | 8 canary files transformed via XOR obfuscation with altered magic signatures. | HIGH (Directory Scope) |
 | **Availability** | Targeted files inaccessible without cryptographic restoration script or journal. | HIGH (Directory Scope) |
 | **System State** | Operating system binaries, VSS, and BCD boot structures remained intact. | NONE |
 
@@ -324,7 +330,9 @@ The simulated attack succeeded because of three fundamental environmental gaps:
 
 ## 8.4 Cryptographic Recovery Demonstration
 
-To validate complete data reversibility without paying an extortion demand, `custom_behavior_sim.py --restore` was executed against the transformed test directory using the cryptographic recovery journal. All 8 restored files were verified against their original pre-simulation SHA-256 hashes:
+Two distinct recovery mechanisms were evaluated and confirmed:
+* **Endpoint Disaster Recovery:** Full VM rollback to clean pre-simulation snapshot `baseline-pre-simulation-2026-10-22` returned the operating system to its baseline state.
+* **File-Level Data Recovery:** To validate complete data reversibility without paying an extortion demand, `custom_behavior_sim.py --restore` was executed against the transformed test directory using the cryptographic recovery journal. All 8 restored files were verified against their original pre-simulation SHA-256 hashes:
 
 | Canary File | Original Pre-Simulation SHA-256 | Transformed (.locked) SHA-256 | Restored File SHA-256 | Equality Result |
 |---|---|---|---|---|

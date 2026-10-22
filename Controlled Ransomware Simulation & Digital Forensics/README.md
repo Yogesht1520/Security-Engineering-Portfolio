@@ -24,7 +24,7 @@ This project demonstrates a **complete, end-to-end Digital Forensics & Incident 
 |  |           Isolated Guest VM (DFIR-SimVM, Windows 11 Enterprise)     |  |
 |  |           Network Adapter: NOT ATTACHED (Strict Air-Gap)           |  |
 |  |                                                                    |  |
-|  |  [Clean Snapshot] -> [Simulation Execution] -> [Evidence Staged]   |  |
+|  |  [Staged Code & Baseline Snapshot] -> [Simulation Execution]       |  |
 |  +--------------------------------------------------------------------+  |
 |                           |                             |                |
 |           +---------------+---------------+             |                |
@@ -83,7 +83,7 @@ ransomware-dfir-lab/
 │       └── timeline_export.csv          <- Correlated forensic timeline export
 └── screenshots/
     ├── vm-network-adapter-disabled.png  <- Verification of hypervisor network isolation
-    ├── network-connectivity-test.png    <- Guest ping failure verification (air-gap proof)
+    ├── network-connectivity-test.png    <- Guest ping failure verification (guest network isolation test)
     ├── simulation-terminal-complete.png <- Simulation execution terminal output
     ├── encrypted-files-directory.png    <- Target directory showing .locked extensions
     ├── ransom-note-artifact.png         <- README_YOUR_FILES.txt extortion notice
@@ -96,15 +96,15 @@ ransomware-dfir-lab/
 
 ## Tool Version & Executable Provenance
 
-To ensure forensic reproducibility, exact tool versions and executable digests are documented below:
+To ensure forensic reproducibility, exact tool versions and verified binary digests are documented below:
 
 | Tool | Exact Release Version | Binary Executable SHA-256 Digest | Role | Execution Host | Invocation Method |
 |---|---|---|---|---|---|
 | **Volatility 3** | Framework 2.26.0 | `664102407BC13906AC0A401A737028334907C0E235AB9DFAAF94A301A50687B3` | Volatile Memory Forensics | Windows 11 Physical Host | `vol.exe -f <raw> <plugin>` |
-| **Autopsy** | 4.23.1 (TSK 4.12.1) | Vendor MSI Installed (`autopsy64.exe`) | Post-Mortem Disk & MFT Analysis | Windows 11 Physical Host | GUI / SQLite Timeline Engine |
-| **VirtualBox** | 7.1.6 r167084 | Vendor MSI Installed (`VBoxManage.exe`) | Hypervisor & Acquisition | Windows 11 Physical Host | `VBoxManage.exe` CLI |
-| **Python (Host)** | 3.13.1 | Standard CPython Distribution | Volatility & Hash Runtime | Windows 11 Physical Host | Host Python Runtime |
-| **Python (Guest)**| 3.13.1 | Standard CPython Distribution | Simulator Execution Engine | `DFIR-SimVM` (Windows 11) | Guest Python Runtime |
+| **Autopsy** | 4.23.1 (TSK 4.12.1) | `EE790ADFCF8436D7B128DDB43D6F6DF1A8404DF7612972B2BEF7022B4F27BF69` | Post-Mortem Disk & MFT Analysis | Windows 11 Physical Host | GUI / SQLite Timeline Engine |
+| **VirtualBox** | 7.1.6 r167084 | `178E016ED38CB6E369A5C17C6C960C176674B9C864030D8CE0AD2867613BECFF` | Hypervisor & Acquisition | Windows 11 Physical Host | `VBoxManage.exe` CLI |
+| **Python (Host)** | 3.13.1 | Built-in CPython Host Distribution | Volatility & Hash Runtime | Windows 11 Physical Host | Host Python Runtime |
+| **Python (Guest)**| 3.13.1 | Built-in CPython Guest Distribution | Simulator Execution Engine | `DFIR-SimVM` (Windows 11) | Guest Python Runtime |
 
 ---
 
@@ -130,12 +130,12 @@ To ensure strict network isolation without contaminating the environment:
 
 ## MITRE ATT&CK Coverage
 
-| Technique | ID | Forensic Observable | Investigation Phase |
+| Technique | ID | Forensic Observable | Evidence Source |
 |---|---|---|---|
 | Command and Scripting: Python | T1059.006 | Process tree, cmdline session descriptor | Volatility 3 (Memory) |
 | File and Directory Discovery | T1083 | Local target directory file enumeration | Autopsy (MFT / Timeline) |
 | Data Encrypted for Impact | T1486 | 4-second burst, .locked extensions, ransom note | Autopsy (MFT / Timeline) |
-| Inhibit System Recovery | T1490 | Evaluated & logged in safe mode (no live deletion executed) | Volatility & Autopsy Timeline |
+| Inhibit System Recovery | T1490 | Simulated evaluation logged in stdout & log (no live deletion executed) | `simulation_log.txt` (Contextual: Autopsy BCD query) |
 
 ---
 
@@ -146,7 +146,7 @@ To ensure strict network isolation without contaminating the environment:
 | **Phase 0** | Safe Environment Setup | Network isolation confirmed, baseline snapshot captured | ✅ **COMPLETE** |
 | **Phase 1** | Controlled Simulation Execution | 8 canary files transformed, run ID `B67F15E3`, test harness passed | ✅ **COMPLETE** |
 | **Phase 2** | Evidence Acquisition | 8.13 GB RAM (`.raw`) + 35.74 GB Disk (`.vmdk`), cryptographically hashed | ✅ **COMPLETE** |
-| **Phase 3** | Memory Forensics (Volatility 3) | Process tree, Notepad session decode, 0 active sockets, clean memory | ✅ **COMPLETE** |
+| **Phase 3** | Memory Forensics (Volatility 3) | Process tree, Notepad session decode, no active socket structures in RAM, clean memory | ✅ **COMPLETE** |
 | **Phase 4** | Disk Forensics (Autopsy 4.23.1) | MFT extraction, 4-second file transformation timeline, extension mismatch analysis | ✅ **COMPLETE** |
 | **Phase 5** | Incident Response Report | Executive consulting deliverable: [docs/INCIDENT_RESPONSE_REPORT.md](./docs/INCIDENT_RESPONSE_REPORT.md) | ✅ **COMPLETE** |
 | **Phase 6** | Teardown & Cleanup | `DFIR-SimVM` cleanly restored to baseline pre-simulation snapshot | ✅ **COMPLETE** |
