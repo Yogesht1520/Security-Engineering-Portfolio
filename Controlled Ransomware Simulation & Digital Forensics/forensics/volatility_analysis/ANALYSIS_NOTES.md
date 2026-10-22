@@ -2,51 +2,55 @@
 # Phase 3 — Blind Investigation
 
 > **Investigator:** Yogesh T (Lead DFIR Analyst)  
-> **Evidence File:** `forensics/acquisition/DFIR-SimVM-memory.raw`  
+> **Evidence Item:** `EVD-001` (`forensics/acquisition/DFIR-SimVM-memory.raw`)  
 > **Evidence SHA-256:** `198A69B7412A7FD05CD88271E7C223C8F02D03DA14D3436AE715EB2FD0D5EFD3`  
 > **Analysis Date:** 2026-10-22  
-> **Tool:** Volatility 3 (Framework v2.28.2)  
+> **Tool:** Volatility 3 (Framework 2.26.0)  
 >
 > **BLIND INVESTIGATION PROTOCOL:** Reconstructed attack timeline, processes, command lines, and network posture purely from memory structures without prior assumption.
 
 ---
 
-## Environment & Tooling Setup
+## Tooling & Analysis Environment
 
-- Volatility 3 v2.28.2 installed on host forensic workstation.
-- Symbol Table: `ntkrnlmp.pdb/C29EBFB06B78B3C020DCA66D99713F9E-1.json.xz` (Windows 11 24H2 symbols automatically resolved).
+| Tool Parameter | Value | Notes |
+|---|---|---|
+| **Framework Version** | Volatility 3 Framework 2.26.0 | Standalone binary / Python 3.13 runtime |
+| **Analysis Host OS** | Windows 11 Enterprise (64-bit) | Workstation forensic environment |
+| **Symbol Table** | `ntkrnlmp.pdb/C29EBFB06B78B3C020DCA66D99713F9E-1.json.xz` | Windows 11 24H2 Build 26100 kernel symbols |
+| **Evidence Path** | `forensics/acquisition/DFIR-SimVM-memory.raw` | 8.13 GB ELF64 Hypervisor Core Dump |
 
 ---
 
 ## Step 1 — Identify Operating System (`windows.info`)
 
-**Command:**
+**Command Executed:**
 ```powershell
 vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.info
 ```
 
-**Output recorded in:** [`windows_info_output.txt`](./windows_info_output.txt)
+**Raw Output:** [`windows_info_output.txt`](./windows_info_output.txt)
 
-**Key Forensic Parameters:**
+**Key Forensic Parameters Recovered:**
 | Parameter | Value |
 |---|---|
 | **OS Version** | Windows 11 Enterprise (64-bit) |
 | **Major / Minor Build** | 15.26100 (Windows 11 24H2 Build 26100) |
 | **Kernel Base** | `0xf8037fa00000` |
 | **DTB (Directory Table Base)** | `0x1ae000` |
-| **System Time at Capture** | `2026-10-22 17:09:14 UTC` |
+| **System Time at Capture** | `2026-10-22 17:09:14 UTC` (22:39:14 IST) |
 | **Number of Processors** | 2 |
 
 ---
 
 ## Step 2 — Active Process Enumeration (`windows.pslist`)
 
-**Command:**
+**Command Executed:**
 ```powershell
 vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.pslist > pslist_output.txt
 ```
 
-**Output recorded in:** [`pslist_output.txt`](./pslist_output.txt)
+**Raw Output:** [`pslist_output.txt`](./pslist_output.txt)
 
 **Notable Processes Identified:**
 | PID | PPID | ImageFileName | Create Time (UTC) | Forensic Significance |
@@ -63,12 +67,12 @@ vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.pslist > pslist_o
 
 ## Step 3 — Process Hierarchy & Tree (`windows.pstree`)
 
-**Command:**
+**Command Executed:**
 ```powershell
 vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.pstree > pstree_output.txt
 ```
 
-**Output recorded in:** [`pstree_output.txt`](./pstree_output.txt)
+**Raw Output:** [`pstree_output.txt`](./pstree_output.txt)
 
 **Observed Execution Chain:**
 ```text
@@ -84,12 +88,12 @@ explorer.exe (PID 4500)
 
 ## Step 4 — Command Line Reconstruction (`windows.cmdline`)
 
-**Command:**
+**Command Executed:**
 ```powershell
 vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.cmdline > cmdline_output.txt
 ```
 
-**Output recorded in:** [`cmdline_output.txt`](./cmdline_output.txt)
+**Raw Output:** [`cmdline_output.txt`](./cmdline_output.txt)
 
 **Key Findings:**
 1. **Notepad Session Inspection (PID 6312):**
@@ -99,7 +103,7 @@ vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.cmdline > cmdline
      ```
    - Decoded session payload (UTF-16LE inside base64 session descriptor):
      `C:\Users\Public\custom_behavior_sim.py`
-   - Proves the simulation script source was accessed directly in the target environment.
+   - Confirms that the simulation script source was actively inspected within the user profile.
 2. **Interactive PowerShell Sessions (PID 2428 & 4704):**
    - Both shells ran under user context `SimUser`.
 
@@ -107,40 +111,41 @@ vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.cmdline > cmdline
 
 ## Step 5 — Network Sockets & Sockets Scanning (`windows.netscan`)
 
-**Command:**
+**Command Executed:**
 ```powershell
 vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.netscan > netscan_output.txt
 ```
 
-**Output recorded in:** [`netscan_output.txt`](./netscan_output.txt)
+**Raw Output:** [`netscan_output.txt`](./netscan_output.txt)
 
 **Findings:**
 - **Active Sockets:** `0`
 - **Listening Ports:** `0`
 - **Foreign / Remote Endpoints:** `0`
 
-**Forensic Evaluation:**
-- Conclusive proof of strict network isolation (air-gap) at memory acquisition time.
-- Validates that the ransomware behavior did not attempt external C2 beaconing, DNS exfiltration, or secondary payload downloads.
+**Defensible Forensic Evaluation:**
+- No active, listening, or lingering network socket artifacts were identified in the acquired memory image.
+- This finding is consistent with the verified disconnected network configuration in VirtualBox.
+- No network exfiltration or C2 beaconing was identified in the evidence examined.
 
 ---
 
 ## Step 6 — Injected Code & Memory Protections (`windows.malfind`)
 
-**Command:**
+**Command Executed:**
 ```powershell
 vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.malfind > malfind_output.txt
 ```
 
-**Output recorded in:** [`malfind_output.txt`](./malfind_output.txt)
+**Raw Output:** [`malfind_output.txt`](./malfind_output.txt)
 
 **Evaluation of Findings:**
 - Hits detected in:
   - `MsMpEng.exe` (PID 3124) — Microsoft Defender dynamic JIT signature evaluation buffers.
   - `TextInputHost.exe` (PID 5652) — Windows XAML input subsystem JIT compiler.
   - `powershell.exe` (PID 2428) — .NET CLR runtime JIT engine.
-- **Negative Finding (Crucial):** Zero instances of unbacked PE headers (`MZ` / `PE\0\0`), shellcode stagers, or hollowed processes were detected in userland or system processes.
-- **Conclusion:** The ransomware simulation operated strictly as a clean, userland process execution without rootkit hooks or in-memory process hollowing.
+- **Negative Finding (Forensically Significant):** Zero instances of unbacked PE headers (`MZ` / `PE\0\0`), shellcode stagers, or hollowed processes were detected.
+- **Conclusion:** The simulation operated strictly as a userland script execution without kernel rootkit hooks or in-memory process hollowing.
 
 ---
 
@@ -148,16 +153,17 @@ vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.malfind > malfind
 
 | Forensic Question | Volatility 3 Answer | Corroborating Evidence |
 |---|---|---|
-| **What malware / script was executed?** | `custom_behavior_sim.py` | Notepad session descriptor + PowerShell process trees |
-| **Where was it executed from?** | `C:\Users\Public\` | Command line session data |
-| **Did it communicate over network?** | **NO** | `netscan` reported 0 open sockets or remote connections |
-| **Did it inject code into system processes?** | **NO** | `malfind` found only legitimate JIT buffers (Defender, .NET) |
+| **What script was executed?** | `custom_behavior_sim.py` | Notepad session descriptor + PowerShell process trees |
+| **Where was it staged?** | `C:\Users\Public\` | Command-line session data |
+| **Were network sockets observed?** | **NO** | `netscan` reported 0 open sockets; consistent with air-gap controls |
+| **Was code injected into system processes?** | **NO** | `malfind` found only legitimate JIT runtime memory |
 | **What active user artifacts remain?** | Interactive PowerShell shells + Notepad session | PIDs 2428, 4704, 6312 |
 
 ---
 
 ## Next Step
 
-Proceed to **Phase 4: Disk Analysis with Autopsy** using the cloned disk image:
-- Evidence Image: [`forensics/acquisition/DFIR-SimVM-disk.vdi`](../acquisition/DFIR-SimVM-disk.vdi)
+Proceed to **Phase 4: Disk Analysis with Autopsy** using the derived disk image:
+- Primary Cloned Image: `forensics/acquisition/DFIR-SimVM-disk.vdi` (`EVD-002`)
+- Derived Container for Autopsy: `forensics/acquisition/DFIR-SimVM-disk.vmdk` (`EVD-003`)
 - Autopsy analysis guide: **[forensics/autopsy_analysis/ANALYSIS_NOTES.md](../autopsy_analysis/ANALYSIS_NOTES.md)**

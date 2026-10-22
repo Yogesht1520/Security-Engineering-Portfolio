@@ -1,180 +1,99 @@
 # Disk Image Acquisition — Step-by-Step Procedure
 
-> **Phase:** Phase 2 — Evidence Acquisition (Part 2)
-> **Prerequisite:** Memory dump completed and hash recorded.
-> **Order:** Always capture memory FIRST (volatile), then disk (non-volatile).
+> **Phase:** Phase 2 — Evidence Acquisition (Part 2)  
+> **Prerequisite:** Memory dump completed and hash recorded.  
+> **Order:** Always capture memory FIRST (volatile), then disk (non-volatile).  
+> **Evidence Manifest:** See [`forensics/acquisition/EVIDENCE_MANIFEST.md`](./EVIDENCE_MANIFEST.md) for master cryptographic hashes and chain of custody.
 
 ---
 
 ## Why Disk Forensics?
 
 The disk image preserves:
-- File system structure (NTFS MFT, directory entries)
+- File system structure (NTFS MFT, directory records)
 - File modification/creation/access timestamps (MACE times)
-- Deleted files (allocated but unlinked inodes)
+- Deleted files (allocated but unlinked clusters)
 - Prefetch files (execution evidence for each binary run)
 - Windows Registry hives (persistence mechanisms, run keys, user activity)
-- Volume Shadow Copies (or their absence, if T1490 succeeded)
-- Event logs (.evtx files in C:\Windows\System32\winevt\Logs\)
+- Volume Shadow Copies (or absence if T1490 executed)
+- Windows Event logs (`.evtx` files in `C:\Windows\System32\winevt\Logs\`)
 - The ransom note file with its exact creation timestamp
 - Renamed/encrypted files showing the mass modification event cluster
 
 ---
 
-## Method A — FTK Imager Lite (Recommended — Free, No Installation Required)
+## Actual Lab Procedure Executed (VirtualBox Host-Level Clone)
 
-FTK Imager Lite is the industry-standard forensic imaging tool. The "Lite" version runs
-without installation (portable executable).
+In this investigation, disk acquisition was conducted from the host workstation after the target VM was cleanly powered down, ensuring zero post-simulation disk writes occurred on the target volume.
 
-### Prerequisites
-
-- Download FTK Imager Lite from AccessData/Exterro (free, no license required):
-  `https://accessdata.com/product-download/ftk-imager-version-4-7-1`
-- Copy to the HOST machine (do NOT copy into the VM — we image from outside)
-- VM in running or cleanly powered-off state (powered-off is fine for disk imaging)
-
-### Steps (imaging a VirtualBox VM disk from the host)
-
-> **Note:** The cleanest approach is to power off the VM (after memory dump) and image the
-> .vdi / .vmdk file directly. This avoids any write activity on the target volume.
-
-**Step 1: Power off the VM (gracefully or force off)**
-```
-VirtualBox Manager > Machine > ACPI Shutdown (or Force Off)
-DO NOT revert to snapshot yet — we need the post-simulation disk state.
-```
-
-**Step 2: Convert VDI to RAW (for FTK Imager compatibility)**
-```cmd
-# On the HOST machine:
-"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" clonemedium disk ^
-  "C:\Users\<user>\VirtualBox VMs\DFIR-SimVM\DFIR-SimVM.vdi" ^
-  "C:\dfir_evidence\disk_image_raw.img" ^
-  --format RAW
-```
-
-**Step 3: Open FTK Imager Lite on the host**
-```
-File > Add Evidence Item > Image File
-Select: C:\dfir_evidence\disk_image_raw.img
-```
-
-**Step 4: Create a forensic E01 image**
-```
-File > Create Disk Image
-Source: the raw image you added
-Destination format: E01 (Expert Witness Format) — industry standard
-Image destination: C:\dfir_evidence\
-Case number: DFIR-LAB-001
-Evidence number: DISK-001
-Examiner: Yogesh T
-Notes: Post-simulation disk image of DFIR-SimVM
-Enable "Verify images after they are created"
-Enable "Create directory listings of all files in the image"
-```
-
-**Step 5: Record the hash from FTK Imager's verification output**
-
-FTK Imager displays MD5 and SHA-1 hashes of the completed image. Record both:
-```
-MD5:  _______________________________________________
-SHA1: _______________________________________________
-```
-
----
-
-## Method B — VBoxManage Direct Export to RAW (Simpler)
-
-If FTK Imager is not available, the RAW image from Method A Step 2 is sufficient
-for Autopsy. Autopsy accepts RAW disk images natively.
-
-**Hash the raw image:**
+### Step 1: Clean VM Power Off
 ```powershell
-Get-FileHash "C:\dfir_evidence\disk_image_raw.img" -Algorithm SHA256 | Tee-Object -FilePath "C:\dfir_evidence\disk_image_raw.img.sha256"
+# Initiate ACPI power off via VirtualBox hypervisor
+& "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" controlvm "DFIR-SimVM" acpipowerbutton
 ```
+*Note: Do NOT revert to snapshot yet — we require the post-simulation disk state.*
+
+### Step 2: Primary Bitstream Disk Clone (`.vdi`)
+```powershell
+# Clone the virtual disk medium directly from host storage
+& "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" clonemedium disk ^
+  "C:\Users\yoges\VirtualBox VMs\DFIR-SimVM\DFIR-SimVM.vdi" ^
+  "forensics\acquisition\DFIR-SimVM-disk.vdi" ^
+  --format VDI
+```
+* **Output File:** `forensics/acquisition/DFIR-SimVM-disk.vdi` (`EVD-002`)
+* **File Size:** 38,375,000,064 bytes (35.74 GB)
+* **SHA-256 Digest:** `33695DE62EE72C8E3FDE8225BD7688D9CDFD656B22F1DB7EC51D08B63579B980`
+
+### Step 3: Container Conversion for Autopsy Compatibility (`.vmdk`)
+Autopsy running on Windows does not possess native container support for VirtualBox `.vdi` files (yielding `"Error loading file systems"`). To allow The Sleuth Kit (TSK) to parse the NTFS file system, the cloned disk was converted to a VMware VMDK container:
+
+```powershell
+& "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" clonemedium disk ^
+  "forensics\acquisition\DFIR-SimVM-disk.vdi" ^
+  "forensics\acquisition\DFIR-SimVM-disk.vmdk" ^
+  --format VMDK
+```
+* **Output File:** `forensics/acquisition/DFIR-SimVM-disk.vmdk` (`EVD-003`)
+* **File Size:** 38,354,026,496 bytes (35.72 GB)
+* **Independent SHA-256 Digest:** `98E32CEA9633D9F65AAC2A93F9236F3C31A12DD50797BF4DEB5E357D0166C219`
 
 ---
 
-## Method C — dc3dd (Open-Source, Linux/WSL)
+## Cryptographic Verification
 
-`dc3dd` is the forensically-sound version of `dd` with integrated hashing and progress output.
-Use this if you prefer a fully open-source tool or are working in a Linux environment.
+Calculate and verify SHA-256 hashes immediately upon acquisition:
 
-```bash
-# In WSL or a Linux host:
-# Identify the VM disk device or mount the VDI file
-
-# Option 1: Direct dd from block device (if VM disk is exposed as a device)
-dc3dd if=/dev/sdX of=/evidence/disk_image.raw hash=sha256 hlog=/evidence/disk_image.hash log=/evidence/dc3dd.log
-
-# Option 2: From a VDI file converted to raw first (same as Method A Step 2)
-# Then:
-dc3dd if=disk_image_raw.img of=disk_image_verified.raw hash=sha256 hlog=disk_hash.txt
-```
-
----
-
-## Acquisition Notes Template
-
-```
-DISK ACQUISITION RECORD
-========================
-Examiner: Yogesh T
-Date/Time: _______________
-VM Name: _______________
-VM OS: _______________
-VM Disk Type: [ ] VDI  [ ] VMDK  [ ] Other: ___
-Tool Used: [ ] FTK Imager  [ ] VBoxManage RAW  [ ] dc3dd
-
-Source Disk Path: _______________
-Output Image Path: _______________
-Output Format: [ ] E01  [ ] RAW  [ ] Other: ___
-Image Size: _______________ bytes
-
-Hashes:
-  MD5:    _______________________________________________
-  SHA-1:  _______________________________________________
-  SHA-256: _______________________________________________
-
-Pre-acquisition notes:
-  - VM state when imaging began: [ ] Running  [ ] Powered Off
-  - Time between memory dump and disk image: _______________
-  - Any write activity on VM disk after simulation and before imaging: _______________
-
-Chain of Custody:
-  - Evidence stored at: _______________
-  - Drive encrypted: [ ] YES [ ] NO
-  - Storage media hash: _______________
+```powershell
+Get-FileHash "forensics\acquisition\DFIR-SimVM-disk.vdi" -Algorithm SHA256
+Get-FileHash "forensics\acquisition\DFIR-SimVM-disk.vmdk" -Algorithm SHA256
 ```
 
 ---
 
 ## Importing into Autopsy
 
-After acquiring the disk image:
-
-1. Open Autopsy
-2. Create a New Case:
+1. Launch Autopsy (Version 4.23.1).
+2. Create New Case:
    - Case Name: `DFIR-Lab-001`
+   - Case Number: `2026-001`
    - Examiner: `Yogesh T`
-3. Add a Data Source:
-   - Source Type: Disk Image or VM File
-   - Path: Your `.E01` or `.raw` image
-4. Run Ingest Modules — enable ALL of these:
-   - Recent Activity
-   - Hash Lookup (MD5/SHA-256)
+3. Add Data Source:
+   - Source Type: **Disk Image or VM File**
+   - Path: `forensics\acquisition\DFIR-SimVM-disk.vmdk`
+   - Sector Size: 512 bytes (default auto-detect)
+4. Configure Ingest Modules:
    - File Type Identification
-   - Keyword Search
-   - Email Parser
-   - Extension Mismatch Detector (critical: finds `.locked` files with wrong signatures)
-   - PhotoRec Carver
-   - **Timeline Analysis** (most important for this investigation)
-5. Wait for ingest to complete (15-60 minutes depending on disk size)
-6. Then open Timeline Analysis: `Tools > Timeline`
+   - Extension Mismatch Detector (flags `.locked` files with stomped headers)
+   - Recent Activity
+   - Hash Lookup
+5. Timeline Analysis:
+   - Open `Tools > Timeline`
+   - Filter to hour window 22:00 IST to visualize the 4-second encryption storm.
+   - Export MFT listing via Table View -> `Save Table as CSV` -> `directory_mft_listing.csv`.
 
 ---
 
-## Next Step
+## Offline Evidence Retention Policy
 
-Proceed to Phase 3:
-**[volatility_analysis/ANALYSIS_NOTES.md](../volatility_analysis/ANALYSIS_NOTES.md)**
+In compliance with repository constraints and DFIR operational security, multi-gigabyte disk images (`*.vdi`, `*.vmdk`) are retained offline on the analyst workstation and excluded from version control via `.gitignore`.

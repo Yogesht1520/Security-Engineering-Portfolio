@@ -2,10 +2,11 @@
 # Phase 4 — Blind Investigation
 
 > **Investigator:** Yogesh T (Lead DFIR Analyst)  
-> **Evidence File:** `forensics/acquisition/DFIR-SimVM-disk.vmdk`  
-> **Evidence SHA-256:** `33695DE62EE72C8E3FDE8225BD7688D9CDFD656B22F1DB7EC51D08B63579B980`  
+> **Evidence Item:** `EVD-003` (`forensics/acquisition/DFIR-SimVM-disk.vmdk`, derived from `EVD-002`)  
+> **Container SHA-256:** `98E32CEA9633D9F65AAC2A93F9236F3C31A12DD50797BF4DEB5E357D0166C219`  
+> **Source VDI SHA-256:** `33695DE62EE72C8E3FDE8225BD7688D9CDFD656B22F1DB7EC51D08B63579B980` (`EVD-002`)  
 > **Analysis Date:** 2026-10-23  
-> **Tool:** Autopsy 4.23.1 (with The Sleuth Kit backend)  
+> **Tool:** Autopsy 4.23.1 (with The Sleuth Kit 4.12.1 backend)  
 >
 > **BLIND INVESTIGATION PROTOCOL:** Reconstructed attack timeline, file creation/modification events, and persistence/impact indicators purely from disk structures and MFT records.
 
@@ -16,14 +17,15 @@
 - **Case Name:** `DFIR-Lab-001`
 - **Case Number:** `2026-001`
 - **Examiner:** `Yogesh T`
-- **Data Source:** `DFIR-SimVM-disk.vmdk` (Image Size: 38,354,026,496 bytes)
+- **Data Source:** `DFIR-SimVM-disk.vmdk` (Derived Container Size: 38,354,026,496 bytes)
 - **Primary Partition Analyzed:** `vol6 (Basic data partition)` — NTFS File System (Windows C: drive)
 
 ---
 
 ## Step 1 — File System & Directory MFT Analysis
 
-**MFT Export:** [`directory_mft_listing.csv`](./directory_mft_listing.csv)  
+**MFT Cryptographic Inventory:** [`directory_mft_listing.csv`](./directory_mft_listing.csv)  
+**Timeline Export:** [`timeline_export.csv`](./timeline_export.csv)  
 **Target Path Identified:** `/vol_vol6/Users/Public/test_ransomware_sim/B67F15E3/`
 
 ### Cryptographic MFT Inventory & Hash Verification:
@@ -54,9 +56,9 @@
 ### Chronological Attack Flow Identified:
 
 ```text
-22-Oct-2026 (Hour 22 IST)
+22-Oct-2026 (Hour 22 IST / 16:00 UTC)
   ├── 1. Staging & Dropper Artifact:
-  │      Path: C:\DFIR-Transfer -> C:\Users\Public\custom_behavior_sim.py
+  │      Path: C:\Users\Public\custom_behavior_sim.py
   │
   ├── 2. Rapid Encryption Burst (T1486):
   │      22:26:49 -> financial_report_Q3.xlsx encrypted
@@ -64,14 +66,15 @@
   │      22:26:51 -> backup_keys.txt & customer_list.txt encrypted
   │      22:26:52 -> project_proposal.pdf encrypted
   │      22:26:53 -> contract_draft.docx & logo.png encrypted
-  │      (Duration: 4 seconds total for 8 files — automated script velocity)
+  │      (Duration: 4 seconds total across 8 files — automated script velocity)
   │
   ├── 3. Recovery Journal & Ransom Note Drop:
   │      22:26:54 -> recovery_journal.json committed
   │      22:26:55 -> README_YOUR_FILES.txt dropped & artifact_manifest.json written
   │
-  └── 4. Recovery Inhibition Artifact (T1490):
-         /EFI/Microsoft/Boot/BCD access & query events recorded in timeline
+  └── 4. Recovery Inhibition Artifacts (T1490 Evaluation):
+         /EFI/Microsoft/Boot/BCD access & query events recorded in timeline.
+         (Evaluation & query only; live deletion was disabled via safe default mode)
 ```
 
 ---
@@ -79,16 +82,16 @@
 ## Step 3 — Extension Mismatches & Entropy Verification
 
 - Autopsy's **Extension Mismatch Detector** flagged all 8 `.locked` files.
-- The files retain standard MIME declarations (e.g. `application/octet-stream`), but their original signatures (`PK\x03\x04` for docx/xlsx, `%PDF` for pdf, `\x89PNG` for png) were entirely obliterated by the XOR transformation.
-- This represents classic ransomware entropy disruption and file signature stomping.
+- The files retain generic MIME declarations (`application/octet-stream`), but their original signatures (`PK\x03\x04` for docx/xlsx, `%PDF` for pdf, `\x89PNG` for png) were replaced by the XOR transformation.
+- This represents file signature stomping and entropy disruption characteristic of ransomware.
 
 ---
 
 ## Step 4 — Deleted File Recovery Analysis
 
 **Report:** [`deleted_files_report.md`](./deleted_files_report.md)
-- In NTFS, file deletion marks MFT record entries with flag `0x00` (unallocated).
-- Because our simulation script followed an atomic replacement workflow (`.stage.tmp` -> `.locked` followed by original unlinking), the original file data blocks were unlinked and marked as available in the NTFS bitmap.
+- In NTFS, file deletion unlinks MFT record entries and marks clusters as available in the volume allocation bitmap.
+- Because the simulation script followed an atomic replacement workflow (`.stage.tmp` -> `.locked` followed by original unlinking), the original file data blocks were unlinked, demonstrating why forensic unallocated space recovery is relevant in ransomware incidents.
 
 ---
 
@@ -96,11 +99,11 @@
 
 | Forensic Dimension | Phase 3: Volatility 3 Memory Finding | Phase 4: Autopsy Disk Finding | Forensic Conclusion |
 |---|---|---|---|
-| **Malware Script** | `custom_behavior_sim.py` in Notepad session / PowerShell | `C:\Users\Public\custom_behavior_sim.py` MFT entry | **Confirmed** malicious entry point |
-| **Execution Window** | Memory dump taken at 22:40:12 IST | Modification burst at 22:26:49 – 22:26:55 IST | **Confirmed** execution timing |
-| **Exfiltration** | 0 active network sockets (`netscan`) | 0 external network connection artifacts in registry | **Confirmed** zero data exfiltration |
-| **Recovery Inhibition** | Simulated log command in script | `/EFI/Microsoft/Boot/BCD` access event in timeline | **Confirmed** T1490 system interrogation |
-| **Ransomware Note** | Opened in Notepad PID 6312 | Dropped at `22:26:55 IST`, size 1,144 B | **Confirmed** extortion delivery |
+| **Malware Script** | `custom_behavior_sim.py` in Notepad session descriptor | `C:\Users\Public\custom_behavior_sim.py` MFT entry | **Confirmed** staged script |
+| **Execution Window** | Memory captured at 22:40:12 IST (17:10:12 UTC) | File modification burst at 22:26:49 – 22:26:55 IST | **Confirmed** timing |
+| **Network & Exfiltration**| 0 active/listening sockets in `netscan` | 0 external network connection records in registry/logs | **Confirmed** air-gap held; zero exfiltration |
+| **Recovery Inhibition** | Simulated log command in script stdout | `/EFI/Microsoft/Boot/BCD` access event in timeline | **Confirmed** T1490 evaluated in safe log mode |
+| **Ransomware Note** | Inspected in Notepad PID 6312 | Dropped at `22:26:55 IST`, size 1,144 B | **Confirmed** extortion artifact |
 
 ---
 

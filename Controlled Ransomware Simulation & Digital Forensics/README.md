@@ -1,48 +1,47 @@
 # 🔬 Controlled Ransomware Simulation & Digital Forensics Investigation
 
-> **CONFIDENTIAL — Simulated Incident for Educational Purposes Only**
+> **CONFIDENTIAL — Simulated Incident for Educational Purposes Only**  
 > Lead Investigator: Yogesh T | Role: DFIR Analyst | Classification: Portfolio / Educational
 
 ---
 
 ## Executive Overview
 
-This project demonstrates a **complete, end-to-end Digital Forensics & Incident Response (DFIR) workflow**
-using only open-source tools, executed entirely inside an air-gapped virtual machine. The goal is to
-simulate realistic ransomware-adjacent behavior, acquire forensic evidence, and produce a professional-grade
-Incident Response report — identical in structure to a real consulting deliverable.
+This project demonstrates a **complete, end-to-end Digital Forensics & Incident Response (DFIR) workflow** using open-source tools, executed inside an air-gapped virtual machine. The goal is to simulate realistic ransomware-adjacent behavior, acquire forensic evidence, perform memory and disk analysis, and produce an executive-grade Incident Response report mirroring real-world consulting deliverables.
 
-> **Why behavioral simulation instead of live malware?**
-> Using real ransomware samples introduces unacceptable risk (accidental detonation, legal exposure,
-> AV evasion uncertainty) with zero additional learning benefit. Atomic Red Team tests and a
-> purpose-written simulation script produce *identical* forensic artifacts — process trees, file-system
-> mutations, registry changes, shadow-copy deletion attempts — while keeping the environment fully
-> controlled and every action fully understood. This is the approach used by professional red teams
-> and DFIR training programs. Choosing simulation over live malware is a judgment signal, not a limitation.
+> **Why behavioral simulation instead of live malware?**  
+> Using real ransomware samples introduces unacceptable risk (accidental detonation, legal exposure, AV evasion uncertainty) with zero additional learning benefit. Atomic Red Team tests and a purpose-written simulation script produce *identical* forensic artifacts — process trees, file-system mutations, registry changes, shadow-copy deletion attempts — while keeping the environment fully controlled and every action fully understood. This is the approach used by professional red teams and DFIR training programs. Choosing simulation over live malware is a deliberate judgment signal, not a limitation.
 
 ---
 
 ## High-Level Architecture
 
-```
-+-----------------------------------------------------+
-|          Your Physical Host (read-only observer)     |
-|                                                      |
-|  +----------------------------------------------+   |
-|  |  Isolated VM -- NO NETWORK ADAPTER ATTACHED  |   |
-|  |                                              |   |
-|  |  [Clean Snapshot] -> [Simulation] -> [Artifacts] |
-|  +----------------------------------------------+   |
-|                        |                             |
-|           +------------+------------+                |
-|           v                         v                |
-|     [Memory Dump .raw]      [Disk Image .E01]        |
-|           |                         |                |
-|     [Volatility 3]            [Autopsy]              |
-|           +------------+-----------+                 |
-|                        v                             |
-|            [Incident Response Report PDF]            |
-+-----------------------------------------------------+
+```text
++--------------------------------------------------------------------------+
+|                 Physical Forensic Workstation (Observer)                 |
+|                                                                          |
+|  +--------------------------------------------------------------------+  |
+|  |           Isolated Guest VM (DFIR-SimVM, Windows 11 Enterprise)     |  |
+|  |           Network Adapter: NOT ATTACHED (Strict Air-Gap)           |  |
+|  |                                                                    |  |
+|  |  [Clean Snapshot] -> [Simulation Execution] -> [Evidence Staged]   |  |
+|  +--------------------------------------------------------------------+  |
+|                           |                             |                |
+|           +---------------+---------------+             |                |
+|           v                               v             v                |
+|   [Live RAM Freeze]              [Power-off Clone]  [Teardown Revert]    |
+|   DFIR-SimVM-memory.raw          DFIR-SimVM-disk.vdi   100% Snapshot     |
+|   (8.13 GB ELF64 Dump)           (35.74 GB VDI Clone)   Restoration      |
+|           |                               |                              |
+|           v                               v                              |
+|   [Volatility 3 v2.26.0]         [Autopsy 4.23.1 via VMDK]               |
+|   - Process Tree & Cmdline       - NTFS $MFT Cryptographic Listing       |
+|   - 0 Active Sockets (Air-gap)   - 4-Second File Encryption Storm        |
+|   - Clean Memory Protections     - Extension Mismatch Detection          |
+|           +-------------------------------+                              |
+|                           v                                              |
+|      [Incident Response Report: docs/INCIDENT_RESPONSE_REPORT.md]        |
++--------------------------------------------------------------------------+
 ```
 
 ---
@@ -62,10 +61,12 @@ ransomware-dfir-lab/
 │   └── atomic_red_team_tests.md         <- MITRE ATT&CK test procedure plan
 ├── forensics/
 │   ├── acquisition/
+│   │   ├── EVIDENCE_MANIFEST.md         <- Master evidence inventory & chain-of-custody ledger
 │   │   ├── memory_dump_steps.md         <- Memory capture SOP & procedure
 │   │   ├── disk_image_steps.md          <- Disk imaging SOP & procedure
 │   │   ├── DFIR-SimVM-memory.raw.sha256 <- SHA-256 verification hash for RAM dump
-│   │   └── disk_image.vdi.sha256        <- SHA-256 verification hash for disk clone
+│   │   ├── DFIR-SimVM-disk.vdi.sha256   <- SHA-256 verification hash for VDI disk clone
+│   │   └── DFIR-SimVM-disk.vmdk.sha256  <- SHA-256 verification hash for derived VMDK
 │   ├── volatility_analysis/
 │   │   ├── ANALYSIS_NOTES.md            <- Memory forensics investigation notes
 │   │   ├── windows_info_output.txt      <- OS profile & kernel base
@@ -93,58 +94,81 @@ ransomware-dfir-lab/
 
 ---
 
+## Tool Version & Provenance
+
+To ensure reproducibility and forensic rigor, exact tool versions and execution environments are documented below:
+
+| Tool | Exact Version | Role | Execution Host | Invocation Method |
+|---|---|---|---|---|
+| **Volatility 3** | Framework 2.26.0 | Volatile Memory Forensics | Windows 11 Physical Host | `vol.exe -f <raw> <plugin>` |
+| **Autopsy** | 4.23.1 (TSK 4.12.1) | Post-Mortem Disk & MFT Analysis | Windows 11 Physical Host | GUI / SQLite Timeline Engine |
+| **VirtualBox** | 7.1.6 r167084 | Hypervisor & Acquisition | Windows 11 Physical Host | `VBoxManage.exe` CLI |
+| **Python (Host)** | 3.13.1 | Volatility & Hash Runtime | Windows 11 Physical Host | Host Python Runtime |
+| **Python (Guest)**| 3.13.1 | Simulator Execution Engine | `DFIR-SimVM` (Windows 11) | Guest Python Runtime |
+
+---
+
+## Offline Evidence Retention Policy
+
+In adherence to DFIR best practices and repository constraints:
+* **Large Evidence Images Retained Offline:** The primary 8.13 GB volatile RAM capture (`DFIR-SimVM-memory.raw`), the 35.74 GB disk clone (`DFIR-SimVM-disk.vdi`), and the 35.72 GB derived container (`DFIR-SimVM-disk.vmdk`) are retained offline on encrypted analyst storage and are excluded from Git via `.gitignore`.
+* **Cryptographic Verification Ledger:** Full SHA-256 verification hashes for each image are tracked in **[`forensics/acquisition/EVIDENCE_MANIFEST.md`](./forensics/acquisition/EVIDENCE_MANIFEST.md)** and individual untruncated `.sha256` files.
+
+---
+
+## Air-Gap & Offline Tool Staging Protocol
+
+To prevent any network connectivity at any point during or after simulation:
+1. **Tool Staging via Virtual Media:** All scripts (`custom_behavior_sim.py`, test suites) were transferred into the VM using a read-only VirtualBox Virtual Optical Disc (ISO) or host-guest transfer prior to network disconnection.
+2. **Adapter Disablement:** The VM network adapter was set to **"Not Attached"** in VirtualBox hypervisor settings.
+3. **Dual Verification:** Guest network isolation was independently verified by:
+   - Capturing hypervisor settings (`screenshots/vm-network-adapter-disabled.png`).
+   - Running continuous ping sweeps inside the guest showing 100% packet loss (`screenshots/network-connectivity-test.png`).
+4. **Baseline Snapshot:** The clean baseline snapshot (`baseline-pre-simulation-2026-10-22`) was taken *only after* network isolation was confirmed.
+
+---
+
 ## MITRE ATT&CK Coverage
 
-| Technique | ID | Forensic Observable |
-|---|---|---|
-| Data Encrypted for Impact | T1486 | File rename artifacts, entropy change |
-| Inhibit System Recovery | T1490 | `vssadmin delete shadows` in process history |
-| Process Injection | T1055 | `malfind` output in Volatility |
-| OS Credential Dumping | T1003 | LSASS access artifacts in memory |
-
----
-
-## Tech Stack
-
-| Layer | Tool | License | Cost |
+| Technique | ID | Forensic Observable | Investigation Phase |
 |---|---|---|---|
-| Virtualization | VirtualBox | GPLv2 | $0 |
-| Simulation | Atomic Red Team | MIT | $0 |
-| Memory Forensics | Volatility 3 | Volatility Software License | $0 |
-| Disk Forensics | Autopsy + The Sleuth Kit | Apache-2.0 | $0 |
-| Imaging | FTK Imager / dc3dd | Free / BSD | $0 |
-| Reporting | Markdown -> Pandoc -> PDF | GPL/MPL | $0 |
+| Command and Scripting: Python | T1059.006 | Process tree, cmdline session descriptor | Volatility 3 (Memory) |
+| File and Directory Discovery | T1083 | Local target directory file enumeration | Autopsy (MFT / Timeline) |
+| Data Encrypted for Impact | T1486 | 4-second burst, .locked extensions, ransom note | Autopsy (MFT / Timeline) |
+| Inhibit System Recovery | T1490 | Evaluated vssadmin & bcdedit in safe mode | Volatility & Autopsy Timeline |
 
 ---
 
-## Phases
+## Investigation Phases & Status
 
-| Phase | Description | Status |
-|---|---|---|
-| **Phase 0** | Safe environment setup (VM, network isolation, baseline snapshot) | ✅ COMPLETE — Air-gap & baseline verified |
-| **Phase 1** | Simulation execution (controlled ransomware simulation v1.2.12) | ✅ COMPLETE — 8 canary files encrypted, run ID `B67F15E3` |
-| **Phase 2** | Evidence acquisition (8.13 GB RAM + 35.74 GB VMDK + SHA-256) | ✅ COMPLETE — Cryptographically signed & verified |
-| **Phase 3** | Memory forensics — Volatility 3 blind analysis | ✅ COMPLETE — Process tree, cmdline, 0 sockets, clean memory |
-| **Phase 4** | Disk forensics — Autopsy blind analysis | ✅ COMPLETE — MFT export, 4s encryption storm, timeline |
-| **Phase 5** | Incident Response Report (primary deliverable) | ✅ COMPLETE — `docs/INCIDENT_RESPONSE_REPORT.md` finalized |
-| **Phase 6** | Teardown and host cleanup | ✅ COMPLETE — Reverted to clean baseline snapshot |
-
-> **GATE: Phase 1 is locked until `screenshots/vm-network-adapter-disabled.png` exists and is verified.**
+| Phase | Description | Deliverable / Artifact | Status |
+|---|---|---|---|
+| **Phase 0** | Safe Environment Setup | Network isolation confirmed, baseline snapshot captured | ✅ **COMPLETE** |
+| **Phase 1** | Controlled Simulation Execution | 8 canary files encrypted, run ID `B67F15E3`, test harness passed | ✅ **COMPLETE** |
+| **Phase 2** | Evidence Acquisition | 8.13 GB RAM (`.raw`) + 35.74 GB Disk (`.vmdk`), cryptographically hashed | ✅ **COMPLETE** |
+| **Phase 3** | Memory Forensics (Volatility 3) | Process tree, Notepad session decode, 0 sockets (air-gap proof), clean memory | ✅ **COMPLETE** |
+| **Phase 4** | Disk Forensics (Autopsy 4.23.1) | MFT extraction, 4-second encryption storm timeline, extension mismatch analysis | ✅ **COMPLETE** |
+| **Phase 5** | Incident Response Report | Executive consulting deliverable: [docs/INCIDENT_RESPONSE_REPORT.md](./docs/INCIDENT_RESPONSE_REPORT.md) | ✅ **COMPLETE** |
+| **Phase 6** | Teardown & Cleanup | `DFIR-SimVM` cleanly restored to baseline pre-simulation snapshot | ✅ **COMPLETE** |
 
 ---
 
 ## Primary Deliverable
 
-`docs/INCIDENT_RESPONSE_REPORT.pdf` — A professional, 3-4 page consulting-grade IR report covering:
-Executive Summary, Timeline of Events, IOCs, Technical Findings, Impact Assessment, Root Cause Analysis,
-and Remediation Recommendations.
+The primary deliverable is **[`docs/INCIDENT_RESPONSE_REPORT.md`](./docs/INCIDENT_RESPONSE_REPORT.md)** — a formal, consulting-grade Incident Response Report written to SANS PICERL standards. It covers:
+* **Executive Summary:** Incident scope, blast radius, and business impact for leadership and legal counsel.
+* **Correlated Timeline:** Correlating Volatility memory structures and Autopsy NTFS MFT records down to the second.
+* **Cryptographic Recovery Verification:** Complete before-and-after SHA-256 verification proving 100% data recovery without paying extortion.
+* **Indicators of Compromise (IOCs):** Hashes, file paths, wallet addresses, and process commands.
+* **Technical Deep-Dive:** Volatility 3 process trees, command lines, memory protections, and Autopsy timeline analysis.
+* **Remediation & Sigma Rules:** Priority 1–3 security controls and vendor-agnostic Sigma rules for T1490 and T1486.
 
 ---
 
 ## Safety
 
-All safety rules are documented in **[SAFETY.md](./SAFETY.md)**.
-Network isolation is the single most important control in this project.
+All safety rules are documented in **[SAFETY.md](./SAFETY.md)**.  
+Network isolation is the single most critical control in this project.
 
 ---
 

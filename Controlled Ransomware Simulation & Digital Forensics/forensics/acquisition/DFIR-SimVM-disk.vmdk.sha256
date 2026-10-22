@@ -1,0 +1,7 @@
+# Cryptographic Verification Hash
+# Evidence Item: EVD-003 (Derived VMDK Disk Image for Autopsy Analysis)
+# Conversion Timestamp: 2026-10-22 23:00:15 IST (17:30:15 UTC)
+# Examiner: Yogesh T (Lead DFIR Analyst)
+# File Size: 38,354,026,496 bytes (35.72 GB)
+
+98E32CEA9633D9F65AAC2A93F9236F3C31A12DD50797BF4DEB5E357D0166C219 *DFIR-SimVM-disk.vmdk

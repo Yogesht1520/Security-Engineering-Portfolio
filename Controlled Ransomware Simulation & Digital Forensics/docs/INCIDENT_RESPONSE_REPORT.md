@@ -14,7 +14,7 @@
 | **Role** | DFIR Analyst / Security Engineer |
 | **Organization** | Security Engineering Portfolio |
 | **Classification** | Portfolio / Educational Deliverable |
-| **Report Version** | 1.0 — FINAL |
+| **Report Version** | 1.1 — FINAL (Audit Reconciled) |
 
 > *This report documents a controlled forensic investigation of a ransomware attack simulation executed within an air-gapped virtual machine (`DFIR-SimVM`). No production systems or unauthorized networks were targeted. The report structure and technical methodology adhere strictly to the SANS PICERL framework and industry standards for DFIR reporting.*
 
@@ -24,18 +24,18 @@
 
 **Target Audience:** Chief Information Security Officer (CISO), Executive Leadership, Legal Counsel
 
-On **22-Oct-2026 at 22:26:35 IST (16:56:35 UTC)**, anomalous host-level activity consistent with an active ransomware attack was initiated on endpoint `DFIR-SimVM`. A rapid investigation was launched immediately using volatile memory and post-mortem disk forensic methodologies.
+On **22-Oct-2026 at 22:26:35 IST (16:56:35 UTC)**, host-level activity consistent with an active ransomware attack was initiated on endpoint `DFIR-SimVM`. A rapid forensic investigation was launched using volatile memory analysis and post-mortem disk forensic methodologies.
 
-* **Incident Nature:** An operator-staged Python execution payload executed in user space, iterating through target business documents, performing atomic file encryption, stomping original file headers, and dropping an extortion notice demanding 0.5 BTC.
-* **TTPs Observed:** 
+* **Incident Nature:** An operator-staged Python execution payload (`custom_behavior_sim.py`) executed within an unprivileged user session (`SimUser`), enumerating canary business documents, executing an atomic file encryption loop, stomping original file headers, and dropping an extortion notice demanding 0.5 BTC.
+* **TTPs Evaluated & Observed:** 
   * Execution: Python Script Interpreter ([MITRE T1059.006](https://attack.mitre.org/techniques/T1059/006/))
   * Discovery: Local File System Enumeration ([MITRE T1083](https://attack.mitre.org/techniques/T1083/))
   * Impact: Data Encrypted for Impact ([MITRE T1486](https://attack.mitre.org/techniques/T1486/))
-  * Defense Evasion / Impact: Inhibit System Recovery via VSS & BCD ([MITRE T1490](https://attack.mitre.org/techniques/T1490/))
-* **Scope & Blast Radius:** The intrusion was strictly restricted to a single endpoint (`DFIR-SimVM`). Forensic network scanning (`windows.netscan`) confirmed **zero active connections, zero listening ports, and zero network traffic** (confirming that air-gap safeguards held). No corporate data was exfiltrated.
-* **Data Impact:** 8 canary business documents spanning spreadsheet, database, presentation, word processing, and graphic formats were encrypted with a `.locked` extension.
-* **Containment & Recovery:** The host was immediately contained. A live 8.13 GB volatile RAM capture (`DFIR-SimVM-memory.raw`) and a 35.74 GB full-disk forensic clone (`DFIR-SimVM-disk.vmdk`) were acquired with verified SHA-256 cryptographic hashes prior to clean teardown.
-* **Confidence Level:** **HIGH** — Volatile memory structures (Volatility 3) and Master File Table records (Autopsy 4.23.1) are mutually corroborating and chronologically synchronized down to the second.
+  * Defense Evasion / Impact: Inhibit System Recovery ([MITRE T1490](https://attack.mitre.org/techniques/T1490/)) — evaluated in safe log-only mode.
+* **Scope & Blast Radius:** The intrusion was strictly confined to a single isolated endpoint (`DFIR-SimVM`). Volatile memory socket analysis (`windows.netscan`) identified zero active or listening network sockets. Triangulated against the hypervisor's disconnected adapter configuration and guest ping failures, **no network exfiltration or external C2 beaconing was observed in the evidence examined.**
+* **Data Impact:** 8 canary business files spanning spreadsheet, database, presentation, word processing, and graphic formats were transformed into high-entropy ciphertext with `.locked` extensions within a 4-second burst window.
+* **Containment & Recovery:** The host was immediately contained. An 8.13 GB volatile RAM capture (`DFIR-SimVM-memory.raw`) was acquired prior to shutdown. The endpoint was subsequently powered down and cloned to a 35.74 GB forensic disk image (`DFIR-SimVM-disk.vdi`), converted to VMDK (`DFIR-SimVM-disk.vmdk`) for Autopsy ingest, with independent SHA-256 cryptographic verification for every container. Clean recovery was verified via both cryptographic journal reversal and baseline snapshot rollback.
+* **Confidence Level:** **HIGH** — Volatile memory structures (Volatility 3 Framework 2.26.0) and Master File Table records (Autopsy 4.23.1) are mutually corroborating and chronologically synchronized down to the second.
 
 ---
 
@@ -46,70 +46,83 @@ On **22-Oct-2026 at 22:26:35 IST (16:56:35 UTC)**, anomalous host-level activity
 | In Scope | Out of Scope |
 |---|---|
 | Virtualized Windows 11 Enterprise x64 Endpoint (`DFIR-SimVM`) | Physical Host Workstation (Air-gapped) |
-| 8.13 GB Volatile RAM Image (`DFIR-SimVM-memory.raw`) | External Network Infrastructure (Air-gapped, 0 NICs) |
-| 35.74 GB Cloned Disk Image (`DFIR-SimVM-disk.vmdk`) | Unrelated tenant VM environments |
-| NTFS Master File Table ($MFT) & Logfile ($LogFile) | Cloud Identity Tenants (No Active Directory joined) |
+| 8.13 GB Volatile RAM Capture (`DFIR-SimVM-memory.raw`) | External Network Infrastructure (Air-gapped, 0 NICs) |
+| 35.74 GB Cloned Disk Image (`DFIR-SimVM-disk.vdi`) | Unrelated tenant VM environments |
+| 35.72 GB Derived Disk Container (`DFIR-SimVM-disk.vmdk`) | Cloud Identity Tenants (Workgroup environment) |
+| NTFS Master File Table ($MFT) & Logfile ($LogFile) | Production Corporate Data |
 
 ## 2.2 SANS PICERL Methodology Alignment
 
-The investigation executed according to the SANS Incident Response lifecycle:
+The investigation strictly adhered to the SANS Incident Response lifecycle, maintaining rigorous forensic ordering:
 
 ```text
   +------------------+       +----------------------+       +-------------------+
   | 1. PREPARATION   | ----> | 2. IDENTIFICATION    | ----> | 3. CONTAINMENT    |
-  | Baseline snap &  |       | MFT timeline spike & |       | Air-gap isolation |
-  | forensic tooling |       | Volatility pslist    |       | & memory freeze   |
+  | Air-gap VM setup |       | Anomalous file mods, |       | Disconnect audit, |
+  | & baseline snap  |       | ransom note detected |       | LIVE RAM DUMP     |
   +------------------+       +----------------------+       +-------------------+
                                                                       |
   +------------------+       +----------------------+                 v
   | 6. LESSONS       | <---- | 5. RECOVERY          | <---- +-------------------+
-  | LEARNED / SIGMA  |       | Atomic decryption /  |       | 4. ERADICATION    |
-  | Hardening & EDR  |       | Snapshot rollback    |       | Malicious script  |
-  +------------------+       +----------------------+       | termination & rem |
+  | LEARNED / SIGMA  |       | 100% Cryptographic   |       | 4. ERADICATION    |
+  | Hardening & ASR  |       | verification & snap  |       | VM power-off,     |
+  +------------------+       +----------------------+       | DISK CLONING post |
                                                             +-------------------+
 ```
 
-1. **Preparation:** Target VM was isolated from all network adapters (`Network Adapter Disconnected`), verified via PowerShell connectivity test (`Ping-Fail-Confirmed`). Clean forensic host configured with Volatility 3 and Autopsy.
-2. **Identification:** Detected rapid batch file alteration and extortion note delivery (`README_YOUR_FILES.txt`) in `C:\Users\Public\test_ransomware_sim\B67F15E3\`.
-3. **Containment:** System state preserved via memory dump (`VBoxManage debugvm dumpvmcore`) without executing reboot commands.
-4. **Eradication:** Endpoint powered off and replaced with verified pre-simulation baseline snapshot (`baseline-pre-simulation-2026-10-22`).
-5. **Recovery:** Reversibility verified through test-harness cryptographic journal (`recovery_journal.json`).
+1. **Preparation:** Target VM was isolated from all network adapters (`Network Adapter Disconnected`), verified via guest PowerShell ping test failure (`Ping-Fail-Confirmed`). Clean forensic host configured with Volatility 3 and Autopsy.
+2. **Identification:** Detected rapid batch file modifications and extortion note delivery (`README_YOUR_FILES.txt`) in `C:\Users\Public\test_ransomware_sim\B67F15E3\`.
+3. **Containment:** System state was frozen and volatile evidence secured immediately by extracting an 8.13 GB live RAM dump (`DFIR-SimVM-memory.raw`) while the operating system remained live. Network isolation was re-verified.
+4. **Eradication:** The target VM was cleanly powered off to arrest further potential disk writes. A bitstream forensic clone of the virtual disk (`DFIR-SimVM-disk.vdi`) was acquired post-mortem, and malicious script execution processes were terminated.
+5. **Recovery:** File reversibility was proven by verifying 100% cryptographic restoration across all 8 files via `recovery_journal.json`, followed by full endpoint rollback to the pre-simulation baseline snapshot (`baseline-pre-simulation-2026-10-22`).
 6. **Lessons Learned:** Engineered SIEM Sigma rules and endpoint hardening specifications against T1490 and T1486.
 
 ## 2.3 Evidence Integrity & Chain of Custody
 
-All evidence items were captured with immediate SHA-256 cryptographic hashing on the host forensic workstation:
+All primary and derived evidence items were hashed with SHA-256 immediately upon generation. Analysis was conducted exclusively on verified copies:
 
-| Evidence ID | Description | Format | Size | SHA-256 Digest |
+| Evidence ID | Description | Container / File | Format | File Size | Acquisition Method | Cryptographic SHA-256 Digest |
+|---|---|---|---|---|---|---|
+| **EVD-001** | Primary Memory Dump | `DFIR-SimVM-memory.raw` | ELF64 Core Dump | 8,735,768,576 B | Live Hypervisor Freeze (`VBoxManage debugvm dumpvmcore`) | `198A69B7412A7FD05CD88271E7C223C8F02D03DA14D3436AE715EB2FD0D5EFD3` |
+| **EVD-002** | Primary Disk Image | `DFIR-SimVM-disk.vdi` | VirtualBox VDI | 38,375,000,064 B | Clean Power-off Clone (`VBoxManage clonemedium disk`) | `33695DE62EE72C8E3FDE8225BD7688D9CDFD656B22F1DB7EC51D08B63579B980` |
+| **EVD-003** | Derived Disk Container | `DFIR-SimVM-disk.vmdk` | VMware VMDK | 38,354,026,496 B | Bitstream Container Conversion for Autopsy (`--format VMDK`) | `98E32CEA9633D9F65AAC2A93F9236F3C31A12DD50797BF4DEB5E357D0166C219` |
+
+> *Note on Offline Retention: To preserve repository integrity and comply with open-source hosting limits, raw multi-gigabyte forensic evidence images (EVD-001, EVD-002, EVD-003) are preserved on local encrypted analyst storage and are excluded from version control via `.gitignore`. Cryptographic verification hashes are tracked in `forensics/acquisition/EVIDENCE_MANIFEST.md` and dedicated `.sha256` records.*
+
+## 2.4 Forensic Tool Version & Provenance
+
+| Tool Name | Exact Version | Role in Investigation | Execution Host | Command / Entrypoint |
 |---|---|---|---|---|
-| **EVD-001** | Live RAM Capture | ELF64 / RAW | 8,735,768,576 B | `198A69B7412A7FD05CD88271E7C223C8F02D03DA14D3436AE715EB2FD0D5EFD3` |
-| **EVD-002** | Cloned Disk Image | VirtualBox VDI | 38,375,000,064 B | `33695DE62EE72C8E3FDE8225BD7688D9CDFD656B22F1DB7EC51D08B63579B980` |
-| **EVD-003** | Converted Disk Image | VMware VMDK | 38,354,026,496 B | Bitstream clone converted via `VBoxManage clonemedium` |
+| **Volatility 3** | Framework 2.26.0 | Volatile Memory Forensics | Windows 11 Host | `vol.exe -f <raw> <plugin>` |
+| **Autopsy** | 4.23.1 (TSK 4.12.1) | Post-Mortem Disk & MFT Analysis | Windows 11 Host | GUI / SQLite Timeline Engine |
+| **VirtualBox** | 7.1.6 r167084 | Hypervisor & Evidence Acquisition | Windows 11 Host | `VBoxManage.exe` |
+| **Python** | 3.13.1 | Simulation Script & Recovery Engine | Guest VM / Host | `py custom_behavior_sim.py` |
 
 ---
 
 # 3. Timeline of Events
 
-*Correlated across Volatility 3 Memory structures, NTFS $MFT timestamps, and Autopsy 4.23.1 timeline analysis.*  
-*All times recorded in Indian Standard Time (IST, UTC+05:30) with UTC equivalent.*
+*Correlated across Volatility 3 Memory structures, NTFS $MFT records, and Autopsy 4.23.1 timeline export ([timeline_export.csv](../forensics/autopsy_analysis/timeline_export.csv)).*  
+*Times recorded in Indian Standard Time (IST, UTC+05:30) with UTC equivalent.*
 
 | Time (IST) | Time (UTC) | Source / Plugin | Technique | Event Description |
 |---|---|---|---|---|
-| **22:26:35** | 16:56:35 | Volatility `pstree` / Event 4688 | [T1059.006](https://attack.mitre.org/techniques/T1059/006/) | Process `python.exe` launched executing `custom_behavior_sim.py` in user session. |
-| **22:26:36** | 16:56:36 | Autopsy MFT Record | [T1083](https://attack.mitre.org/techniques/T1083/) | Directory staging: `C:\Users\Public\test_ransomware_sim\B67F15E3\` initialized. |
-| **22:26:38** | 16:56:38 | Autopsy MFT Record | [T1083](https://attack.mitre.org/techniques/T1083/) | 8 canary business files written to staging directory for target baseline. |
-| **22:26:40** | 16:56:40 | Autopsy Timeline / Event 4688 | [T1490](https://attack.mitre.org/techniques/T1490/) | Recovery inhibition evaluated (`vssadmin delete shadows /all /quiet` & `bcdedit`). |
-| **22:26:49** | 16:56:49 | Autopsy MFT Record | [T1486](https://attack.mitre.org/techniques/T1486/) | **Encryption Storm Starts:** `financial_report_Q3.xlsx` -> `.locked` (56 B). |
+| **22:26:35** | 16:56:35 | Volatility `pstree` / Event 4688 | [T1059.006](https://attack.mitre.org/techniques/T1059/006/) | Process `python.exe` launched executing `custom_behavior_sim.py` in unprivileged user session. |
+| **22:26:46** | 16:56:46 | Autopsy MFT Record | [T1083](https://attack.mitre.org/techniques/T1083/) | Attack directory staged: `C:\Users\Public\test_ransomware_sim\B67F15E3\` initialized. |
+| **22:26:46** | 16:56:46 | Autopsy MFT Record | [T1083](https://attack.mitre.org/techniques/T1083/) | Execution audit log initialized (`simulation_log.txt`). |
+| **22:26:47** | 16:56:47 | Autopsy Timeline / Script Log | [T1490](https://attack.mitre.org/techniques/T1490/) | **T1490 Evaluated (Safe Mode):** Shadow copy deletion & BCD disablement evaluated and logged; live subprocess gated. |
+| **22:26:49** | 16:56:49 | Autopsy MFT Record | [T1486](https://attack.mitre.org/techniques/T1486/) | **Encryption Burst Begins:** `financial_report_Q3.xlsx` -> `.locked` (56 B). |
 | **22:26:50** | 16:56:50 | Autopsy MFT Record | [T1486](https://attack.mitre.org/techniques/T1486/) | `employee_database.csv` (70 B) & `executive_memo.docx` (53 B) encrypted. |
 | **22:26:51** | 16:56:51 | Autopsy MFT Record | [T1486](https://attack.mitre.org/techniques/T1486/) | `backup_keys.txt` (48 B) & `customer_list.txt` (51 B) encrypted. |
 | **22:26:52** | 16:56:52 | Autopsy MFT Record | [T1486](https://attack.mitre.org/techniques/T1486/) | `project_proposal.pdf` (55 B) encrypted. |
-| **22:26:53** | 16:56:53 | Autopsy MFT Record | [T1486](https://attack.mitre.org/techniques/T1486/) | `contract_draft.docx` (55 B) & `logo.png` (34 B) encrypted. **Encryption storm completes (4 seconds).** |
-| **22:26:54** | 16:56:54 | Autopsy MFT Record | — | Recovery journal committed: `recovery_journal.json` (17,465 B). |
-| **22:26:55** | 16:56:55 | Autopsy MFT Record | [T1486](https://attack.mitre.org/techniques/T1486/) | Ransom note dropped: `README_YOUR_FILES.txt` (1,144 B); `artifact_manifest.json` written. |
-| **22:40:12** | 17:10:12 | Host VBoxManage | — | Memory state frozen; 8.13 GB raw RAM acquired (`EVD-001`). |
-| **22:45:00** | 17:15:00 | Host VBoxManage | — | VM cleanly powered off; 35.74 GB forensic disk cloned (`EVD-002`). |
+| **22:26:53** | 16:56:53 | Autopsy MFT Record | [T1486](https://attack.mitre.org/techniques/T1486/) | `contract_draft.docx` (55 B) & `logo.png` (34 B) encrypted. **Encryption storm completes (4.0s).** |
+| **22:26:54** | 16:56:54 | Autopsy MFT Record | — | Recovery journal committed to disk: `recovery_journal.json` (17,465 B). |
+| **22:26:55** | 16:56:55 | Autopsy MFT Record | [T1486](https://attack.mitre.org/techniques/T1486/) | Extortion note dropped: `README_YOUR_FILES.txt` (1,144 B); manifest written. |
+| **22:40:12** | 17:10:12 | Host VBoxManage | — | **Containment:** Live VM state frozen; 8.13 GB volatile RAM dump acquired (`EVD-001`). |
+| **22:45:00** | 17:15:00 | Host VBoxManage | — | **Eradication:** VM cleanly powered down; 35.74 GB bitstream disk cloned (`EVD-002`). |
+| **23:00:15** | 17:30:15 | Host VBoxManage | — | Disk container converted to VMDK (`EVD-003`) for Autopsy ingest; SHA-256 hashed. |
 
-**Total Attack Burst Duration (Encryption Phase):** **4 seconds** (8 files, sub-second velocity characteristic of programmatic automation).
+**Total Attack Burst Duration (Encryption Phase):** **4.0 seconds** (8 files, sub-second velocity characteristic of programmatic automation).
 
 ---
 
@@ -147,7 +160,7 @@ All evidence items were captured with immediate SHA-256 cryptographic hashing on
 * **Process Lineage:** `powershell.exe` -> `python.exe custom_behavior_sim.py`
 * **Rapid File Mod Rate:** 8 files encrypted and unlinked within 4.0 seconds (2.0 files/second).
 * **Extension Transformation:** Unmatched mass renaming across `.xlsx`, `.csv`, `.docx`, `.txt`, `.pdf`, `.png` to `.locked`.
-* **Subprocess Execution:** Invocation of `vssadmin.exe delete shadows /all /quiet` and `bcdedit.exe /set {default} recoveryenabled No`.
+* **Inhibition Simulation:** Logged evaluation of `vssadmin.exe delete shadows /all /quiet` and `bcdedit.exe /set {default} recoveryenabled No`.
 
 ---
 
@@ -155,7 +168,7 @@ All evidence items were captured with immediate SHA-256 cryptographic hashing on
 
 ## 5.1 Memory Forensics (Volatility 3 Analysis)
 
-Memory analysis of `EVD-001` was performed using Volatility 3 (Framework v2.28.2) with symbols resolved against Windows 11 24H2 Build 26100 (`ntkrnlmp.pdb`).
+Memory analysis of `EVD-001` was performed using Volatility 3 (Framework 2.26.0) with symbols resolved against Windows 11 24H2 Build 26100 (`ntkrnlmp.pdb`).
 
 ### 5.1.1 Process Architecture (`windows.pslist` / `windows.pstree`)
 
@@ -184,14 +197,14 @@ Command-line inspection revealed that Notepad PID 6312 held an active session de
 Decoding the UTF-16LE binary descriptor recovered the targeted source path:
 `C:\Users\Public\custom_behavior_sim.py`
 
-### 5.1.3 Network Sockets & Zero-Exfiltration Proof (`windows.netscan`)
+### 5.1.3 Network Sockets & Exfiltration Analysis (`windows.netscan`)
 
 Executing `windows.netscan` returned:
 * **Active Network Sockets:** `0`
 * **Listening TCP/UDP Endpoints:** `0`
 * **Foreign Connections:** `0`
 
-**Forensic Evaluation:** Corroborates that the virtual network adapter was completely severed prior to execution. The ransomware simulation operated in strict isolation without external C2 communications, data exfiltration, or external key exchange.
+**Defensible Forensic Conclusion:** No active, listening, or lingering network socket structures were identified in the acquired memory image via `windows.netscan`. While point-in-time volatile memory cannot independently disown ephemeral prior sockets, this finding directly corroborates the hypervisor's unattached NIC configuration and guest ping test failures. Based on all evidence examined, no outbound command-and-control communication or data exfiltration occurred.
 
 ### 5.1.4 Code Injection & Hooking Analysis (`windows.malfind`)
 
@@ -212,7 +225,7 @@ Disk analysis was performed on `EVD-003` (`DFIR-SimVM-disk.vmdk`, Partition `vol
 
 Autopsy's Timeline tool revealed a concentrated burst of file system modifications:
 
-* **Macro Activity:** Isolated to the 22:00 IST hour window.
+* **Macro Activity:** Isolated strictly to the 22:00 IST hour window.
 * **Micro Activity (22:26:49 – 22:26:55 IST):** Sequential modification of 8 files followed immediately by the creation of recovery journals and extortion notes.
 
 ![Autopsy Timeline Activity Count](../screenshots/autopsy-timeline-counts.png)
@@ -227,7 +240,15 @@ Investigation of `/vol_vol6/Users/Public/test_ransomware_sim/B67F15E3/` verified
 
 * **Extension Mismatch Detector:** Flagged all `.locked` files as severe format mismatches. While the filenames and extensions implied standard office documents and images, the internal magic bytes (`PK\x03\x04`, `%PDF`, `\x89PNG`) were replaced with high-entropy XOR ciphertext.
 
-### 5.2.3 Ransom Note & Extortion Artifacts
+### 5.2.3 Recovery-Inhibition Forensics (T1490 State Distinction)
+
+A critical forensic requirement is distinguishing between command logging, process execution, and system state modification:
+1. **Logged Evaluation:** The script printed simulated execution logs for `vssadmin delete shadows` and `bcdedit /set {default} recoveryenabled No`.
+2. **Execution Flag Gate:** Because `--live-t1490` was not supplied, live subprocesses were not dispatched.
+3. **MFT/Timeline Footprint:** Autopsy recorded read/query events against `/EFI/Microsoft/Boot/BCD`. This represents system configuration interrogation rather than destructive modification.
+4. **Conclusion:** System Volume Shadow Copies and BCD boot recovery remained intact on the VM during this baseline simulation.
+
+### 5.2.4 Ransom Note & Extortion Artifacts
 
 The dropped extortion note was recovered from disk:
 * **Path:** `C:\Users\Public\test_ransomware_sim\B67F15E3\README_YOUR_FILES.txt`
@@ -242,27 +263,26 @@ The dropped extortion note was recovered from disk:
 
 # 6. Impact Assessment
 
-## 6.1 Data Impact
+## 6.1 Observed Technical Impact (Laboratory Measurement)
 
-| Category | Assessment | Impact Severity |
+| Category | Lab Finding | Forensic Severity |
 |---|---|---|
-| **Confidentiality** | **No impact** — Air-gap verified; zero network sockets or exfiltration detected. | LOW |
-| **Integrity** | **High impact within target directory** — 8 files transformed to ciphertext with destroyed magic headers. | HIGH |
-| **Availability** | **Immediate business interruption** — Financial, executive, customer, and backup files unavailable. | CRITICAL |
-| **Recovery Inhibit** | Simulated VSS and BCD disablement attempted ([T1490](https://attack.mitre.org/techniques/T1490/)). | HIGH |
+| **Confidentiality** | Zero network sockets observed; air-gap verified; zero data exfiltration. | NONE |
+| **Integrity** | 8 business files encrypted with high-entropy ciphertext; file headers stomped. | HIGH (Directory Scope) |
+| **Availability** | Targeted files inaccessible without cryptographic recovery key. | HIGH (Directory Scope) |
+| **System State** | Operating system binaries, VSS, and BCD boot structures untouched. | NONE |
 
-## 6.2 Hypothetical Production Enterprise Impact
+## 6.2 Hypothetical Production Enterprise Scenario (Threat Modeling & Risk Projection — Not Measured in Lab)
 
-In an uncontrolled enterprise deployment without air-gap containment:
-1. **Financial Impact:** 0.5 BTC (~$34,000 USD at current exchange rates) extortion demand per infected workstation, compounded by forensic response costs ($250–$450/hr).
-2. **Operational Downtime:** Without verified offline backups, endpoint reimaging and file recovery requires an estimated 16–32 business hours per workstation.
-3. **Regulatory Exposure:** Encryption of `employee_database.csv` and `customer_list.txt` triggers mandatory 72-hour regulatory notification windows under GDPR Article 33 and state-level data privacy statutes.
+*Note: The projections below represent hypothetical threat modeling assuming this attack profile occurred on an uncontained corporate workstation without air-gap controls.*
+
+1. **Operational Downtime:** Without verified offline backups, workstation rebuild, endpoint forensic triage, and data restoration typically requires 16–32 business hours per affected machine.
+2. **Extortion Demand:** 0.5 BTC (~$34,000 USD at current valuations) per endpoint, compounded by third-party incident response retainer costs.
+3. **Regulatory Considerations:** In a real-world enterprise compromise involving customer and employee databases, organizations must conduct an immediate risk assessment under frameworks such as GDPR Article 33 or state privacy laws (e.g., CCPA/CPRA). If personal data is compromised or exfiltrated, mandatory notification windows (e.g., 72 hours under GDPR) apply. In this controlled simulation, no personal data breach occurred and zero regulatory obligations were triggered.
 
 ---
 
 # 7. Root Cause Analysis
-
-## 7.1 Attack Vector Breakdown
 
 ```text
 [ Unrestricted Script Runtime ]
@@ -274,19 +294,17 @@ In an uncontrolled enterprise deployment without air-gap containment:
 [ Atomic File In-Place Swap ] ──(No Controlled Folder Access)───> 8 Business Files Locked
              │
              ▼
-[ T1490 Inhibition Commands ] ──(Lack of EDR / Command Block)───> VSS Deletion Executed
+[ T1490 Evaluation ] ────────────(Gated Behind Safe Default)────> Log-Only Evaluation
 ```
 
 The simulated attack succeeded because of three fundamental environmental gaps:
-1. **Unrestricted Execution of Interpreted Runtimes:** The `python.exe` binary was permitted to execute arbitrary scripts in the context of an unprivileged interactive user session.
+1. **Unrestricted Script Execution:** The `python.exe` interpreter was permitted to execute arbitrary scripts in the context of an unprivileged interactive user session.
 2. **Absence of Folder Modification Guardrails:** Standard user processes possessed full write, modify, and delete permissions over user business directories without behavioral entropy checks (e.g., Controlled Folder Access).
-3. **Unrestricted Administrative Command Invocations:** Utilities such as `vssadmin.exe` and `bcdedit.exe` were accessible for execution attempts.
+3. **Lack of Behavioral Process Monitoring:** Process creation command-line auditing was not alerting on rapid multi-file replacement loops.
 
 ---
 
 # 8. Remediation & Hardening Recommendations
-
-Recommendations are categorized according to implementation priority and defense-in-depth posture:
 
 ## Priority 1: Immediate Containment & Recovery (24–72 Hours)
 
@@ -302,7 +320,6 @@ Recommendations are categorized according to implementation priority and defense
    * Protect critical document libraries (`Documents`, `Desktop`, `Pictures`, custom business data folders) from unauthorized modification by unapproved applications.
 3. **Deploy Attack Surface Reduction (ASR) Rules:**
    * `Block executable content from email client and webmail` (`BE9B905E-DBA7-444C-BE33-5A84F817B2E3`)
-   * `Block abuse of exploited vulnerable signed drivers`
    * `Block process creations originating from PS/CMD commands`
 
 ## Priority 3: Detection Engineering & Auditing (30 Days)
@@ -312,14 +329,32 @@ Recommendations are categorized according to implementation priority and defense
 2. **Enable PowerShell Script Block Logging (Event ID 4104):**
    * Log full script block code to capture obfuscated scripts prior to execution.
 
-### Detection Engineering Rules (Sigma Standard)
+## 8.4 Cryptographic Recovery Demonstration
 
-#### Rule 1: Shadow Copy Deletion via VSSAdmin ([T1490](https://attack.mitre.org/techniques/T1490/))
+To validate complete data reversibility without paying an extortion demand, `custom_behavior_sim.py --restore` was executed against the encrypted test directory using the cryptographic recovery journal. All 8 restored files were verified against their original pre-simulation SHA-256 hashes:
+
+| Canary File | Original Pre-Encryption SHA-256 | Encrypted (.locked) SHA-256 | Restored File SHA-256 | Cryptographic Equality |
+|---|---|---|---|---|
+| `financial_report_Q3.xlsx` | `95238ff06f2edbbb0583dff6df3c95d572b90c5f8812d0d808b4224b465cca85` | `87f684c93236712b8dddb6ff74806e509137c937685967ed46ca083c7c214b58` | `95238ff06f2edbbb0583dff6df3c95d572b90c5f8812d0d808b4224b465cca85` | ✅ **MATCH (100%)** |
+| `employee_database.csv` | `2133c89bb8fbe310d10dc46f208f5df05b6e980a74cbcf95096f72d45d9223b8` | `559de183772835077bc57ab56084eb1fe352193382a44bad30f42fe3c83425cf` | `2133c89bb8fbe310d10dc46f208f5df05b6e980a74cbcf95096f72d45d9223b8` | ✅ **MATCH (100%)** |
+| `executive_memo.docx` | `fd1df2d6ad0a1ecabe3fccaf423736a681a4f63bc070bb114fcb105fef970f7d` | `306dc22b77f5b16213c3b19a8f632cd9e77e71cc2832bfa777c4760a3b4828e8` | `fd1df2d6ad0a1ecabe3fccaf423736a681a4f63bc070bb114fcb105fef970f7d` | ✅ **MATCH (100%)** |
+| `backup_keys.txt` | `461eece0d517f5dd1a3d6c098c244aef0df471cb8130f77c01532c2a296e7dc3` | `36fc10324925b747c069ac505e23aa075d369016a57c493c63adb8a83eb82111` | `461eece0d517f5dd1a3d6c098c244aef0df471cb8130f77c01532c2a296e7dc3` | ✅ **MATCH (100%)** |
+| `customer_list.txt` | `723e6ffb660f409d33df9190ae73e4f16f673ece251038a412c1afaf10cc3797` | `59729db3db076a5d8098a9af334774f0a55f36bf2a4c123a38a2262d5e4f6213` | `723e6ffb660f409d33df9190ae73e4f16f673ece251038a412c1afaf10cc3797` | ✅ **MATCH (100%)** |
+| `project_proposal.pdf` | `c89c0fb559b4c16b78bf754bd7553cc4ea08de0fa9609a872150aaecaa039904` | `14c4bc99cb86e6a796de389f90bfc9176ae5d72f8935e8bb9ab2d7744fbc1d70` | `c89c0fb559b4c16b78bf754bd7553cc4ea08de0fa9609a872150aaecaa039904` | ✅ **MATCH (100%)** |
+| `contract_draft.docx` | `7ddb226b41e494288ddd24ae40595f6d3e862e3cdb9dc42b37fe1366103c7ec2` | `0880bc5140b68222094dbe064ed498594a741e540a843f89cb614bef637a6f16` | `7ddb226b41e494288ddd24ae40595f6d3e862e3cdb9dc42b37fe1366103c7ec2` | ✅ **MATCH (100%)** |
+| `logo.png` | `c82422f1a2deec596c39230dc97a23f200f5f301acf5bab4a207c7b1c034f16d` | `9714d1227d6ae085487e6f24a7551fbbfc999d13929ad69ea1f637c774a8a3ab` | `c82422f1a2deec596c39230dc97a23f200f5f301acf5bab4a207c7b1c034f16d` | ✅ **MATCH (100%)** |
+
+## 8.5 Detection Engineering Rules (Sigma Standard)
+
+The following Sigma rules provide vendor-agnostic detection patterns convertible via `pySigma` for Splunk SPL, Microsoft Sentinel KQL, or Elasticsearch:
+
+### Rule 1: Shadow Copy Deletion via VSSAdmin ([T1490](https://attack.mitre.org/techniques/T1490/))
+*Target Backends: Splunk, Microsoft Sentinel, Elastic Security (Process Creation)*
 ```yaml
 title: Inhibit System Recovery - VSSAdmin Shadow Copy Deletion
 id: 5b6c8913-7036-47b2-bcf2-f2a640ff1c7a
 status: stable
-description: Detects execution of vssadmin.exe to purge volume shadow copies.
+description: Detects execution of vssadmin.exe attempting to purge volume shadow copies.
 references:
   - https://attack.mitre.org/techniques/T1490/
 logsource:
@@ -338,12 +373,13 @@ tags:
   - attack.t1490
 ```
 
-#### Rule 2: Ransomware Mass File Extension Renaming ([T1486](https://attack.mitre.org/techniques/T1486/))
+### Rule 2: Ransomware Mass File Modification Burst ([T1486](https://attack.mitre.org/techniques/T1486/))
+*Note on Implementation: This detection requires a SIEM correlation or aggregation rule configured to evaluate threshold bursts over time windows.*
 ```yaml
 title: Mass Modification of User Files to Ransomware Extension (.locked)
 id: f487da34-c2c7-4318-8742-19e075c32b50
-status: stable
-description: Detects anomalous bursts of file renames appending .locked extension.
+status: experimental
+description: Detects rapid bursts of file modifications or renames appending the .locked extension.
 references:
   - https://attack.mitre.org/techniques/T1486/
 logsource:
@@ -365,38 +401,30 @@ tags:
 
 ## Appendix A — Evidence & Forensic Artifact Inventory
 
-| Item ID | Filename / Artifact | Type | Storage Location |
-|---|---|---|---|
-| **EVD-001** | `DFIR-SimVM-memory.raw` | RAM Dump (8.13 GB) | `forensics/acquisition/` |
-| **EVD-002** | `DFIR-SimVM-disk.vdi` | Disk Image (35.74 GB) | `forensics/acquisition/` |
-| **EVD-003** | `DFIR-SimVM-disk.vmdk` | Converted Disk Image (35.72 GB) | `forensics/acquisition/` |
-| **OUT-001** | `windows_info_output.txt` | Volatility 3 OS Profile | `forensics/volatility_analysis/` |
-| **OUT-002** | `pslist_output.txt` | Volatility 3 Process List | `forensics/volatility_analysis/` |
-| **OUT-003** | `pstree_output.txt` | Volatility 3 Process Hierarchy | `forensics/volatility_analysis/` |
-| **OUT-004** | `cmdline_output.txt` | Volatility 3 Command Line Dump | `forensics/volatility_analysis/` |
-| **OUT-005** | `netscan_output.txt` | Volatility 3 Network Sockets Dump | `forensics/volatility_analysis/` |
-| **OUT-006** | `malfind_output.txt` | Volatility 3 Injection Scan | `forensics/volatility_analysis/` |
-| **AUT-001** | `directory_mft_listing.csv` | Autopsy MFT Record Export | `forensics/autopsy_analysis/` |
-| **AUT-002** | `timeline_export.csv` | Autopsy Timeline Event Export | `forensics/autopsy_analysis/` |
-| **AUT-003** | `deleted_files_report.md` | Autopsy Unallocated Clusters Note | `forensics/autopsy_analysis/` |
+| Item ID | Filename / Artifact | Type | Stored Location | Cryptographic SHA-256 Digest |
+|---|---|---|---|---|
+| **EVD-001** | `DFIR-SimVM-memory.raw` | Live RAM Dump (8.13 GB) | Offline Analyst Storage | `198A69B7412A7FD05CD88271E7C223C8F02D03DA14D3436AE715EB2FD0D5EFD3` |
+| **EVD-002** | `DFIR-SimVM-disk.vdi` | Primary Disk Image (35.74 GB) | Offline Analyst Storage | `33695DE62EE72C8E3FDE8225BD7688D9CDFD656B22F1DB7EC51D08B63579B980` |
+| **EVD-003** | `DFIR-SimVM-disk.vmdk` | Derived Disk Image (35.72 GB) | Offline Analyst Storage | `98E32CEA9633D9F65AAC2A93F9236F3C31A12DD50797BF4DEB5E357D0166C219` |
+| **OUT-001** | `windows_info_output.txt` | Volatility 3 OS Profile | `forensics/volatility_analysis/` | — |
+| **OUT-002** | `pslist_output.txt` | Volatility 3 Process List | `forensics/volatility_analysis/` | — |
+| **OUT-003** | `pstree_output.txt` | Volatility 3 Process Hierarchy | `forensics/volatility_analysis/` | — |
+| **OUT-004** | `cmdline_output.txt` | Volatility 3 Command Line Dump | `forensics/volatility_analysis/` | — |
+| **OUT-005** | `netscan_output.txt` | Volatility 3 Network Sockets Dump | `forensics/volatility_analysis/` | — |
+| **OUT-006** | `malfind_output.txt` | Volatility 3 Injection Scan | `forensics/volatility_analysis/` | — |
+| **AUT-001** | `directory_mft_listing.csv` | Autopsy MFT Record Export | `forensics/autopsy_analysis/` | — |
+| **AUT-002** | `timeline_export.csv` | Autopsy Timeline Event Export | `forensics/autopsy_analysis/` | — |
+| **AUT-003** | `deleted_files_report.md` | Autopsy Unallocated Clusters Note | `forensics/autopsy_analysis/` | — |
 
-## Appendix B — Volatility 3 Execution Log
+## Appendix B — Raw Volatility 3 Execution Log
 
 ```powershell
-# 1. Operating System Identification
+# Volatility 3 Framework 2.26.0 commands executed on Host Workstation:
 vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.info
-
-# 2. Process Enumeration and Hierarchy
 vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.pslist > pslist_output.txt
 vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.pstree > pstree_output.txt
-
-# 3. Command Line Extraction
 vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.cmdline > cmdline_output.txt
-
-# 4. Network Socket and Connection Inspection
 vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.netscan > netscan_output.txt
-
-# 5. Injected Code and RWX Page Scanning
 vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.malfind > malfind_output.txt
 ```
 
@@ -407,7 +435,7 @@ vol.exe -f forensics\acquisition\DFIR-SimVM-memory.raw windows.malfind > malfind
 | **Execution** | [T1059.006](https://attack.mitre.org/techniques/T1059/006/) | Command & Scripting Interpreter: Python | `python.exe custom_behavior_sim.py` identified in process list and memory session. |
 | **Discovery** | [T1083](https://attack.mitre.org/techniques/T1083/) | File and Directory Discovery | Local file enumeration across target directory prior to encryption. |
 | **Impact** | [T1486](https://attack.mitre.org/techniques/T1486/) | Data Encrypted for Impact | 8 business files encrypted via XOR transformation; `.locked` extension; ransom demand dropped. |
-| **Impact** | [T1490](https://attack.mitre.org/techniques/T1490/) | Inhibit System Recovery | Invocation of `vssadmin delete shadows` and `bcdedit` recovery disablement. |
+| **Impact** | [T1490](https://attack.mitre.org/techniques/T1490/) | Inhibit System Recovery | Evaluated and logged `vssadmin delete shadows` and `bcdedit` in safe default mode. |
 
 ---
 

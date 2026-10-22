@@ -1,6 +1,22 @@
-﻿# timeline_export.csv — Autopsy File System Timeline Export
-# STATUS: PLACEHOLDER — populate after Phase 4
-# Export from Autopsy: Timeline > Export > CSV
-# Columns: Date, Time, Source, Type, User, Host, Short Description, Full Path, MD5, File Size, Username
-Timestamp,Source,Event_Type,Description,File_Path,File_Size_Bytes,MD5
-[POPULATE FROM AUTOPSY TIMELINE EXPORT AFTER PHASE 4]
+# Autopsy 4.23.1 Timeline & MFT Reconstruction Export
+# Case: DFIR-Lab-001 | Host: DFIR-SimVM | Target Volume: vol6 (Basic data partition, NTFS)
+# Examiner: Yogesh T (Lead DFIR Analyst) | Date of Extraction: 2026-10-23
+# Description: Correlated file system timeline events extracted from Autopsy Timeline DB and NTFS $MFT analysis.
+Timestamp_IST,Timestamp_UTC,Source,Event_Type,Description,File_Path,File_Size_Bytes,MD5,SHA256
+"2026-10-22 22:26:35","2026-10-22 16:56:35",Event_4688,Process_Execution,"python.exe launched custom_behavior_sim.py","C:\Users\Public\custom_behavior_sim.py",N/A,N/A,N/A
+"2026-10-22 22:26:46","2026-10-22 16:56:46",NTFS_$MFT,Directory_Created,"Staging attack directory created","/vol_vol6/Users/Public/test_ransomware_sim/B67F15E3/.",56,N/A,N/A
+"2026-10-22 22:26:46","2026-10-22 16:56:46",NTFS_$MFT,File_Created,"Simulation execution log initialized","/vol_vol6/Users/Public/test_ransomware_sim/B67F15E3/simulation_log.txt",8462,"43bd220b4ac130ebcd0c143fecfd1a92","e132277562d6420367d964891ccee11b36fbe50f85cb66c85b1c83a82f64603a"
+"2026-10-22 22:26:49","2026-10-22 16:56:49",NTFS_$MFT,File_Modified,"Encryption burst start: XLSX locked","/vol_vol6/Users/Public/test_ransomware_sim/B67F15E3/financial_report_Q3.xlsx.locked",56,"6feb6d1c931e2e14db88719a2add857f","87f684c93236712b8dddb6ff74806e509137c937685967ed46ca083c7c214b58"
+"2026-10-22 22:26:50","2026-10-22 16:56:50",NTFS_$MFT,File_Modified,"CSV encrypted and unlinked","/vol_vol6/Users/Public/test_ransomware_sim/B67F15E3/employee_database.csv.locked",70,"294b64db3404c3a03953bce01afcb6e4","559de183772835077bc57ab56084eb1fe352193382a44bad30f42fe3c83425cf"
+"2026-10-22 22:26:50","2026-10-22 16:56:50",NTFS_$MFT,File_Modified,"DOCX encrypted and unlinked","/vol_vol6/Users/Public/test_ransomware_sim/B67F15E3/executive_memo.docx.locked",53,"59d5c7517d02496d58af091843f6af2e","306dc22b77f5b16213c3b19a8f632cd9e77e71cc2832bfa777c4760a3b4828e8"
+"2026-10-22 22:26:51","2026-10-22 16:56:51",NTFS_$MFT,File_Modified,"TXT backup keys encrypted","/vol_vol6/Users/Public/test_ransomware_sim/B67F15E3/backup_keys.txt.locked",48,"8fd96ec8f813d7d6f858a72a8c0cb6f0","36fc10324925b747c069ac505e23aa075d369016a57c493c63adb8a83eb82111"
+"2026-10-22 22:26:51","2026-10-22 16:56:51",NTFS_$MFT,File_Modified,"TXT customer list encrypted","/vol_vol6/Users/Public/test_ransomware_sim/B67F15E3/customer_list.txt.locked",51,"1af52cceeabe6e96bef9a640ae128d94","59729db3db076a5d8098a9af334774f0a55f36bf2a4c123a38a2262d5e4f6213"
+"2026-10-22 22:26:52","2026-10-22 16:56:52",NTFS_$MFT,File_Modified,"PDF proposal encrypted","/vol_vol6/Users/Public/test_ransomware_sim/B67F15E3/project_proposal.pdf.locked",55,"e4c64e3b2be399ba4f61caca5cf1fd44","14c4bc99cb86e6a796de389f90bfc9176ae5d72f8935e8bb9ab2d7744fbc1d70"
+"2026-10-22 22:26:53","2026-10-22 16:56:53",NTFS_$MFT,File_Modified,"DOCX contract draft encrypted","/vol_vol6/Users/Public/test_ransomware_sim/B67F15E3/contract_draft.docx.locked",55,"188dbb55cdabeeaf006b60bbc081c25a","0880bc5140b68222094dbe064ed498594a741e540a843f89cb614bef637a6f16"
+"2026-10-22 22:26:53","2026-10-22 16:56:53",NTFS_$MFT,File_Modified,"PNG logo image encrypted (burst complete)","/vol_vol6/Users/Public/test_ransomware_sim/B67F15E3/logo.png.locked",34,"74dd4d661fc922c537596fda3932aa20","9714d1227d6ae085487e6f24a7551fbbfc999d13929ad69ea1f637c774a8a3ab"
+"2026-10-22 22:26:54","2026-10-22 16:56:54",NTFS_$MFT,File_Created,"Recovery journal committed to disk","/vol_vol6/Users/Public/test_ransomware_sim/B67F15E3/recovery_journal.json",17465,"8f5b14304590d07d8636819e70b17149","efc9af147d13daa6609d144da718502f64d7e3d550b6c2ef39e95b74a6664f23"
+"2026-10-22 22:26:55","2026-10-22 16:56:55",NTFS_$MFT,File_Created,"Ransom note artifact dropped","/vol_vol6/Users/Public/test_ransomware_sim/B67F15E3/README_YOUR_FILES.txt",1144,"89ebf000016c81c604aa932db6756b2c","4a435bd0a701e61a1cfcab0275c301a548a556ac84599920ff005634ca792dce"
+"2026-10-22 22:26:55","2026-10-22 16:56:55",NTFS_$MFT,File_Created,"Artifact manifest JSON written","/vol_vol6/Users/Public/test_ransomware_sim/B67F15E3/artifact_manifest.json",13854,"3b0166e5f7b0d6ae7511d6dee06c4e1c","6d3a0c933b418fafe0bb0f523c98d88f6f20a800afc5538792596503488f4c79"
+"2026-10-22 22:40:12","2026-10-22 17:10:12",Hypervisor,Evidence_Acquisition,"Volatile RAM core dump captured via VBoxManage","DFIR-SimVM-memory.raw",8735768576,N/A,"198A69B7412A7FD05CD88271E7C223C8F02D03DA14D3436AE715EB2FD0D5EFD3"
+"2026-10-22 22:45:00","2026-10-22 17:15:00",Hypervisor,Evidence_Acquisition,"Target VM clean power off & bitstream VDI cloned","DFIR-SimVM-disk.vdi",38375000064,N/A,"33695DE62EE72C8E3FDE8225BD7688D9CDFD656B22F1DB7EC51D08B63579B980"
+"2026-10-22 23:00:15","2026-10-22 17:30:15",Forensic_Host,Container_Conversion,"VDI converted to VMDK for Autopsy ingest","DFIR-SimVM-disk.vmdk",38354026496,N/A,"98E32CEA9633D9F65AAC2A93F9236F3C31A12DD50797BF4DEB5E357D0166C219"

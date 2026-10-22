@@ -1,0 +1,7 @@
+# Cryptographic Verification Hash
+# Evidence Item: EVD-002 (Primary Cloned Disk Image)
+# Acquisition Timestamp: 2026-10-22 22:45:00 IST (17:15:00 UTC)
+# Examiner: Yogesh T (Lead DFIR Analyst)
+# File Size: 38,375,000,064 bytes (35.74 GB)
+
+33695DE62EE72C8E3FDE8225BD7688D9CDFD656B22F1DB7EC51D08B63579B980 *DFIR-SimVM-disk.vdi
