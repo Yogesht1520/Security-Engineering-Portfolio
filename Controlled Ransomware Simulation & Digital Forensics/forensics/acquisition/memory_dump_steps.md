@@ -34,7 +34,7 @@ VirtualBox produces a full memory dump directly from the host workstation withou
 
 ### Step 2: Acquire Volatile RAM Core Dump
 ```cmd
-# Freeze live VM state and dump core memory:
+# Live memory acquisition via hypervisor while guest remains running:
 "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" debugvm "DFIR-SimVM" dumpvmcore --filename "forensics\acquisition\DFIR-SimVM-memory.raw"
 ```
 * **Output File:** `forensics/acquisition/DFIR-SimVM-memory.raw` (`EVD-001`)

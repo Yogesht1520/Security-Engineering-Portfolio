@@ -125,7 +125,7 @@ All tool binaries were verified with cryptographic SHA-256 digests prior to evid
 | **22:26:53** | 16:56:53 | $STANDARD_INFO (MFT-84200) | [T1486](https://attack.mitre.org/techniques/T1486/) | `contract_draft.docx` (55 B) & `logo.png` (34 B) XOR transformed. **Burst completes (4.0s).** |
 | **22:26:54** | 16:56:54 | $STANDARD_INFO (MFT-84202) | — | Recovery journal committed to disk: `recovery_journal.json` (17,465 B). |
 | **22:26:55** | 16:56:55 | $STANDARD_INFO (MFT-84203) | [T1486](https://attack.mitre.org/techniques/T1486/) | Extortion note dropped: `README_YOUR_FILES.txt` (1,144 B); manifest written. |
-| **22:40:12** | 17:10:12 | Hypervisor Live Dump | — | **Containment:** Live VM state frozen; 8.13 GB volatile RAM dump acquired (`EVD-001`). |
+| **22:40:12** | 17:10:12 | Hypervisor Live Dump | — | **Containment:** Live VM memory acquisition performed through the VirtualBox hypervisor while the guest remained running (`EVD-001`). |
 | **22:45:00** | 17:15:00 | Clean Power-off Clone | — | **Eradication:** VM cleanly powered down (ACPI); 35.74 GB bitstream disk cloned (`EVD-002`). |
 | **23:00:15** | 17:30:15 | Sector Translation | — | Disk container translated to VMDK (`EVD-003`) for Autopsy ingest; SHA-256 hashed. |
 

@@ -34,8 +34,7 @@ Autopsy 4.23.1 running on Windows does not possess native container support for 
 ### How was filesystem content equivalence validated?
 * **Container vs. Logical Disk Hashes:** Because container metadata headers and sparse block allocation descriptors differ between Oracle VDI and VMware VMDK specifications, the container-level SHA-256 hashes differ (`33695DE6...` vs `98E32CEA...`).
 * **Sector-Level Translation:** `VBoxManage clonemedium` translates the virtual disk sectors without altering the inner partition geometry.
-* **Partition Geometry Verification:** Partition `vol6` (NTFS Windows C: drive) starts at sector offset 444,416 with identical cluster size (4,096 bytes) and volume sector counts across both formats.
-* **MFT Invariant Proof:** Content equivalence between the primary VDI clone and the derived VMDK sparse container was verified by confirming identical partition table geometry (Partition `vol6` starting at sector offset 444,416) and bitstream NTFS volume metadata, corroborated when Autopsy mounted the VMDK container and parsed identical cluster runs, Volume Serial Number, and Master File Table records.
+* **Filesystem Structure Equivalence Validation:** The derived VMDK was validated against the source VDI using partition geometry, NTFS volume metadata, cluster runs and MFT record comparisons. These checks establish consistency of the examined filesystem structures; a complete byte-for-byte sector comparison was not independently documented.
 
 ---
 

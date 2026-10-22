@@ -3,8 +3,8 @@
 # Methodology: Reconstructed via Autopsy 4.23.1 SQLite Timeline Database and NTFS $MFT Attribute Analysis.
 # Timestamp Source & Corroboration Note:
 #   - $STANDARD_INFORMATION: Captures userspace file modification, access, creation, and MFT entry change (MACE) timestamps.
-#   - $FILE_NAME: Captures kernel-level directory link creation and renaming timestamps, protected against userspace stomping.
-#   - Multi-Source Corroboration: Every timestamp is cross-referenced across three independent domains: (1) NTFS $MFT attributes, (2) guest process audit logs (Event ID 4688), and (3) atomic simulation journal records (recovery_journal.json).
+#   - $FILE_NAME: $FILE_NAME timestamps provide additional directory-entry and filename-related temporal context. They are generally updated differently from $STANDARD_INFORMATION timestamps and can help identify inconsistencies or timestamp manipulation. Neither attribute should be treated as an independently authoritative record of the exact time of an operation.
+#   - Corroboration: Events are correlated across available evidence sources, including NTFS MFT attributes, guest process-audit records, simulation journal entries, and host-side acquisition records where applicable. Not every event is represented in every source.
 # Target Attack Directory: /vol_vol6/Users/Public/test_ransomware_sim/B67F15E3/
 # Burst Duration: 2026-10-22 22:26:49 to 2026-10-22 22:26:53 IST (4.0 seconds total across 8 canary files)
 Event_ID,Timestamp_IST,Timestamp_UTC,Timestamp_Attribute,Evidence_Source,MFT_Record_Ref,Event_Action,Description,File_Path,File_Size_Bytes,MD5,SHA256
