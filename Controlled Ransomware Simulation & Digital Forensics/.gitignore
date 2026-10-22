@@ -1,0 +1,83 @@
+# .gitignore — DFIR Lab Repository
+
+# ===========================================================================
+# SECURITY-CRITICAL: Never commit actual forensic evidence to Git
+# These files can contain sensitive system information from the VM
+# Store them on an encrypted external drive, NOT in the repo
+# ===========================================================================
+
+# Memory dumps
+*.raw
+*.mem
+*.elf
+*.vmem
+*.dmp
+*.dump
+
+# Disk images
+*.E01
+*.img
+*.vmdk
+*.vdi
+*.iso
+
+# Password files or key material (should never exist in this repo)
+*.key
+*.pem
+*.p12
+*.pfx
+
+# ===========================================================================
+# Development artifacts
+# ===========================================================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Pandoc / LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+
+# ===========================================================================
+# Internal Authoring, Prompt Briefs & Development Scaffolding
+# (Files used internally during project build; excluded from public portfolio)
+# ===========================================================================
+08-ransomware-simulation-forensics.md
+PHASE_0_CHECKLIST.md
+simulation/SCRIPT_REVIEW_v1.0.md
+simulation/CHANGELOG.md
+
+# ===========================================================================
+# What IS tracked in Git (Public Portfolio Deliverables)
+# ===========================================================================
+# - README.md, SAFETY.md, .gitignore
+# - docs/INCIDENT_RESPONSE_REPORT.md (primary executive consulting deliverable)
+# - screenshots/*.png (all 8 forensic proof and verification screenshots)
+# - simulation/custom_behavior_sim.py (ransomware behavior simulation tool)
+# - simulation/test_crash_recovery.py (15-test unit suite for atomic recovery)
+# - simulation/atomic_red_team_tests.md (MITRE ATT&CK test procedure plan)
+# - forensics/acquisition/*.md & *.sha256 (forensic SOPs and cryptographic hashes)
+# - forensics/volatility_analysis/ANALYSIS_NOTES.md & *.txt (memory forensics logs)
+# - forensics/autopsy_analysis/ANALYSIS_NOTES.md, deleted_files_report.md & *.csv (disk forensics)
+

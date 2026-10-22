@@ -1,0 +1,27 @@
+Volatility 3 Framework 2.26.0
+Plugin: windows.info
+Memory Image: forensics/acquisition/DFIR-SimVM-memory.raw
+
+Variable	Value
+
+Kernel Base	0xf8037fa00000
+DTB	0x1ae000
+Symbols	file:///C:/Users/yoges/AppData/Roaming/Python/Python313/site-packages/volatility3/symbols/windows/ntkrnlmp.pdb/C29EBFB06B78B3C020DCA66D99713F9E-1.json.xz
+Is64Bit	True
+IsPAE	False
+layer_name	0 WindowsIntel32e
+memory_layer	1 Elf64Layer
+base_layer	2 FileLayer
+KdVersionBlock	0xf8038080aa20
+Major/Minor	15.26100
+MachineType	34404
+KeNumberProcessors	2
+SystemTime	2026-10-22 17:09:14+00:00
+NtSystemRoot	C:\WINDOWS
+NtProductType	NtProductWinNt
+NtMajorVersion	10
+NtMinorVersion	0
+PE MajorOperatingSystemVersion	10
+PE MinorOperatingSystemVersion	0
+PE Machine	34404
+PE TimeDateStamp	Mon Nov 10 14:53:40 2104

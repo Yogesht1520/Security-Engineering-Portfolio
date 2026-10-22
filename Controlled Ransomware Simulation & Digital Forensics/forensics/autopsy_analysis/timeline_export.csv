@@ -1,0 +1,6 @@
+﻿# timeline_export.csv — Autopsy File System Timeline Export
+# STATUS: PLACEHOLDER — populate after Phase 4
+# Export from Autopsy: Timeline > Export > CSV
+# Columns: Date, Time, Source, Type, User, Host, Short Description, Full Path, MD5, File Size, Username
+Timestamp,Source,Event_Type,Description,File_Path,File_Size_Bytes,MD5
+[POPULATE FROM AUTOPSY TIMELINE EXPORT AFTER PHASE 4]
