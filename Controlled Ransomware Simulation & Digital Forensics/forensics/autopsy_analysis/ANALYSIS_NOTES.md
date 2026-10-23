@@ -90,7 +90,7 @@
 ## Step 4 — Deleted File Recovery Analysis
 
 **Report:** [`deleted_files_report.md`](./deleted_files_report.md)
-- **What NTFS $MFT Independently Shows:** The Master File Table independently records eight allocated files bearing `.locked` extensions and timestamps clustered tightly between 22:26:49 and 22:26:53 IST. It also reflects unlinked MFT records and volume allocation bitmap deallocations in the directory for the original pre-encryption filenames.
+- **What Filesystem Structures Independently Show:** The NTFS $MFT independently records eight allocated file entries bearing `.locked` extensions (timestamps clustered tightly between 22:26:49 and 22:26:53 IST) and unlinked records for the original filenames. Volume allocation metadata (`$Bitmap`) provides additional corroboration through the corresponding cluster allocation state.
 - **Attribution of the Atomic Staging Sequence:** The specific three-stage replacement sequence (`.stage.tmp` -> rename to `.locked` -> original file unlinking) is established through the simulator implementation and on-disk `recovery_journal.json` execution records, corroborated by the MFT timestamp ordering and cluster reallocation patterns.
 
 ---
