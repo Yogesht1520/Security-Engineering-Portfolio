@@ -12,6 +12,15 @@ This project demonstrates a **complete, end-to-end Digital Forensics & Incident 
 > **Why behavioral simulation instead of live malware?**  
 > Using real ransomware samples introduces unacceptable risk (accidental detonation, legal exposure, AV evasion uncertainty) with zero additional learning benefit. Atomic Red Team tests and a purpose-written simulation script produce *relevant, controlled forensic observables* — process trees, file-system mutations, registry changes, shadow-copy deletion attempts — while keeping the environment fully controlled and every action fully understood. This is the approach used by professional red teams and DFIR training programs. Choosing simulation over live malware is a deliberate judgment signal, not a limitation.
 
+### Multi-Source Forensic Correlation Methodology
+
+Rather than relying on isolated tool outputs or an artificial "blind" assumption, the incident timeline and technical findings were reconstructed through rigorous multi-source forensic correlation across:
+* **Volatile Memory Structures (Volatility 3):** Kernel process objects (`EPROCESS`), parent-child process hierarchy (`pstree`), session arguments (`cmdline`), and network socket pools (`netscan`).
+* **NTFS Filesystem Metadata (Autopsy / TSK):** Master File Table (`$MFT`) allocated records, temporal metadata (`$STANDARD_INFORMATION` and `$FILE_NAME`), extension mismatches, and unallocated cluster deallocation tracking.
+* **Guest Endpoint Telemetry & Logs:** Windows Event Logs (Process Creation Event ID 4688) and interactive user console session history.
+* **Simulator Cryptographic State & Journals:** Execution log (`simulation_log.txt`), atomic journal (`recovery_journal.json`), and artifact manifest (`artifact_manifest.json`) cross-referenced to verify attack timeline fidelity and 100% data recovery without paying extortion.
+* **Host Hypervisor Records:** VirtualBox execution audit logs, network isolation configuration records, and physical host chain-of-custody ledgers.
+
 ---
 
 ## High-Level Architecture
@@ -36,8 +45,10 @@ This project demonstrates a **complete, end-to-end Digital Forensics & Incident 
 |           v                               v                              |
 |   [Volatility 3 Framework 2.28.2] [Autopsy 4.23.1 via VMDK]              |
 |   - Process Tree & Cmdline        - NTFS $MFT Cryptographic Listing      |
-|   - 0 Active Sockets (netscan)    - 4-Second File Transformation Burst   |
-|   - Clean Memory Protections      - Extension Mismatch Detection         |
+|   - No active socket structures   - 4-Second File Transformation Burst   |
+|     identified by netscan         - Extension Mismatch Detection         |
+|   - No injection indicators                                              |
+|     identified in examined memory                                        |
 |           +-------------------------------+                              |
 |                           v                                              |
 |      [Incident Response Report: docs/INCIDENT_RESPONSE_REPORT.md]        |
@@ -147,7 +158,7 @@ To ensure strict network isolation without contaminating the environment:
 | **Phase 0** | Safe Environment Setup | Network isolation confirmed, baseline snapshot captured | ✅ **COMPLETE** |
 | **Phase 1** | Controlled Simulation Execution | 8 canary files transformed, run ID `B67F15E3`, test harness passed ([TEST_RESULTS.md](./simulation/TEST_RESULTS.md)) | ✅ **COMPLETE** |
 | **Phase 2** | Evidence Acquisition | 8.13 GB RAM (`.raw`) + 35.74 GB Disk (`.vmdk`), cryptographically hashed | ✅ **COMPLETE** |
-| **Phase 3** | Memory Forensics (Volatility 3) | Process tree, Notepad session decode, no active socket structures in RAM, clean memory | ✅ **COMPLETE** |
+| **Phase 3** | Memory Forensics (Volatility 3) | Process tree, Notepad session decode; no active socket structures identified by netscan; no injection indicators identified in examined memory | ✅ **COMPLETE** |
 | **Phase 4** | Disk Forensics (Autopsy 4.23.1) | MFT extraction, 4-second file transformation timeline, extension mismatch analysis | ✅ **COMPLETE** |
 | **Phase 5** | Incident Response Report | Executive consulting deliverable: [docs/INCIDENT_RESPONSE_REPORT.md](./docs/INCIDENT_RESPONSE_REPORT.md) | ✅ **COMPLETE** |
 | **Phase 6** | Teardown & Cleanup | `DFIR-SimVM` cleanly restored to baseline pre-simulation snapshot | ✅ **COMPLETE** |

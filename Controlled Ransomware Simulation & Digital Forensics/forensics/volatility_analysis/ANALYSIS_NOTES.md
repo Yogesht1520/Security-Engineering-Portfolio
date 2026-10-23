@@ -1,5 +1,5 @@
 # Volatility 3 — Memory Forensics Analysis Notes
-# Phase 3 — Blind Investigation
+# Phase 3 — Independent Memory Examination
 
 > **Investigator:** Yogesh T (Lead DFIR Analyst)  
 > **Evidence Item:** `EVD-001` (`forensics/acquisition/DFIR-SimVM-memory.raw`)  

@@ -1,5 +1,5 @@
 # Autopsy — Disk Forensics Analysis Notes
-# Phase 4 — Blind Investigation
+# Phase 4 — Independent Disk Examination
 
 > **Investigator:** Yogesh T (Lead DFIR Analyst)  
 > **Evidence Item:** `EVD-003` (`forensics/acquisition/DFIR-SimVM-disk.vmdk`, derived from `EVD-002`)  
@@ -90,8 +90,8 @@
 ## Step 4 — Deleted File Recovery Analysis
 
 **Report:** [`deleted_files_report.md`](./deleted_files_report.md)
-- In NTFS, file deletion unlinks MFT record entries and marks clusters as available in the volume allocation bitmap.
-- Because the simulation script followed an atomic replacement workflow (`.stage.tmp` -> `.locked` followed by original unlinking), the original file data blocks were unlinked, demonstrating why forensic unallocated space recovery is relevant in ransomware incidents.
+- **What NTFS $MFT Independently Shows:** The Master File Table independently records eight allocated files bearing `.locked` extensions and timestamps clustered tightly between 22:26:49 and 22:26:53 IST. It also reflects unlinked MFT records and volume allocation bitmap deallocations in the directory for the original pre-encryption filenames.
+- **Attribution of the Atomic Staging Sequence:** The specific three-stage replacement sequence (`.stage.tmp` -> rename to `.locked` -> original file unlinking) is established through the simulator implementation and on-disk `recovery_journal.json` execution records, corroborated by the MFT timestamp ordering and cluster reallocation patterns.
 
 ---
 
@@ -101,7 +101,7 @@
 |---|---|---|---|
 | **Malware Script** | `custom_behavior_sim.py` in Notepad session descriptor | `C:\Users\Public\custom_behavior_sim.py` MFT entry | **Confirmed** staged script |
 | **Execution Window** | Memory captured at 22:40:12 IST (17:10:12 UTC) | File modification burst at 22:26:49 – 22:26:55 IST | **Confirmed** timing |
-| **Network & Exfiltration**| 0 active/listening sockets in `netscan` | 0 external network connection records in registry/logs | **Consistent with isolation**; zero outbound network activity observed across examined artifacts |
+| **Network & Exfiltration**| 0 active/listening sockets in `windows.netscan` | 0 outbound network artifacts in Autopsy Web/Recent Activity modules | **Consistent with isolation**; zero outbound network activity observed across examined memory and disk artifacts |
 | **Recovery Inhibition** | Simulated log command in script stdout | `/EFI/Microsoft/Boot/BCD` access event in timeline | **Corroborated** T1490 evaluated in safe log mode |
 | **Ransomware Note / Inspection** | Inspected via Notepad (analyst administrative review) | Dropped by simulation at `22:26:55 IST`, size 1,144 B | **Corroborated** extortion artifact dropped by script and inspected by analyst |
 

@@ -33,7 +33,7 @@ In this investigation, disk acquisition was conducted from the host workstation 
 ```
 *Note: Do NOT revert to snapshot yet — we require the post-simulation disk state.*
 
-### Step 2: Primary Bitstream Disk Clone (`.vdi`)
+### Step 2: Primary Virtual Disk Clone (`.vdi`)
 ```powershell
 # Clone the virtual disk medium directly from host storage
 & "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" clonemedium disk ^

@@ -76,7 +76,7 @@ The investigation was structured around the SANS Incident Response lifecycle, ma
 1. **Preparation:** Target VM was configured without network adapters (`Network Adapter: Not Attached`), verified via guest PowerShell ping test failure (`Ping-Fail-Confirmed`). Clean forensic host configured with Volatility 3 and Autopsy.
 2. **Identification:** Detected rapid batch file modifications and extortion note delivery (`README_YOUR_FILES.txt`) in `C:\Users\Public\test_ransomware_sim\B67F15E3\`.
 3. **Containment:** System state was secured immediately by acquiring an 8.13 GB live RAM dump (`DFIR-SimVM-memory.raw`) via the hypervisor while the guest operating system remained live. Network isolation was re-audited.
-4. **Eradication:** The target VM was cleanly powered down (ACPI shutdown) to prevent post-simulation disk writes. A bitstream forensic clone of the virtual disk (`DFIR-SimVM-disk.vdi`) was acquired post-mortem, and malicious script execution processes were terminated.
+4. **Eradication:** The target VM was cleanly powered down (ACPI shutdown) to prevent post-simulation disk writes. A forensic clone of the virtual disk (`DFIR-SimVM-disk.vdi`) was acquired post-mortem, and malicious script execution processes were terminated.
 5. **Recovery:** Two separate recovery operations were performed:
    * *File-level Data Recovery:* Proved complete data reversibility across all 8 files via `recovery_journal.json`.
    * *Endpoint Disaster Recovery:* Clean VM rollback to pre-simulation baseline snapshot (`baseline-pre-simulation-2026-10-22`).
@@ -90,7 +90,7 @@ All primary and derived evidence items were hashed with SHA-256 immediately upon
 |---|---|---|---|---|---|---|
 | **EVD-001** | Primary Memory Dump | `DFIR-SimVM-memory.raw` | ELF64 Core Dump | 8,735,768,576 B | Live Hypervisor Acquisition (`VBoxManage debugvm dumpvmcore`) | `198A69B7412A7FD05CD88271E7C223C8F02D03DA14D3436AE715EB2FD0D5EFD3` |
 | **EVD-002** | Primary Disk Image | `DFIR-SimVM-disk.vdi` | VirtualBox VDI | 38,375,000,064 B | Clean Power-off Clone (`VBoxManage clonemedium disk`) | `33695DE62EE72C8E3FDE8225BD7688D9CDFD656B22F1DB7EC51D08B63579B980` |
-| **EVD-003** | Derived Disk Container | `DFIR-SimVM-disk.vmdk` | VMware VMDK | 38,354,026,496 B | Sector-by-Sector Container Translation (`--format VMDK`) | `98E32CEA9633D9F65AAC2A93F9236F3C31A12DD50797BF4DEB5E357D0166C219` |
+| **EVD-003** | Derived Disk Container | `DFIR-SimVM-disk.vmdk` | VMware VMDK | 38,354,026,496 B | Virtual disk container conversion (`--format VMDK`) | `98E32CEA9633D9F65AAC2A93F9236F3C31A12DD50797BF4DEB5E357D0166C219` |
 
 > *Note on Offline Retention: To preserve repository integrity and comply with hosting constraints, raw multi-gigabyte forensic evidence images (EVD-001, EVD-002, EVD-003) are preserved offline on local encrypted analyst storage (`E:\ForensicEvidence\DFIR-Lab-001\`) and excluded from Git via `.gitignore`. The complete chain-of-custody ledger is documented in `forensics/acquisition/EVIDENCE_MANIFEST.md`.*
 
@@ -126,8 +126,8 @@ All tool binaries were verified with cryptographic SHA-256 digests prior to evid
 | **22:26:54** | 16:56:54 | $STANDARD_INFO (MFT-84202) | — | Recovery journal committed to disk: `recovery_journal.json` (17,465 B). |
 | **22:26:55** | 16:56:55 | $STANDARD_INFO (MFT-84203) | [T1486](https://attack.mitre.org/techniques/T1486/) | Extortion note dropped: `README_YOUR_FILES.txt` (1,144 B); manifest written. |
 | **22:40:12** | 17:10:12 | Hypervisor Live Dump | — | **Containment:** Live VM memory acquisition performed through the VirtualBox hypervisor while the guest remained running (`EVD-001`). |
-| **22:45:00** | 17:15:00 | Clean Power-off Clone | — | **Eradication:** VM cleanly powered down (ACPI); 35.74 GB bitstream disk cloned (`EVD-002`). |
-| **23:00:15** | 17:30:15 | Sector Translation | — | Disk container translated to VMDK (`EVD-003`) for Autopsy ingest; SHA-256 hashed. |
+| **22:45:00** | 17:15:00 | Clean Power-off Clone | — | **Eradication:** VM cleanly powered down (ACPI); 35.74 GB virtual disk cloned (`EVD-002`). |
+| **23:00:15** | 17:30:15 | Container Conversion | — | Disk container converted to VMDK (`EVD-003`) for Autopsy ingest; SHA-256 hashed. |
 
 **Total Attack Burst Duration (File Transformation Phase):** **4.0 seconds** (8 files, sub-second velocity characteristic of programmatic automation).
 

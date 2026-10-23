@@ -12,7 +12,7 @@
 ## Overview
 
 This report documents files that were created, encrypted, renamed, or unlinked during the ransomware attack simulation.
-In this incident, the ransomware employed an atomic staging and replacement mechanism (`.stage.tmp` -> rename to `.locked` -> original file unlinked), creating distinct forensic artifacts across the NTFS Master File Table (MFT).
+Based on the simulator's committed recovery journal and runtime logs, the payload employed an atomic staging workflow (`.stage.tmp` -> rename to `.locked` -> original file unlinked). The NTFS Master File Table ($MFT) independently corroborates this through allocated `.locked` records, unlinked predecessor records, and unallocated cluster entries.
 
 ---
 

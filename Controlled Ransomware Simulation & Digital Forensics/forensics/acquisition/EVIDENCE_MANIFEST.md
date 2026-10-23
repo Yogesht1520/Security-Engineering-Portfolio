@@ -22,7 +22,7 @@ The table below documents all primary and derived forensic evidence items acquir
 |---|---|---|---|---|---|---|---|
 | **EVD-001** | Primary Memory Dump | `DFIR-SimVM-memory.raw` | ELF64 Core Dump | 8,735,768,576 B (8.13 GB) | Live Hypervisor Memory Acquisition (`VBoxManage debugvm dumpvmcore`) | `198A69B7412A7FD05CD88271E7C223C8F02D03DA14D3436AE715EB2FD0D5EFD3` | Retained Offline (Verified) |
 | **EVD-002** | Primary Disk Clone | `DFIR-SimVM-disk.vdi` | VirtualBox VDI | 38,375,000,064 B (35.74 GB) | Clean Power-off Clone (`VBoxManage clonemedium disk`) | `33695DE62EE72C8E3FDE8225BD7688D9CDFD656B22F1DB7EC51D08B63579B980` | Retained Offline (Verified) |
-| **EVD-003** | Derived Disk Container | `DFIR-SimVM-disk.vmdk` | VMware VMDK | 38,354,026,496 B (35.72 GB) | Sector-by-Sector Container Translation (`--format VMDK`) | `98E32CEA9633D9F65AAC2A93F9236F3C31A12DD50797BF4DEB5E357D0166C219` | Retained Offline (Verified) |
+| **EVD-003** | Derived Disk Container | `DFIR-SimVM-disk.vmdk` | VMware VMDK | 38,354,026,496 B (35.72 GB) | Virtual disk container conversion (`--format VMDK`) | `98E32CEA9633D9F65AAC2A93F9236F3C31A12DD50797BF4DEB5E357D0166C219` | Retained Offline (Verified) |
 
 ---
 
@@ -33,7 +33,7 @@ Autopsy 4.23.1 running on Windows does not possess native container support for 
 
 ### How was filesystem content equivalence validated?
 * **Container vs. Logical Disk Hashes:** Because container metadata headers and sparse block allocation descriptors differ between Oracle VDI and VMware VMDK specifications, the container-level SHA-256 hashes differ (`33695DE6...` vs `98E32CEA...`).
-* **Sector-Level Translation:** `VBoxManage clonemedium` translates the virtual disk sectors without altering the inner partition geometry.
+* **Container Translation:** `VBoxManage clonemedium` converts the virtual disk container format without modifying the guest partition geometry or filesystem contents.
 * **Filesystem Structure Equivalence Validation:** The derived VMDK was validated against the source VDI using partition geometry, NTFS volume metadata, cluster runs and MFT record comparisons. These checks establish consistency of the examined filesystem structures; a complete byte-for-byte sector comparison was not independently documented.
 
 ---
@@ -56,7 +56,7 @@ All tool binaries were verified with cryptographic SHA-256 digests prior to evid
 | Timestamp (IST) | Evidence Item | Action Taken | Transferring Party | Receiving Party | Storage Identifier / Location | Verification Check |
 |---|---|---|---|---|---|---|
 | 2026-10-22 22:40:12 | **EVD-001** | Live RAM core dump acquired via hypervisor CLI | Guest VM `DFIR-SimVM` | Analyst Yogesh T | `E:\ForensicEvidence\DFIR-Lab-001\DFIR-SimVM-memory.raw` | SHA-256 recorded: `198A69B7...` |
-| 2026-10-22 22:45:00 | **EVD-002** | Target VM powered down; bitstream VDI disk cloned | Hypervisor Storage | Analyst Yogesh T | `E:\ForensicEvidence\DFIR-Lab-001\DFIR-SimVM-disk.vdi` | SHA-256 recorded: `33695DE6...` |
+| 2026-10-22 22:45:00 | **EVD-002** | Target VM powered down; virtual disk clone acquired (VDI) | Hypervisor Storage | Analyst Yogesh T | `E:\ForensicEvidence\DFIR-Lab-001\DFIR-SimVM-disk.vdi` | SHA-256 recorded: `33695DE6...` |
 | 2026-10-22 23:00:15 | **EVD-003** | EVD-002 converted to VMDK container for Autopsy | Analyst Yogesh T | Analyst Yogesh T | `E:\ForensicEvidence\DFIR-Lab-001\DFIR-SimVM-disk.vmdk` | Independent SHA-256: `98E32CEA...` |
 | 2026-10-23 00:30:00 | **EVD-001** | Memory analysis executed via Volatility 3 Framework 2.28.2 | Analyst Yogesh T | Volatility Engine | Workstation In-Memory / Analysis Scratch | Re-verified hash before plugin execution |
 | 2026-10-23 01:15:00 | **EVD-003** | VMDK ingested into Autopsy Case `DFIR-Lab-001` | Analyst Yogesh T | Autopsy / TSK | `E:\ForensicEvidence\DFIR-Lab-001\AutopsyCase\` | Partition vol6 mounted; MFT parsed |
