@@ -123,20 +123,40 @@ Pre-configured dashboard definitions are exported as version-controlled `.ndjson
 ---
 
 ### 4.2 Standalone Interactive SOC Web Portal
-Located at [`dashboards/index.html`](dashboards/index.html), this standalone client-side portal enables offline technical reviews, live demonstration of forensic datasets, and portfolio inspection without requiring active cloud infrastructure.
 
-- **Obsidian Glassmorphism Theme:** Dark cybersecurity aesthetic with luminous cyan/purple telemetry cards and real-time status indicators.
-- **Interactive Visualizations (Chart.js):**
-  - *Attack Surge Timeline:* Dynamic hourly progression of security alerts.
-  - *MITRE ATT&CK Doughnut:* Tactic-level threat categorization.
-  - *Targeted Usernames Distribution:* Horizontal bar chart ranking probed usernames.
-  - *Threat Intel Table:* Geolocation and ASN intelligence for active scanners (`209.99.190.186`).
-- **Telemetry Explorer & Incident Drawer:**
-  - Real-time search query box (by IP, user, rule ID, or description).
-  - Severity filter chips (`All`, `Critical`, `High`, `Medium`, `Low`).
-  - Raw JSON alert inspector modal.
-  - Active incident drawer showing `CASE-2026-001` timeline and cryptographic SHA-256 evidence verification.
-- **Quick Launch:** Open [`dashboards/index.html`](dashboards/index.html) in any modern browser.
+Located at [`dashboards/index.html`](dashboards/index.html), this standalone client-side portal enables offline technical reviews, live demonstrations of forensic datasets, and portfolio inspection without requiring active cloud infrastructure.
+
+#### A. Executive Telemetry Overview & Attack Progression
+Displays live KPI counters (Captured Alerts, Unique Attacker IPs, Probed Accounts), a Chart.js animated attack surge timeline curve, and the MITRE ATT&CK tactic distribution doughnut chart.
+
+![SOC Analytics Portal - Threat Overview](screenshots/soc_portal_overview.png)
+*Figure 4: Standalone SOC Analytics Portal featuring dynamic KPI counters, attack volume progression curve, and MITRE ATT&CK tactic breakdown.*
+
+#### B. Targeted Account Distribution & Attacker Profile Cards
+Ranks dictionary target frequency and provides threat intelligence cards for active external scanners, including ASN, geolocation, and abuse confidence.
+
+![Targeted Users and Threat Intel Profile](screenshots/soc_portal_threat_intel.png)
+*Figure 5: Probed username ranking (ubuntu, root, vr, var, www) and automated threat intelligence profiling for Swiss threat actor 209.99.190.186 and scanner 80.94.92.234.*
+
+#### C. Normalized Event Stream & Deep-Dive Payload Inspector
+Includes a real-time searchable event table with severity filtering chips (`Critical`, `High`, `Medium`, `Low`), and a click-to-inspect drawer revealing the full normalized Wazuh JSON alert schema.
+
+![Normalized Security Alert Feed](screenshots/soc_portal_alert_feed.png)
+*Figure 6: Real-time searchable event feed with instant severity filtering and analyst inspection actions.*
+
+![Wazuh Alert JSON Payload Inspector](screenshots/soc_portal_json_inspector.png)
+*Figure 7: Forensic payload inspector drawer displaying normalized event metadata, MITRE technique IDs (T1078, T1021), and user context.*
+
+#### D. Incident Case Drawer & Evidence Chain of Custody
+Interactive incident response drawer displaying `CASE-2026-001`, containment state, investigation timeline, and verified SHA-256 cryptographic evidence hashes.
+
+![Active Incident Case Drawer](screenshots/soc_portal_case_drawer.png)
+*Figure 8: Active incident case drawer for CASE-2026-001 showing verified containment status, chronological timeline, and SHA-256 evidence chain of custody.*
+
+- **Quick Launch:** Open [`dashboards/index.html`](dashboards/index.html) in any modern web browser or run:
+  ```powershell
+  Start-Process "dashboards/index.html"
+  ```
 
 ---
 
