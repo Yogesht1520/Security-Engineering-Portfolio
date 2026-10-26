@@ -1,4 +1,4 @@
-# SIEM Detection Lab — Environment Access Template
+# SIEM Detection Lab — Active Environment Access Details (Template)
 
 *Template reference for local operator setup. Fill in with your provisioned values.*
 
@@ -7,7 +7,7 @@
 ## 1. Virtual Machine Access
 
 ### SIEM Manager VM (`siem-lab-wazuh`)
-- **Public IP**: `<SIEM_PUBLIC_IP>` (from `terraform output siem_public_ip`)
+- **Public IP**: `<SIEM_PUBLIC_IP>` (retrieve via: `terraform output -raw siem_public_ip`)
 - **Private IP**: `10.0.1.2`
 - **Machine Type**: `e2-standard-2` (2 vCPU, 8 GB RAM, 100 GB SSD)
 - **Allowed Management IP**: `<YOUR_PUBLIC_IP>/32`
@@ -22,10 +22,10 @@
 
 ---
 
-## 2. Honeypot VM (`siem-lab-honeypot`)
-- **Public IP**: `<HONEYPOT_PUBLIC_IP>` (from `terraform output honeypot_public_ip`)
+### Honeypot VM (`siem-lab-honeypot`)
+- **Public IP**: `<HONEYPOT_PUBLIC_IP>` (retrieve via: `terraform output -raw honeypot_public_ip`)
 - **Private IP**: `10.0.1.3`
-- **Machine Type**: `e2-micro` (2 vCPU burstable, 1 GB RAM, 30 GB PD)
+- **Machine Type**: `e2-micro` (2 vCPU burstable, 1 GB RAM, 30 GB standard PD)
 - **SSH Ingress Exposure**: `0.0.0.0/0` (Intentional Honeypot)
 - **SSH Command**:
   ```bash
@@ -34,9 +34,41 @@
 
 ---
 
-## 3. Firewall Boundaries Summary
+## 2. Active Security & Firewall Posture Summary
 
-- **Honeypot Ingress**: TCP 22 open to `0.0.0.0/0`.
-- **Honeypot Egress**: DENY ALL outbound traffic (`0.0.0.0/0`, Priority 65534). Only Wazuh agent ports (`1514/1515` to `10.0.1.2`) and package repositories are permitted.
-- **SIEM Ingress**: TCP 22 & 443 restricted exclusively to your management IP (`<YOUR_PUBLIC_IP>/32`).
-- **OpenSearch Protection**: TCP 9200/9300 blocked from public internet.
+```
+╔══════════════════════════════════════════════════════════════════════╗
+║              SIEM Lab — Active Security Posture Summary              ║
+╠══════════════════════════════════════════════════════════════════════╣
+║ HONEYPOT VM: <HONEYPOT_PUBLIC_IP>                                    ║
+║   • INGRESS: TCP 22 → 0.0.0.0/0 (Honeypot target)                    ║
+║   • EGRESS:  TCP 1514, 1515 → 10.0.1.0/24 (Wazuh telemetry)         ║
+║   • EGRESS:  TCP 80, 443, UDP 53 → 0.0.0.0/0 (Package repositories)  ║
+║   • EGRESS:  DENY ALL other outbound traffic (Priority 65534)        ║
+╠══════════════════════════════════════════════════════════════════════╣
+║ SIEM VM: <SIEM_PUBLIC_IP>                                            ║
+║   • INGRESS: TCP 22  → <YOUR_PUBLIC_IP>/32 (Management IP only)      ║
+║   • INGRESS: TCP 443 → <YOUR_PUBLIC_IP>/32 (Wazuh Dashboard only)     ║
+║   • INGRESS: TCP 1514, 1515 → 10.0.1.3 (Honeypot Agent only)        ║
+║   • INGRESS: DENY TCP 9200, 9300 from 0.0.0.0/0 (OpenSearch protected)║
+╚══════════════════════════════════════════════════════════════════════╝
+```
+
+---
+
+## 3. Operational Quick Reference
+
+```bash
+# Obtain all active connection outputs from Terraform:
+cd infra/terraform
+terraform output
+
+# View live Honeypot SSH authentication attempts:
+ssh -i ~/.ssh/siem_lab_key ubuntu@<HONEYPOT_PUBLIC_IP> "sudo tail -f /var/log/auth.log"
+
+# View live normalized Wazuh SIEM alerts:
+ssh -i ~/.ssh/siem_lab_key ubuntu@<SIEM_PUBLIC_IP> "sudo tail -f /var/ossec/logs/alerts/alerts.json"
+
+# Import custom OpenSearch Dashboards:
+bash wazuh/dashboards/import_dashboards.sh <SIEM_PUBLIC_IP> <WAZUH_PASSWORD>
+```

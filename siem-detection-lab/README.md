@@ -1,9 +1,9 @@
 # Enterprise SIEM & Threat Detection Engineering Lab
 
-[![CI - Terraform](https://github.com/Yogesht1520/Security-Engineering-Portfolio/actions/workflows/validate-terraform.yml/badge.svg)](.github/workflows/validate-terraform.yml)
-[![CI - ShellCheck](https://github.com/Yogesht1520/Security-Engineering-Portfolio/actions/workflows/validate-shell.yml/badge.svg)](.github/workflows/validate-shell.yml)
-[![CI - Wazuh Rules](https://github.com/Yogesht1520/Security-Engineering-Portfolio/actions/workflows/validate-wazuh-rules.yml/badge.svg)](.github/workflows/validate-wazuh-rules.yml)
-[![CI - Security Gate](https://github.com/Yogesht1520/Security-Engineering-Portfolio/actions/workflows/security.yml/badge.svg)](.github/workflows/security.yml)
+[![Terraform Validated](https://img.shields.io/badge/Terraform-Validated-blue?logo=terraform&logoColor=white)](.github/workflows/validate-terraform.yml)
+[![ShellCheck Linted](https://img.shields.io/badge/ShellCheck-Passing-brightgreen?logo=gnu-bash&logoColor=white)](.github/workflows/validate-shell.yml)
+[![Wazuh Rules Validated](https://img.shields.io/badge/Wazuh_Rules-10%2F10_Passing-success?logo=wazuh&logoColor=white)](.github/workflows/validate-wazuh-rules.yml)
+[![Security Gate](https://img.shields.io/badge/Security_Gate-Zero_Leaks-brightgreen?logo=security&logoColor=white)](.github/workflows/security.yml)
 
 An enterprise-grade, end-to-end Security Operations Center (SOC) and Detection Engineering laboratory deployed in Google Cloud Platform (GCP). The lab exposes an intentionally instrumented Linux honeypot to capture live internet attack campaigns, processes raw kernel audit and authentication telemetry through a unified Wazuh SIEM stack, and correlates multi-stage intrusions using custom MITRE ATT&CK-mapped detection rules, automated response runbooks, and interactive operational dashboards.
 
@@ -18,33 +18,33 @@ flowchart TD
         ATK2["Scanner: 80.94.92.234 (Automated Probes)"]
     end
 
-    subgraph GCP["Google Cloud Platform — VPC Subnet (10.0.1.0/24)"]
+    subgraph GCP["Google Cloud Platform - VPC Subnet 10.0.1.0/24"]
         subgraph DMZ["Exposed DMZ Perimeter"]
-            Honeypot["Honeypot VM (10.0.1.3 / 34.121.64.158)\n• SSH Ingress: 0.0.0.0/0\n• auditd, auth.log, syslog\n• Wazuh Agent 4.9.2-1 (Pinned)"]
+            Honeypot["Honeypot VM: 10.0.1.3 / 34.121.64.158<br/>SSH Ingress: 0.0.0.0/0<br/>auditd, auth.log, syslog<br/>Wazuh Agent 4.9.2-1 Pinned"]
         end
 
-        subgraph HardenedCore["Protected Management & SIEM Core"]
-            SIEM["Wazuh Manager (10.0.1.2 / 34.71.182.95)\n• OpenSearch Indexer (Internal)\n• Wazuh Analysis Engine (Ruleset 100010–100041)\n• OpenSearch Dashboards (HTTPS)"]
+        subgraph HardenedCore["Protected Management and SIEM Core"]
+            SIEM["Wazuh Manager: 10.0.1.2 / 34.71.182.95<br/>OpenSearch Indexer Internal<br/>Wazuh Ruleset 100010-100041<br/>OpenSearch Dashboards HTTPS"]
         end
 
         subgraph EgressPolicy["Strict Egress Boundary Firewall"]
-            EgressDeny["Priority 65534: DENY All Outbound (0.0.0.0/0)"]
-            EgressPkg["Priority 1100: ALLOW Apt Updates (TCP 80/443, UDP 53)"]
-            EgressSIEM["Priority 1000: ALLOW Internal Telemetry (TCP 1514/1515)"]
-            IndexDeny["Priority 800: DENY Public OpenSearch (TCP 9200/9300)"]
+            EgressDeny["Priority 65534: DENY All Outbound 0.0.0.0/0"]
+            EgressPkg["Priority 1100: ALLOW Apt Updates TCP 80/443, UDP 53"]
+            EgressSIEM["Priority 1000: ALLOW Telemetry TCP 1514/1515"]
+            IndexDeny["Priority 800: DENY Public OpenSearch TCP 9200/9300"]
         end
     end
 
     subgraph SOC["SOC Management Plane"]
-        Analyst["SOC Analyst / Detection Engineer\n(Restricted Management IP)"]
-        Portal["Interactive SOC Analytics Portal\n(dashboards/index.html)"]
-        CaseMgmt["Incident Case Manager\n(incident_management/case_manager.py)"]
+        Analyst["SOC Analyst / Detection Engineer<br/>Restricted Management IP"]
+        Portal["Interactive SOC Analytics Portal<br/>dashboards/index.html"]
+        CaseMgmt["Incident Case Manager<br/>incident_management/case_manager.py"]
     end
 
-    ATK1 -->|T1110 Paced Dictionary Attack| Honeypot
-    ATK2 -->|T1110 Automated Banner Scanning| Honeypot
-    Honeypot -->|Encrypted Agent Logs (TCP 1514)| SIEM
-    SIEM -->|Alert Correlation & Telemetry| Analyst
+    ATK1 -->|"T1110 Paced Dictionary Attack"| Honeypot
+    ATK2 -->|"T1110 Automated Banner Scanning"| Honeypot
+    Honeypot -->|"Encrypted Agent Logs TCP 1514"| SIEM
+    SIEM -->|"Alert Correlation and Telemetry"| Analyst
     Analyst --> Portal
     Analyst --> CaseMgmt
 ```
