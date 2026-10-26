@@ -87,28 +87,56 @@ Custom detection rules deployed in `/var/ossec/etc/rules/` are documented in the
 
 ## 4. Visualizations & Operational Dashboards
 
-The lab features dual operational visualization interfaces:
+The laboratory features dual operational visualization interfaces: production-grade OpenSearch Dashboards running on the SIEM cluster, and a client-side interactive SOC analytics portal.
 
-### 4.1 Standalone Interactive SOC Analytics Portal
-Located at [`dashboards/index.html`](dashboards/index.html), this client-side portal runs locally in any web browser without needing cloud infrastructure.
-- **Glassmorphism Theme:** Dark obsidian layout with cyan and purple neon metrics.
-- **Interactive Visualizations:**
-  - *Attack Volume Timeline:* Hourly progression of security events.
-  - *MITRE ATT&CK Matrix Doughnut:* Distribution across Credential Access, Lateral Movement, and Privilege Escalation.
-  - *Targeted Usernames Bar Chart:* Probed accounts (`root`, `ubuntu`, `sysadmin`, `var`, `vor`, `www`).
-  - *Threat Intelligence Table:* Live ASN and GeoIP summaries for active scanners (`209.99.190.186`).
-- **Telemetry Explorer:** Real-time search query box, severity filter chips (`All`, `Critical`, `High`, `Medium`, `Low`), raw JSON payload drawer, and incident case modal.
+### 4.1 Production OpenSearch Dashboards (Live SIEM)
 
-### 4.2 Production OpenSearch Dashboards
-Pre-configured `.ndjson` dashboard definitions exported for Wazuh / OpenSearch Dashboards:
-- [`wazuh/dashboards/soc_threat_overview.ndjson`](wazuh/dashboards/soc_threat_overview.ndjson): Executive SOC overview.
-- [`wazuh/dashboards/ssh_bruteforce_deepdive.ndjson`](wazuh/dashboards/ssh_bruteforce_deepdive.ndjson): Credential access analytics.
-- Automated import script:
+The Wazuh / OpenSearch Dashboards interface provides operational visibility into incoming honeypot attack traffic, automated detections, and threat actor behavior.
+
+#### A. Executive SOC Threat Operations & Telemetry Overview
+Visualizes real-time security events captured across public honeypot interfaces, including severity distributions, targeted accounts, and active botnet source IPs.
+
+![Live OpenSearch SOC Threat Overview Dashboard](screenshots/live_soc_threat_overview.png)
+*Figure 1: Live OpenSearch SOC Threat Operations Dashboard capturing 800+ attack events, severity breakdown, targeted usernames (ubuntu, dell, root, admin), and active threat actor IP tables.*
+
+#### B. MITRE ATT&CK Framework Coverage & Tactic Distribution
+Correlates incoming security alerts against the MITRE ATT&CK knowledge base, categorizing intrusions by tactical progression.
+
+![MITRE ATT&CK Framework Coverage](screenshots/mitre_coverage.png)
+*Figure 2: Real-time MITRE ATT&CK tactic distribution on the honeypot agent, tracking Credential Access (T1110), Lateral Movement (T1021), and Defense Evasion (T1078).*
+
+#### C. Threat Geolocation & Attack Distribution
+Aggregates geographical origins and account probe frequencies across global botnets.
+
+![Attack Geolocation and Account Probes](screenshots/dashboard_bottom.png)
+*Figure 3: Global attacker origins (United States, Russia, UK, Netherlands) and frequency distribution of probed service accounts.*
+
+#### Automated Dashboard Import
+Pre-configured dashboard definitions are exported as version-controlled `.ndjson` files in [`wazuh/dashboards/`](wazuh/dashboards/):
+- [`soc_threat_overview.ndjson`](wazuh/dashboards/soc_threat_overview.ndjson): Executive SOC overview panels and metrics.
+- [`ssh_bruteforce_deepdive.ndjson`](wazuh/dashboards/ssh_bruteforce_deepdive.ndjson): Credential access and brute-force correlation analytics.
+- Import command:
   ```bash
   bash wazuh/dashboards/import_dashboards.sh <SIEM_PUBLIC_IP> <WAZUH_PASSWORD>
   ```
 
-![Live OpenSearch SOC Threat Overview Dashboard](screenshots/live_soc_threat_overview.png)
+---
+
+### 4.2 Standalone Interactive SOC Web Portal
+Located at [`dashboards/index.html`](dashboards/index.html), this standalone client-side portal enables offline technical reviews, live demonstration of forensic datasets, and portfolio inspection without requiring active cloud infrastructure.
+
+- **Obsidian Glassmorphism Theme:** Dark cybersecurity aesthetic with luminous cyan/purple telemetry cards and real-time status indicators.
+- **Interactive Visualizations (Chart.js):**
+  - *Attack Surge Timeline:* Dynamic hourly progression of security alerts.
+  - *MITRE ATT&CK Doughnut:* Tactic-level threat categorization.
+  - *Targeted Usernames Distribution:* Horizontal bar chart ranking probed usernames.
+  - *Threat Intel Table:* Geolocation and ASN intelligence for active scanners (`209.99.190.186`).
+- **Telemetry Explorer & Incident Drawer:**
+  - Real-time search query box (by IP, user, rule ID, or description).
+  - Severity filter chips (`All`, `Critical`, `High`, `Medium`, `Low`).
+  - Raw JSON alert inspector modal.
+  - Active incident drawer showing `CASE-2026-001` timeline and cryptographic SHA-256 evidence verification.
+- **Quick Launch:** Open [`dashboards/index.html`](dashboards/index.html) in any modern browser.
 
 ---
 
