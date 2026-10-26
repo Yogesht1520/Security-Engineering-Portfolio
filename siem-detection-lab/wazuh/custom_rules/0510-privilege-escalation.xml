@@ -14,16 +14,30 @@
   </rule>
 
   <!--
-    Custom Rule: Privilege Escalation - Sudoers Modified
-    Detects modifications to /etc/sudoers or files in /etc/sudoers.d/
+    Custom Rule: Privilege Escalation - /etc/sudoers Modified
+    Detects modifications to primary /etc/sudoers configuration file via FIM.
   -->
   <rule id="100021" level="12">
-    <if_sid>500</if_sid> <!-- Base rule: File integrity monitoring event -->
+    <if_group>syscheck</if_group>
     <match>/etc/sudoers</match>
-    <description>System administration: Sudoers file modified - possible privilege escalation backdoor.</description>
+    <description>File integrity: Sudoers file (/etc/sudoers) modified - possible privilege escalation backdoor.</description>
     <mitre>
       <id>T1548.003</id>
     </mitre>
-    <group>sudoers_modification,</group>
+    <group>sudoers_modification,syscheck,</group>
+  </rule>
+
+  <!--
+    Custom Rule: Privilege Escalation - /etc/sudoers.d/ Directory Modified
+    Detects persistence/backdoor additions in the /etc/sudoers.d/ drop-in directory.
+  -->
+  <rule id="100022" level="12">
+    <if_group>syscheck</if_group>
+    <match>/etc/sudoers.d/</match>
+    <description>File integrity: Sudoers drop-in directory (/etc/sudoers.d/) modified - possible privilege escalation backdoor.</description>
+    <mitre>
+      <id>T1548.003</id>
+    </mitre>
+    <group>sudoers_modification,syscheck,</group>
   </rule>
 </group>

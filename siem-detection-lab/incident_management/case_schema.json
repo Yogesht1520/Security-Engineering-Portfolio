@@ -1,0 +1,94 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IncidentCase",
+  "description": "Standardized schema for SIEM Detection Lab security incident cases",
+  "type": "object",
+  "required": [
+    "case_id",
+    "title",
+    "status",
+    "severity",
+    "opened_at",
+    "source_ip"
+  ],
+  "properties": {
+    "case_id": {
+      "type": "string",
+      "pattern": "^CASE-[0-9]{4}-[0-9]{3,}$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["open", "investigating", "contained", "closed", "false_positive"]
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "critical"]
+    },
+    "opened_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "closed_at": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "source_ip": {
+      "type": "string"
+    },
+    "geo": {
+      "type": "object",
+      "properties": {
+        "country": { "type": "string" },
+        "city": { "type": "string" },
+        "asn": { "type": "string" },
+        "isp": { "type": "string" }
+      }
+    },
+    "reputation": {
+      "type": "object",
+      "properties": {
+        "abuseipdb_score": { "type": ["integer", "null"] },
+        "total_reports": { "type": ["integer", "null"] },
+        "last_reported_at": { "type": ["string", "null"] }
+      }
+    },
+    "wazuh_alert_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "target_users": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "timeline": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["timestamp", "event"],
+        "properties": {
+          "timestamp": { "type": "string" },
+          "event": { "type": "string" }
+        }
+      }
+    },
+    "containment_actions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "evidence_preserved": {
+      "type": "boolean"
+    },
+    "analyst": {
+      "type": "string"
+    },
+    "root_cause": {
+      "type": "string"
+    },
+    "lessons_learned": {
+      "type": "string"
+    }
+  }
+}

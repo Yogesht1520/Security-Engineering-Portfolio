@@ -1,0 +1,6 @@
+{"test_id":"TC-001","name":"SSH Burst Boundary Negative (7 failures)","status":"PASS","expected":"No rule 100010","actual":"Rule 5710 only","timestamp":"2026-10-26T20:27:04Z"}
+{"test_id":"TC-002","name":"SSH Burst Trigger Positive (8 failures)","status":"PASS","expected":"Rule 100010 fired","actual":"Rule 100010 fired","timestamp":"2026-10-26T20:27:05Z"}
+{"test_id":"TC-003","name":"Success After Burst Attack Same IP (Positive)","status":"PASS","expected":"Rule 100040 fired","actual":"Rule 100040 fired","timestamp":"2026-10-26T20:27:06Z"}
+{"test_id":"TC-004","name":"Success From Distinct IP (Negative)","status":"PASS","expected":"No rule 100040","actual":"Rule 5715 only","timestamp":"2026-10-26T20:27:07Z"}
+{"test_id":"TC-005","name":"Benign Management SSH Authentication","status":"PASS","expected":"Rule 100015","actual":"Rule 100015 fired","timestamp":"2026-10-26T20:27:09Z"}
+{"test_id":"TC-006","name":"Suspicious Command Exec (curl)","status":"PASS","expected":"Audit rule evaluated","actual":"Evaluated","timestamp":"2026-10-26T20:27:10Z"}

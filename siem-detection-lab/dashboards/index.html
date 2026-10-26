@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SOC Operations & Threat Telemetry Visualizer | SIEM Detection Lab</title>
+  <meta name="description" content="Interactive SOC operations dashboard and security telemetry analytics visualizer for SIEM detection lab.">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <nav class="navbar">
+    <div class="nav-brand">
+      <div class="brand-icon">⚡</div>
+      <div>
+        <div class="brand-title">SIEM Lab — SOC Analytics Portal</div>
+        <div class="brand-subtitle">Wazuh SIEM & Honeypot Telemetry</div>
+      </div>
+    </div>
+    <div class="nav-status">
+      <div class="status-badge">
+        <span class="pulse-dot"></span>
+        <span>Honeypot Active (Egress Hardened)</span>
+      </div>
+      <button class="btn btn-outline" id="btn-view-case">Active Case (CASE-2026-001)</button>
+      <a href="https://34.71.182.95" target="_blank" rel="noopener" class="btn btn-primary">Open Live Wazuh SIEM ↗</a>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <main class="container">
+
+    <!-- KPI Metrics -->
+    <section class="kpi-grid">
+      <div class="kpi-card" style="--card-accent: var(--accent-cyan);">
+        <div class="kpi-header">
+          <span class="kpi-label">Captured Alerts</span>
+          <span class="kpi-icon">🛡️</span>
+        </div>
+        <div class="kpi-value" id="kpi-total-alerts">0</div>
+        <div class="kpi-subtext">Real-time normalized SIEM events</div>
+      </div>
+
+      <div class="kpi-card" style="--card-accent: var(--accent-rose);">
+        <div class="kpi-header">
+          <span class="kpi-label">Unique Attacking IPs</span>
+          <span class="kpi-icon">🌐</span>
+        </div>
+        <div class="kpi-value" id="kpi-unique-ips">0</div>
+        <div class="kpi-subtext">Internet scanners & botnets logged</div>
+      </div>
+
+      <div class="kpi-card" style="--card-accent: var(--accent-amber);">
+        <div class="kpi-header">
+          <span class="kpi-label">Probed Accounts</span>
+          <span class="kpi-icon">👤</span>
+        </div>
+        <div class="kpi-value" id="kpi-target-users">0</div>
+        <div class="kpi-subtext">SSH dictionary attack targets</div>
+      </div>
+
+      <div class="kpi-card" style="--card-accent: var(--accent-purple);">
+        <div class="kpi-header">
+          <span class="kpi-label">High / Critical Alerts</span>
+          <span class="kpi-icon">🚨</span>
+        </div>
+        <div class="kpi-value" id="kpi-critical-alerts">0</div>
+        <div class="kpi-subtext">Rule level ≥ 10 correlated detections</div>
+      </div>
+    </section>
+
+    <!-- Visual Charts Row 1 -->
+    <section class="charts-grid">
+      <div class="chart-card">
+        <div class="chart-header">
+          <div class="chart-title">Attack Volume & Severity Timeline</div>
+          <span class="chart-tag">Hourly Event Buckets</span>
+        </div>
+        <div class="chart-body">
+          <canvas id="chart-timeline"></canvas>
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-header">
+          <div class="chart-title">MITRE ATT&CK Tactics</div>
+          <span class="chart-tag">ATT&CK Matrix</span>
+        </div>
+        <div class="chart-body">
+          <canvas id="chart-mitre"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- Visual Charts Row 2 -->
+    <section class="charts-row-secondary">
+      <div class="chart-card">
+        <div class="chart-header">
+          <div class="chart-title">Targeted User Account Distribution</div>
+          <span class="chart-tag">Brute Force Targets</span>
+        </div>
+        <div class="chart-body">
+          <canvas id="chart-users"></canvas>
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-header">
+          <div class="chart-title">Attacking Infrastructure & ASN Profile</div>
+          <span class="chart-tag">Threat Intel</span>
+        </div>
+        <div class="chart-body" id="threat-intel-box" style="overflow-y: auto; max-height: 280px;">
+          <!-- Dynamically populated attacker summary -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Controls & Filter Bar -->
+    <section class="controls-bar">
+      <div class="search-box">
+        <span>🔍</span>
+        <input type="text" id="search-input" placeholder="Search by IP, username, rule ID, or description (e.g. 209.99.190.186, 5710, root)...">
+      </div>
+
+      <div class="filter-chips">
+        <span class="chip active" data-filter="all">All Events</span>
+        <span class="chip" data-filter="critical">Critical (Lvl ≥ 12)</span>
+        <span class="chip" data-filter="high">High (Lvl 8-11)</span>
+        <span class="chip" data-filter="medium">Medium (Lvl 4-7)</span>
+        <span class="chip" data-filter="low">Low (Lvl 0-3)</span>
+      </div>
+    </section>
+
+    <!-- Telemetry Table -->
+    <section class="table-card">
+      <div class="table-header">
+        <div class="table-title">Live Normalized Security Alert Feed</div>
+        <span class="chart-tag" id="table-count-tag">Showing 0 alerts</span>
+      </div>
+      <div class="data-table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Timestamp (UTC)</th>
+              <th>Rule ID</th>
+              <th>Severity</th>
+              <th>Source IP</th>
+              <th>Target User</th>
+              <th>Description</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="alerts-tbody">
+            <!-- Dynamically populated table rows -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Incident Case Modal / Drawer -->
+  <div class="modal-overlay" id="case-modal">
+    <div class="modal-content">
+      <button class="modal-close" id="modal-close-btn">&times;</button>
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-card); padding-bottom: 1rem;">
+        <div>
+          <h2 style="font-size: 1.35rem; font-weight: 700; margin-bottom: 0.25rem;" id="modal-case-title">Incident Case Details</h2>
+          <span style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--accent-cyan);" id="modal-case-id">CASE-2026-001</span>
+        </div>
+        <span class="badge-level level-critical" id="modal-case-severity">SEVERITY: HIGH</span>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.5rem;">
+        <div style="background: rgba(0,0,0,0.3); padding: 1rem; border-radius: var(--radius-md); border: 1px solid var(--border-card);">
+          <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Attacking Entity</div>
+          <div style="font-size: 1.15rem; font-weight: 700; font-family: var(--font-mono); color: var(--accent-rose); margin: 0.25rem 0;" id="modal-source-ip">--</div>
+          <div style="font-size: 0.8rem; color: var(--text-muted);" id="modal-geo">--</div>
+        </div>
+
+        <div style="background: rgba(0,0,0,0.3); padding: 1rem; border-radius: var(--radius-md); border: 1px solid var(--border-card);">
+          <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Containment Status</div>
+          <div style="font-size: 1.15rem; font-weight: 700; color: var(--accent-emerald); margin: 0.25rem 0;" id="modal-status">CONTAINED</div>
+          <div style="font-size: 0.8rem; color: var(--text-muted);">Egress Deny Policy (P65534) Enforced</div>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 1.5rem;">
+        <h3 style="font-size: 0.95rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--accent-cyan);">Investigation Timeline</h3>
+        <ul style="list-style: none; padding-left: 0; font-size: 0.85rem;" id="modal-timeline">
+          <!-- Populated dynamically -->
+        </ul>
+      </div>
+
+      <div style="margin-bottom: 1.5rem;">
+        <h3 style="font-size: 0.95rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--accent-cyan);">Cryptographic Evidence Verification</h3>
+        <div style="background: rgba(0,0,0,0.4); padding: 0.85rem; border-radius: var(--radius-md); font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-muted); line-height: 1.6;" id="modal-evidence-hashes">
+          Loading evidence manifest...
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 0.85rem;">
+        <button class="btn btn-outline" id="btn-close-modal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Raw Alert JSON Drawer Modal -->
+  <div class="modal-overlay" id="raw-alert-modal">
+    <div class="modal-content" style="max-width: 700px;">
+      <button class="modal-close" id="raw-modal-close-btn">&times;</button>
+      <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 1rem; color: var(--accent-cyan);">Normalized Wazuh Alert JSON Payload</h3>
+      <pre style="background: #080c14; padding: 1.25rem; border-radius: var(--radius-md); font-family: var(--font-mono); font-size: 0.8rem; color: #a5f3fc; overflow-x: auto; max-height: 500px;" id="raw-alert-code"></pre>
+    </div>
+  </div>
+
+  <!-- Core Logic Bundle -->
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

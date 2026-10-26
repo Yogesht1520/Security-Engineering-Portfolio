@@ -4,14 +4,13 @@
     Detects 8+ failed SSH logins from the same source IP within a 120-second window.
     Maps to MITRE ATT&CK T1110.001 (Password Guessing).
   -->
-  <rule id="100010" level="10" frequency="8" timeframe="120">
-    <if_matched_sid>5716</if_matched_sid> <!-- Base rule: SSH authentication failed -->
-    <same_source_ip />
+  <rule id="100010" level="10">
+    <if_sid>5712</if_sid> <!-- Base built-in rule: sshd brute force 8 failures in 120s -->
     <description>sshd: High-frequency burst brute-force attack detected from $(srcip).</description>
     <mitre>
       <id>T1110.001</id>
     </mitre>
-    <group>authentication_failures,</group>
+    <group>authentication_failures,burst_bruteforce,</group>
   </rule>
 
   <!--
@@ -21,7 +20,7 @@
     Detects 5+ failed attempts from the same source IP over a 1-hour window.
   -->
   <rule id="100012" level="10" frequency="5" timeframe="3600">
-    <if_matched_sid>5716</if_matched_sid>
+    <if_matched_group>authentication_failed</if_matched_group>
     <same_source_ip />
     <description>sshd: Low-and-slow persistent brute-force attack detected from $(srcip).</description>
     <mitre>
@@ -31,14 +30,15 @@
   </rule>
 
   <!--
-    Custom Rule: Distributed Password Spraying
-    Detects distributed botnet activity targeting the same user account from
-    different source IPs (8+ failures within 300 seconds).
+    Custom Rule: High-Frequency Password Guessing Targeting Same User
+    Detects concentrated repeated failures against a single user account
+    (8+ failures within 300 seconds). Note: Multi-source IP diversity is required
+    before classifying as distributed spray (see DET-SSH-003).
   -->
   <rule id="100014" level="11" frequency="8" timeframe="300">
-    <if_matched_sid>5716</if_matched_sid>
+    <if_matched_group>authentication_failed</if_matched_group>
     <same_user />
-    <description>sshd: Distributed password spray attack targeting user account '$(dstuser)'.</description>
+    <description>sshd: High-frequency authentication failures targeting user account '$(dstuser)'.</description>
     <mitre>
       <id>T1110.003</id>
     </mitre>
@@ -46,14 +46,14 @@
   </rule>
 
   <!--
-    Custom Rule: Benign Administrator SSH Activity Filter
-    Suppresses false-alarm critical escalations when expected administrator
-    management access occurs from the designated management network.
+    Custom Rule: Benign Administrator SSH Activity Classification
+    Classifies expected administrative logins from the SIEM management host (10.0.1.2)
+    to prevent false escalation without suppressing raw telemetry.
   -->
   <rule id="100015" level="3">
     <if_sid>5715</if_sid> <!-- Base rule: sshd authentication success -->
-    <srcip>10.0.1.0/24</srcip>
-    <description>sshd: Benign administrative authentication from internal management subnet.</description>
+    <srcip>10.0.1.2</srcip>
+    <description>sshd: Benign administrative authentication from SIEM management host.</description>
     <group>authentication_success,administrative_baseline,</group>
   </rule>
 </group>

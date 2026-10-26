@@ -1,0 +1,450 @@
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: new group: name=ubuntu, GID=1000
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: new user: name=ubuntu, UID=1000, GID=1000, home=/home/ubuntu, shell=/bin/bash, from=none
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: add 'ubuntu' to group 'adm'
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: add 'ubuntu' to group 'dialout'
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: add 'ubuntu' to group 'cdrom'
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: add 'ubuntu' to group 'floppy'
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: add 'ubuntu' to group 'sudo'
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: add 'ubuntu' to group 'audio'
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: add 'ubuntu' to group 'dip'
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: add 'ubuntu' to group 'video'
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: add 'ubuntu' to group 'plugdev'
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: add 'ubuntu' to group 'netdev'
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: add 'ubuntu' to group 'lxd'
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: add 'ubuntu' to shadow group 'adm'
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: add 'ubuntu' to shadow group 'dialout'
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: add 'ubuntu' to shadow group 'cdrom'
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: add 'ubuntu' to shadow group 'floppy'
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: add 'ubuntu' to shadow group 'sudo'
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: add 'ubuntu' to shadow group 'audio'
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: add 'ubuntu' to shadow group 'dip'
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: add 'ubuntu' to shadow group 'video'
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: add 'ubuntu' to shadow group 'plugdev'
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: add 'ubuntu' to shadow group 'netdev'
+Oct 26 17:50:22 siem-lab-honeypot useradd[459]: add 'ubuntu' to shadow group 'lxd'
+Oct 26 17:50:22 siem-lab-honeypot passwd[467]: password for 'ubuntu' changed by 'root'
+Oct 26 17:50:22 siem-lab-honeypot systemd-logind[514]: Watching system buttons on /dev/input/event0 (Power Button)
+Oct 26 17:50:22 siem-lab-honeypot systemd-logind[514]: Watching system buttons on /dev/input/event1 (Sleep Button)
+Oct 26 17:50:22 siem-lab-honeypot systemd-logind[514]: Watching system buttons on /dev/input/event2 (AT Translated Set 2 keyboard)
+Oct 26 17:50:22 siem-lab-honeypot systemd-logind[514]: New seat seat0.
+Oct 26 17:50:28 siem-lab-honeypot groupadd[687]: group added to /etc/group: name=google-sudoers, GID=1001
+Oct 26 17:50:28 siem-lab-honeypot systemd-logind[702]: Watching system buttons on /dev/input/event0 (Power Button)
+Oct 26 17:50:28 siem-lab-honeypot systemd-logind[702]: Watching system buttons on /dev/input/event1 (Sleep Button)
+Oct 26 17:50:28 siem-lab-honeypot systemd-logind[702]: Watching system buttons on /dev/input/event2 (AT Translated Set 2 keyboard)
+Oct 26 17:50:28 siem-lab-honeypot systemd-logind[702]: New seat seat0.
+Oct 26 17:50:28 siem-lab-honeypot groupadd[687]: group added to /etc/gshadow: name=google-sudoers
+Oct 26 17:50:28 siem-lab-honeypot groupadd[687]: new group: name=google-sudoers, GID=1001
+Oct 26 17:50:28 siem-lab-honeypot gpasswd[711]: user ubuntu added by root to group google-sudoers
+Oct 26 17:50:29 siem-lab-honeypot sshd[745]: Server listening on 0.0.0.0 port 22.
+Oct 26 17:50:29 siem-lab-honeypot sshd[745]: Server listening on :: port 22.
+Oct 26 17:50:35 siem-lab-honeypot useradd[1095]: new user: name=lxd, UID=998, GID=119, home=/var/snap/lxd/common/lxd, shell=/bin/false, from=none
+Oct 26 17:50:56 siem-lab-honeypot sshd[1358]: Accepted publickey for ubuntu from 58.84.61.15 port 24295 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 17:50:56 siem-lab-honeypot sshd[1358]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 17:50:56 siem-lab-honeypot systemd-logind[702]: New session 1 of user ubuntu.
+Oct 26 17:50:56 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 17:50:58 siem-lab-honeypot sshd[1438]: Received disconnect from 58.84.61.15 port 24295:11: disconnected by user
+Oct 26 17:50:58 siem-lab-honeypot sshd[1438]: Disconnected from user ubuntu 58.84.61.15 port 24295
+Oct 26 17:50:58 siem-lab-honeypot sshd[1358]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 17:50:58 siem-lab-honeypot systemd-logind[702]: Session 1 logged out. Waiting for processes to exit.
+Oct 26 17:51:00 siem-lab-honeypot systemd-logind[702]: Removed session 1.
+Oct 26 17:51:43 siem-lab-honeypot sshd[1456]: Accepted publickey for ubuntu from 58.84.61.15 port 3576 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 17:51:43 siem-lab-honeypot sshd[1456]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 17:51:43 siem-lab-honeypot systemd-logind[702]: New session 3 of user ubuntu.
+Oct 26 17:51:43 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 17:51:47 siem-lab-honeypot sshd[1510]: Received disconnect from 58.84.61.15 port 3576:11: disconnected by user
+Oct 26 17:51:47 siem-lab-honeypot sshd[1510]: Disconnected from user ubuntu 58.84.61.15 port 3576
+Oct 26 17:51:47 siem-lab-honeypot sshd[1456]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 17:51:47 siem-lab-honeypot systemd-logind[702]: Session 3 logged out. Waiting for processes to exit.
+Oct 26 17:51:47 siem-lab-honeypot systemd-logind[702]: Removed session 3.
+Oct 26 17:52:59 siem-lab-honeypot sshd[1513]: Accepted publickey for ubuntu from 58.84.61.15 port 25724 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 17:52:59 siem-lab-honeypot sshd[1513]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 17:52:59 siem-lab-honeypot systemd-logind[702]: New session 5 of user ubuntu.
+Oct 26 17:52:59 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 17:53:01 siem-lab-honeypot sshd[1577]: Received disconnect from 58.84.61.15 port 25724:11: disconnected by user
+Oct 26 17:53:01 siem-lab-honeypot sshd[1577]: Disconnected from user ubuntu 58.84.61.15 port 25724
+Oct 26 17:53:01 siem-lab-honeypot sshd[1513]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 17:53:01 siem-lab-honeypot systemd-logind[702]: Session 5 logged out. Waiting for processes to exit.
+Oct 26 17:53:01 siem-lab-honeypot systemd-logind[702]: Removed session 5.
+Oct 26 17:57:57 siem-lab-honeypot sshd[1589]: Accepted publickey for ubuntu from 58.84.61.15 port 2070 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 17:57:57 siem-lab-honeypot sshd[1589]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 17:57:57 siem-lab-honeypot systemd-logind[702]: New session 7 of user ubuntu.
+Oct 26 17:57:57 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 17:58:01 siem-lab-honeypot sshd[1655]: Received disconnect from 58.84.61.15 port 2070:11: disconnected by user
+Oct 26 17:58:01 siem-lab-honeypot sshd[1655]: Disconnected from user ubuntu 58.84.61.15 port 2070
+Oct 26 17:58:01 siem-lab-honeypot sshd[1589]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 17:58:01 siem-lab-honeypot systemd-logind[702]: Session 7 logged out. Waiting for processes to exit.
+Oct 26 17:58:01 siem-lab-honeypot systemd-logind[702]: Removed session 7.
+Oct 26 17:58:11 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session closed for user ubuntu
+Oct 26 17:58:12 siem-lab-honeypot sshd[1657]: Accepted publickey for ubuntu from 58.84.61.15 port 4339 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 17:58:12 siem-lab-honeypot sshd[1657]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 17:58:12 siem-lab-honeypot systemd-logind[702]: New session 9 of user ubuntu.
+Oct 26 17:58:12 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 17:58:13 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/home/ubuntu/setup_honeypot.sh
+Oct 26 17:58:13 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 18:00:50 siem-lab-honeypot sshd[745]: Received SIGHUP; restarting.
+Oct 26 18:00:50 siem-lab-honeypot sshd[745]: Server listening on 0.0.0.0 port 22.
+Oct 26 18:00:50 siem-lab-honeypot sshd[745]: Server listening on :: port 22.
+Oct 26 18:00:59 siem-lab-honeypot sshd[3391]: Accepted publickey for ubuntu from 58.84.61.15 port 17553 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 18:00:59 siem-lab-honeypot sshd[3391]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:00:59 siem-lab-honeypot systemd-logind[702]: New session 11 of user ubuntu.
+Oct 26 18:01:09 siem-lab-honeypot sshd[3684]: Received disconnect from 58.84.61.15 port 17553:11: disconnected by user
+Oct 26 18:01:09 siem-lab-honeypot sshd[3684]: Disconnected from user ubuntu 58.84.61.15 port 17553
+Oct 26 18:01:09 siem-lab-honeypot sshd[3391]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 18:01:09 siem-lab-honeypot systemd-logind[702]: Session 11 logged out. Waiting for processes to exit.
+Oct 26 18:01:09 siem-lab-honeypot systemd-logind[702]: Removed session 11.
+Oct 26 18:01:55 siem-lab-honeypot groupadd[3736]: group added to /etc/group: name=wazuh, GID=121
+Oct 26 18:01:55 siem-lab-honeypot groupadd[3736]: group added to /etc/gshadow: name=wazuh
+Oct 26 18:01:55 siem-lab-honeypot groupadd[3736]: new group: name=wazuh, GID=121
+Oct 26 18:01:56 siem-lab-honeypot useradd[3744]: new user: name=wazuh, UID=113, GID=121, home=/var/ossec, shell=/sbin/nologin, from=none
+Oct 26 18:01:56 siem-lab-honeypot usermod[3751]: change user 'wazuh' password
+Oct 26 18:01:56 siem-lab-honeypot chage[3758]: changed password expiry for wazuh
+Oct 26 18:02:35 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 18:02:36 siem-lab-honeypot sshd[1714]: Received disconnect from 58.84.61.15 port 4339:11: disconnected by user
+Oct 26 18:02:36 siem-lab-honeypot sshd[1714]: Disconnected from user ubuntu 58.84.61.15 port 4339
+Oct 26 18:02:36 siem-lab-honeypot sshd[1657]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 18:02:36 siem-lab-honeypot systemd-logind[702]: Session 9 logged out. Waiting for processes to exit.
+Oct 26 18:02:36 siem-lab-honeypot systemd-logind[702]: Removed session 9.
+Oct 26 18:06:44 siem-lab-honeypot sshd[5060]: Accepted publickey for ubuntu from 58.84.61.15 port 22240 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 18:06:44 siem-lab-honeypot sshd[5060]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:06:44 siem-lab-honeypot systemd-logind[702]: New session 12 of user ubuntu.
+Oct 26 18:06:44 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:06:45 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/grep -A 5 <server> /var/ossec/etc/ossec.conf
+Oct 26 18:06:45 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 18:06:45 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 18:06:46 siem-lab-honeypot sshd[5125]: Received disconnect from 58.84.61.15 port 22240:11: disconnected by user
+Oct 26 18:06:46 siem-lab-honeypot sshd[5125]: Disconnected from user ubuntu 58.84.61.15 port 22240
+Oct 26 18:06:46 siem-lab-honeypot sshd[5060]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 18:06:46 siem-lab-honeypot systemd-logind[702]: Session 12 logged out. Waiting for processes to exit.
+Oct 26 18:06:46 siem-lab-honeypot systemd-logind[702]: Removed session 12.
+Oct 26 18:07:01 siem-lab-honeypot sshd[5129]: Accepted publickey for ubuntu from 58.84.61.15 port 4605 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 18:07:01 siem-lab-honeypot sshd[5129]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:07:01 siem-lab-honeypot systemd-logind[702]: New session 14 of user ubuntu.
+Oct 26 18:07:01 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:07:02 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/sed -i s/<address>MANAGER_IP<\\/address>/<address>10.0.1.2<\\/address>/ /var/ossec/etc/ossec.conf
+Oct 26 18:07:02 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 18:07:02 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 18:07:02 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/systemctl daemon-reload
+Oct 26 18:07:02 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 18:07:02 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 18:07:02 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/systemctl enable --now wazuh-agent
+Oct 26 18:07:02 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 18:07:09 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 18:07:12 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/systemctl status wazuh-agent --no-pager
+Oct 26 18:07:12 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 18:07:12 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 18:07:12 siem-lab-honeypot sshd[5183]: Received disconnect from 58.84.61.15 port 4605:11: disconnected by user
+Oct 26 18:07:12 siem-lab-honeypot sshd[5183]: Disconnected from user ubuntu 58.84.61.15 port 4605
+Oct 26 18:07:12 siem-lab-honeypot sshd[5129]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 18:07:12 siem-lab-honeypot systemd-logind[702]: Session 14 logged out. Waiting for processes to exit.
+Oct 26 18:07:12 siem-lab-honeypot systemd-logind[702]: Removed session 14.
+Oct 26 18:08:33 siem-lab-honeypot sshd[5735]: Accepted publickey for ubuntu from 58.84.61.15 port 26391 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 18:08:33 siem-lab-honeypot sshd[5735]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:08:33 siem-lab-honeypot systemd-logind[702]: New session 16 of user ubuntu.
+Oct 26 18:08:33 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:08:34 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/var/ossec/bin/agent-auth -m 10.0.1.2 -A siem-lab-honeypot
+Oct 26 18:08:34 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 18:08:34 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 18:08:34 siem-lab-honeypot sshd[5799]: Received disconnect from 58.84.61.15 port 26391:11: disconnected by user
+Oct 26 18:08:34 siem-lab-honeypot sshd[5799]: Disconnected from user ubuntu 58.84.61.15 port 26391
+Oct 26 18:08:34 siem-lab-honeypot sshd[5735]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 18:08:34 siem-lab-honeypot systemd-logind[702]: Session 16 logged out. Waiting for processes to exit.
+Oct 26 18:08:34 siem-lab-honeypot systemd-logind[702]: Removed session 16.
+Oct 26 18:08:47 siem-lab-honeypot sshd[5804]: Accepted publickey for ubuntu from 58.84.61.15 port 12461 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 18:08:47 siem-lab-honeypot sshd[5804]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:08:47 siem-lab-honeypot systemd-logind[702]: New session 18 of user ubuntu.
+Oct 26 18:08:47 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:08:48 siem-lab-honeypot sshd[5858]: Received disconnect from 58.84.61.15 port 12461:11: disconnected by user
+Oct 26 18:08:48 siem-lab-honeypot sshd[5858]: Disconnected from user ubuntu 58.84.61.15 port 12461
+Oct 26 18:08:48 siem-lab-honeypot sshd[5804]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 18:08:48 siem-lab-honeypot systemd-logind[702]: Session 18 logged out. Waiting for processes to exit.
+Oct 26 18:08:48 siem-lab-honeypot systemd-logind[702]: Removed session 18.
+Oct 26 18:09:04 siem-lab-honeypot sshd[5863]: Accepted publickey for ubuntu from 58.84.61.15 port 20209 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 18:09:04 siem-lab-honeypot sshd[5863]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:09:04 siem-lab-honeypot systemd-logind[702]: New session 20 of user ubuntu.
+Oct 26 18:09:04 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:09:04 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/apt-get install --allow-downgrades -y wazuh-agent=4.9.2-1
+Oct 26 18:09:04 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 18:09:30 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 18:09:31 siem-lab-honeypot sshd[5917]: Received disconnect from 58.84.61.15 port 20209:11: disconnected by user
+Oct 26 18:09:31 siem-lab-honeypot sshd[5917]: Disconnected from user ubuntu 58.84.61.15 port 20209
+Oct 26 18:09:31 siem-lab-honeypot sshd[5863]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 18:09:31 siem-lab-honeypot systemd-logind[702]: Session 20 logged out. Waiting for processes to exit.
+Oct 26 18:09:31 siem-lab-honeypot systemd-logind[702]: Removed session 20.
+Oct 26 18:09:50 siem-lab-honeypot sshd[6638]: Accepted publickey for ubuntu from 58.84.61.15 port 12117 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 18:09:50 siem-lab-honeypot sshd[6638]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:09:50 siem-lab-honeypot systemd-logind[702]: New session 22 of user ubuntu.
+Oct 26 18:09:50 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:09:51 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/sed -i s/<address>MANAGER_IP<\\/address>/<address>10.0.1.2<\\/address>/ /var/ossec/etc/ossec.conf
+Oct 26 18:09:51 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 18:09:51 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 18:09:51 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/var/ossec/bin/agent-auth -m 10.0.1.2 -A siem-lab-honeypot
+Oct 26 18:09:51 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 18:09:52 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 18:09:52 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/systemctl daemon-reload
+Oct 26 18:09:52 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 18:09:52 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 18:09:52 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/systemctl enable --now wazuh-agent
+Oct 26 18:09:52 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 18:09:52 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 18:09:53 siem-lab-honeypot sshd[6702]: Received disconnect from 58.84.61.15 port 12117:11: disconnected by user
+Oct 26 18:09:53 siem-lab-honeypot sshd[6702]: Disconnected from user ubuntu 58.84.61.15 port 12117
+Oct 26 18:09:53 siem-lab-honeypot sshd[6638]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 18:09:53 siem-lab-honeypot systemd-logind[702]: Session 22 logged out. Waiting for processes to exit.
+Oct 26 18:09:53 siem-lab-honeypot systemd-logind[702]: Removed session 22.
+Oct 26 18:10:04 siem-lab-honeypot sshd[6785]: Accepted publickey for ubuntu from 58.84.61.15 port 31433 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 18:10:04 siem-lab-honeypot sshd[6785]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:10:04 siem-lab-honeypot systemd-logind[702]: New session 24 of user ubuntu.
+Oct 26 18:10:04 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:10:05 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/journalctl -u wazuh-agent -n 25 --no-pager
+Oct 26 18:10:05 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 18:10:05 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 18:10:05 siem-lab-honeypot sshd[6840]: Received disconnect from 58.84.61.15 port 31433:11: disconnected by user
+Oct 26 18:10:05 siem-lab-honeypot sshd[6840]: Disconnected from user ubuntu 58.84.61.15 port 31433
+Oct 26 18:10:05 siem-lab-honeypot sshd[6785]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 18:10:05 siem-lab-honeypot systemd-logind[702]: Session 24 logged out. Waiting for processes to exit.
+Oct 26 18:10:05 siem-lab-honeypot systemd-logind[702]: Removed session 24.
+Oct 26 18:10:20 siem-lab-honeypot sshd[6844]: Accepted publickey for ubuntu from 58.84.61.15 port 17826 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 18:10:20 siem-lab-honeypot sshd[6844]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:10:20 siem-lab-honeypot systemd-logind[702]: New session 26 of user ubuntu.
+Oct 26 18:10:20 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:10:21 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/grep -n -C 5 users /var/ossec/etc/ossec.conf
+Oct 26 18:10:21 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 18:10:21 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 18:10:21 siem-lab-honeypot sshd[6898]: Received disconnect from 58.84.61.15 port 17826:11: disconnected by user
+Oct 26 18:10:21 siem-lab-honeypot sshd[6898]: Disconnected from user ubuntu 58.84.61.15 port 17826
+Oct 26 18:10:21 siem-lab-honeypot sshd[6844]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 18:10:21 siem-lab-honeypot systemd-logind[702]: Session 26 logged out. Waiting for processes to exit.
+Oct 26 18:10:21 siem-lab-honeypot systemd-logind[702]: Removed session 26.
+Oct 26 18:10:33 siem-lab-honeypot sshd[6901]: Accepted publickey for ubuntu from 58.84.61.15 port 11085 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 18:10:33 siem-lab-honeypot sshd[6901]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:10:33 siem-lab-honeypot systemd-logind[702]: New session 28 of user ubuntu.
+Oct 26 18:10:33 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:10:34 siem-lab-honeypot sshd[6956]: Received disconnect from 58.84.61.15 port 11085:11: disconnected by user
+Oct 26 18:10:34 siem-lab-honeypot sshd[6956]: Disconnected from user ubuntu 58.84.61.15 port 11085
+Oct 26 18:10:34 siem-lab-honeypot sshd[6901]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 18:10:34 siem-lab-honeypot systemd-logind[702]: Session 28 logged out. Waiting for processes to exit.
+Oct 26 18:10:34 siem-lab-honeypot systemd-logind[702]: Removed session 28.
+Oct 26 18:10:45 siem-lab-honeypot sshd[6960]: Accepted publickey for ubuntu from 58.84.61.15 port 7494 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 18:10:45 siem-lab-honeypot sshd[6960]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:10:45 siem-lab-honeypot systemd-logind[702]: New session 30 of user ubuntu.
+Oct 26 18:10:45 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:10:46 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/ls -la /var/ossec/etc/
+Oct 26 18:10:46 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 18:10:46 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 18:10:47 siem-lab-honeypot sshd[7021]: Received disconnect from 58.84.61.15 port 7494:11: disconnected by user
+Oct 26 18:10:47 siem-lab-honeypot sshd[7021]: Disconnected from user ubuntu 58.84.61.15 port 7494
+Oct 26 18:10:47 siem-lab-honeypot sshd[6960]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 18:10:47 siem-lab-honeypot systemd-logind[702]: Session 30 logged out. Waiting for processes to exit.
+Oct 26 18:10:47 siem-lab-honeypot systemd-logind[702]: Removed session 30.
+Oct 26 18:10:59 siem-lab-honeypot sshd[7024]: Accepted publickey for ubuntu from 58.84.61.15 port 28008 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 18:10:59 siem-lab-honeypot sshd[7024]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:10:59 siem-lab-honeypot systemd-logind[702]: New session 32 of user ubuntu.
+Oct 26 18:10:59 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 18:11:00 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/cp /var/ossec/etc/ossec.conf.new /var/ossec/etc/ossec.conf
+Oct 26 18:11:00 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 18:11:00 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 18:11:00 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/sed -i s/<address>MANAGER_IP<\\/address>/<address>10.0.1.2<\\/address>/ /var/ossec/etc/ossec.conf
+Oct 26 18:11:00 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 18:11:00 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 18:11:00 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/chown root:wazuh /var/ossec/etc/ossec.conf
+Oct 26 18:11:00 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 18:11:00 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 18:11:00 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/chmod 660 /var/ossec/etc/ossec.conf
+Oct 26 18:11:00 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 18:11:00 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 18:11:00 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/systemctl restart wazuh-agent
+Oct 26 18:11:00 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 18:11:06 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 18:11:08 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/systemctl status wazuh-agent --no-pager
+Oct 26 18:11:08 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 18:11:08 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 18:11:09 siem-lab-honeypot sshd[7089]: Received disconnect from 58.84.61.15 port 28008:11: disconnected by user
+Oct 26 18:11:09 siem-lab-honeypot sshd[7089]: Disconnected from user ubuntu 58.84.61.15 port 28008
+Oct 26 18:11:09 siem-lab-honeypot sshd[7024]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 18:11:09 siem-lab-honeypot systemd-logind[702]: Session 32 logged out. Waiting for processes to exit.
+Oct 26 18:11:09 siem-lab-honeypot systemd-logind[702]: Removed session 32.
+Oct 26 18:17:01 siem-lab-honeypot CRON[8548]: pam_unix(cron:session): session opened for user root(uid=0) by (uid=0)
+Oct 26 18:17:01 siem-lab-honeypot CRON[8548]: pam_unix(cron:session): session closed for user root
+Oct 26 18:21:44 siem-lab-honeypot sshd[8570]: error: kex_exchange_identification: client sent invalid protocol identifier "GET / HTTP/1.1"
+Oct 26 18:21:44 siem-lab-honeypot sshd[8570]: banner exchange: Connection from 172.104.11.4 port 52312: invalid format
+Oct 26 18:21:44 siem-lab-honeypot sshd[8571]: error: kex_exchange_identification: banner line contains invalid characters
+Oct 26 18:21:44 siem-lab-honeypot sshd[8571]: banner exchange: Connection from 172.104.11.4 port 52324: invalid format
+Oct 26 18:35:52 siem-lab-honeypot sshd[8648]: Connection closed by 192.248.150.180 port 43918 [preauth]
+Oct 26 18:51:50 siem-lab-honeypot sshd[8681]: error: kex_exchange_identification: Connection closed by remote host
+Oct 26 18:51:50 siem-lab-honeypot sshd[8681]: Connection closed by 209.99.190.186 port 34138
+Oct 26 18:55:14 siem-lab-honeypot sshd[8700]: Connection closed by authenticating user ubuntu 209.99.190.186 port 48734 [preauth]
+Oct 26 18:57:10 siem-lab-honeypot sshd[8702]: Invalid user user from 209.99.190.186 port 58596
+Oct 26 18:57:10 siem-lab-honeypot sshd[8702]: Connection closed by invalid user user 209.99.190.186 port 58596 [preauth]
+Oct 26 18:59:01 siem-lab-honeypot sshd[8706]: Invalid user doublezero from 209.99.190.186 port 53204
+Oct 26 18:59:01 siem-lab-honeypot sshd[8706]: Connection closed by invalid user doublezero 209.99.190.186 port 53204 [preauth]
+Oct 26 19:00:58 siem-lab-honeypot sshd[8718]: Invalid user sol from 209.99.190.186 port 34790
+Oct 26 19:00:58 siem-lab-honeypot sshd[8718]: Connection closed by invalid user sol 209.99.190.186 port 34790 [preauth]
+Oct 26 19:02:00 siem-lab-honeypot sshd[8720]: error: kex_exchange_identification: Connection closed by remote host
+Oct 26 19:02:00 siem-lab-honeypot sshd[8720]: Connection closed by 80.94.92.234 port 56114
+Oct 26 19:02:44 siem-lab-honeypot sshd[8721]: Invalid user node from 209.99.190.186 port 55080
+Oct 26 19:02:44 siem-lab-honeypot sshd[8721]: Connection closed by invalid user node 209.99.190.186 port 55080 [preauth]
+Oct 26 19:04:23 siem-lab-honeypot sshd[8730]: Invalid user mapr from 209.99.190.186 port 43388
+Oct 26 19:04:23 siem-lab-honeypot sshd[8730]: Connection closed by invalid user mapr 209.99.190.186 port 43388 [preauth]
+Oct 26 19:06:05 siem-lab-honeypot sshd[8742]: Invalid user oneadmin from 209.99.190.186 port 56328
+Oct 26 19:06:05 siem-lab-honeypot sshd[8742]: Connection closed by invalid user oneadmin 209.99.190.186 port 56328 [preauth]
+Oct 26 19:06:58 siem-lab-honeypot sshd[8744]: Connection closed by authenticating user root 80.94.92.234 port 59992 [preauth]
+Oct 26 19:07:50 siem-lab-honeypot sshd[8746]: Invalid user vyos from 209.99.190.186 port 58146
+Oct 26 19:07:50 siem-lab-honeypot sshd[8746]: Connection closed by invalid user vyos 209.99.190.186 port 58146 [preauth]
+Oct 26 19:09:32 siem-lab-honeypot sshd[8750]: Invalid user hpc-riscv from 209.99.190.186 port 42720
+Oct 26 19:09:33 siem-lab-honeypot sshd[8750]: Connection closed by invalid user hpc-riscv 209.99.190.186 port 42720 [preauth]
+Oct 26 19:09:58 siem-lab-honeypot sshd[8752]: Connection closed by authenticating user root 80.94.92.234 port 35020 [preauth]
+Oct 26 19:11:19 siem-lab-honeypot sshd[8769]: Invalid user riscv from 209.99.190.186 port 41556
+Oct 26 19:11:19 siem-lab-honeypot sshd[8769]: Connection closed by invalid user riscv 209.99.190.186 port 41556 [preauth]
+Oct 26 19:13:03 siem-lab-honeypot sshd[8771]: Connection closed by authenticating user root 80.94.92.234 port 38196 [preauth]
+Oct 26 19:13:10 siem-lab-honeypot sshd[8773]: Invalid user riscv from 209.99.190.186 port 44804
+Oct 26 19:13:10 siem-lab-honeypot sshd[8773]: Connection closed by invalid user riscv 209.99.190.186 port 44804 [preauth]
+Oct 26 19:15:04 siem-lab-honeypot sshd[8782]: Invalid user riscv from 209.99.190.186 port 46192
+Oct 26 19:15:04 siem-lab-honeypot sshd[8782]: Connection closed by invalid user riscv 209.99.190.186 port 46192 [preauth]
+Oct 26 19:16:03 siem-lab-honeypot sshd[8784]: Connection closed by authenticating user root 80.94.92.234 port 41332 [preauth]
+Oct 26 19:16:46 siem-lab-honeypot sshd[8786]: Invalid user riscv from 209.99.190.186 port 49352
+Oct 26 19:16:46 siem-lab-honeypot sshd[8786]: Connection closed by invalid user riscv 209.99.190.186 port 49352 [preauth]
+Oct 26 19:17:01 siem-lab-honeypot CRON[8788]: pam_unix(cron:session): session opened for user root(uid=0) by (uid=0)
+Oct 26 19:17:01 siem-lab-honeypot CRON[8788]: pam_unix(cron:session): session closed for user root
+Oct 26 19:18:29 siem-lab-honeypot sshd[8802]: Invalid user partimag from 209.99.190.186 port 42562
+Oct 26 19:18:29 siem-lab-honeypot sshd[8802]: Connection closed by invalid user partimag 209.99.190.186 port 42562 [preauth]
+Oct 26 19:19:35 siem-lab-honeypot sshd[8804]: Connection closed by authenticating user root 80.94.92.234 port 44386 [preauth]
+Oct 26 19:20:15 siem-lab-honeypot sshd[8807]: Invalid user hadoop from 209.99.190.186 port 60330
+Oct 26 19:20:15 siem-lab-honeypot sshd[8807]: Connection closed by invalid user hadoop 209.99.190.186 port 60330 [preauth]
+Oct 26 19:22:01 siem-lab-honeypot sshd[8809]: Invalid user fatima from 209.99.190.186 port 45514
+Oct 26 19:22:01 siem-lab-honeypot sshd[8809]: Connection closed by invalid user fatima 209.99.190.186 port 45514 [preauth]
+Oct 26 19:23:13 siem-lab-honeypot sshd[8811]: Connection closed by authenticating user root 80.94.92.234 port 47376 [preauth]
+Oct 26 19:23:43 siem-lab-honeypot sshd[8823]: Invalid user maroof from 209.99.190.186 port 49474
+Oct 26 19:23:43 siem-lab-honeypot sshd[8823]: Connection closed by invalid user maroof 209.99.190.186 port 49474 [preauth]
+Oct 26 19:24:05 siem-lab-honeypot sshd[8826]: Accepted publickey for ubuntu from 58.84.61.15 port 4140 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 19:24:05 siem-lab-honeypot sshd[8826]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 19:24:05 siem-lab-honeypot systemd-logind[702]: New session 36 of user ubuntu.
+Oct 26 19:24:05 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 19:24:07 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/grep -c sshd /var/log/auth.log
+Oct 26 19:24:07 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 19:24:07 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 19:24:07 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/tail -n 15 /var/log/auth.log
+Oct 26 19:24:07 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 19:24:07 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 19:24:08 siem-lab-honeypot sshd[8918]: Received disconnect from 58.84.61.15 port 4140:11: disconnected by user
+Oct 26 19:24:08 siem-lab-honeypot sshd[8918]: Disconnected from user ubuntu 58.84.61.15 port 4140
+Oct 26 19:24:08 siem-lab-honeypot sshd[8826]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 19:24:08 siem-lab-honeypot systemd-logind[702]: Session 36 logged out. Waiting for processes to exit.
+Oct 26 19:24:08 siem-lab-honeypot systemd-logind[702]: Removed session 36.
+Oct 26 19:24:57 siem-lab-honeypot sshd[8927]: Accepted publickey for ubuntu from 58.84.61.15 port 2951 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 19:24:57 siem-lab-honeypot sshd[8927]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 19:24:57 siem-lab-honeypot systemd-logind[702]: New session 38 of user ubuntu.
+Oct 26 19:24:57 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 19:24:58 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/grep -A 4 <localfile> /var/ossec/etc/ossec.conf
+Oct 26 19:24:58 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 19:24:58 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 19:24:58 siem-lab-honeypot sshd[8982]: Received disconnect from 58.84.61.15 port 2951:11: disconnected by user
+Oct 26 19:24:58 siem-lab-honeypot sshd[8982]: Disconnected from user ubuntu 58.84.61.15 port 2951
+Oct 26 19:24:58 siem-lab-honeypot sshd[8927]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 19:24:58 siem-lab-honeypot systemd-logind[702]: Session 38 logged out. Waiting for processes to exit.
+Oct 26 19:24:58 siem-lab-honeypot systemd-logind[702]: Removed session 38.
+Oct 26 19:25:29 siem-lab-honeypot sshd[8988]: Accepted publickey for ubuntu from 58.84.61.15 port 13798 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 19:25:29 siem-lab-honeypot sshd[8988]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 19:25:29 siem-lab-honeypot systemd-logind[702]: New session 40 of user ubuntu.
+Oct 26 19:25:29 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 19:25:30 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/grep -B 2 -A 4 auth.log /var/ossec/etc/ossec.conf
+Oct 26 19:25:30 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 19:25:30 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 19:25:31 siem-lab-honeypot sshd[9052]: Received disconnect from 58.84.61.15 port 13798:11: disconnected by user
+Oct 26 19:25:31 siem-lab-honeypot sshd[9052]: Disconnected from user ubuntu 58.84.61.15 port 13798
+Oct 26 19:25:31 siem-lab-honeypot sshd[8988]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 19:25:31 siem-lab-honeypot systemd-logind[702]: Session 40 logged out. Waiting for processes to exit.
+Oct 26 19:25:31 siem-lab-honeypot systemd-logind[702]: Removed session 40.
+Oct 26 19:25:34 siem-lab-honeypot sshd[9055]: Invalid user shoaib from 209.99.190.186 port 59546
+Oct 26 19:25:35 siem-lab-honeypot sshd[9055]: Connection closed by invalid user shoaib 209.99.190.186 port 59546 [preauth]
+Oct 26 19:25:52 siem-lab-honeypot sshd[9058]: Accepted publickey for ubuntu from 58.84.61.15 port 18207 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 19:25:52 siem-lab-honeypot sshd[9058]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 19:25:52 siem-lab-honeypot systemd-logind[702]: New session 42 of user ubuntu.
+Oct 26 19:25:52 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 19:25:52 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/grep -n -C 5 <localfile> /var/ossec/etc/ossec.conf
+Oct 26 19:25:52 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 19:25:52 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 19:25:53 siem-lab-honeypot sshd[9112]: Received disconnect from 58.84.61.15 port 18207:11: disconnected by user
+Oct 26 19:25:53 siem-lab-honeypot sshd[9112]: Disconnected from user ubuntu 58.84.61.15 port 18207
+Oct 26 19:25:53 siem-lab-honeypot sshd[9058]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 19:25:53 siem-lab-honeypot systemd-logind[702]: Session 42 logged out. Waiting for processes to exit.
+Oct 26 19:25:53 siem-lab-honeypot systemd-logind[702]: Removed session 42.
+Oct 26 19:26:38 siem-lab-honeypot sshd[9120]: Accepted publickey for ubuntu from 58.84.61.15 port 2600 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 19:26:38 siem-lab-honeypot sshd[9120]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 19:26:38 siem-lab-honeypot systemd-logind[702]: New session 44 of user ubuntu.
+Oct 26 19:26:38 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 19:26:41 siem-lab-honeypot sshd[9118]: Connection closed by authenticating user root 80.94.92.234 port 50256 [preauth]
+Oct 26 19:26:42 siem-lab-honeypot sshd[9184]: Received disconnect from 58.84.61.15 port 2600:11: disconnected by user
+Oct 26 19:26:42 siem-lab-honeypot sshd[9184]: Disconnected from user ubuntu 58.84.61.15 port 2600
+Oct 26 19:26:42 siem-lab-honeypot sshd[9120]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 19:26:42 siem-lab-honeypot systemd-logind[702]: Session 44 logged out. Waiting for processes to exit.
+Oct 26 19:26:42 siem-lab-honeypot systemd-logind[702]: Removed session 44.
+Oct 26 19:26:44 siem-lab-honeypot sshd[9186]: Accepted publickey for ubuntu from 58.84.61.15 port 25716 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 19:26:44 siem-lab-honeypot sshd[9186]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 19:26:44 siem-lab-honeypot systemd-logind[702]: New session 46 of user ubuntu.
+Oct 26 19:26:45 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/python3 /home/ubuntu/configure_agent_logs.py
+Oct 26 19:26:45 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 19:26:45 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 19:26:45 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/systemctl restart wazuh-agent
+Oct 26 19:26:45 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 19:26:52 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 19:26:55 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/systemctl is-active wazuh-agent
+Oct 26 19:26:55 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 19:26:55 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 19:26:55 siem-lab-honeypot sshd[9232]: Received disconnect from 58.84.61.15 port 25716:11: disconnected by user
+Oct 26 19:26:55 siem-lab-honeypot sshd[9232]: Disconnected from user ubuntu 58.84.61.15 port 25716
+Oct 26 19:26:55 siem-lab-honeypot sshd[9186]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 19:26:55 siem-lab-honeypot systemd-logind[702]: Session 46 logged out. Waiting for processes to exit.
+Oct 26 19:26:55 siem-lab-honeypot systemd-logind[702]: Removed session 46.
+Oct 26 19:27:05 siem-lab-honeypot sshd[9838]: Accepted publickey for ubuntu from 58.84.61.15 port 25552 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 19:27:05 siem-lab-honeypot sshd[9838]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 19:27:05 siem-lab-honeypot systemd-logind[702]: New session 47 of user ubuntu.
+Oct 26 19:27:05 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 19:27:06 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/systemctl is-active wazuh-agent
+Oct 26 19:27:06 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 19:27:06 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 19:27:06 siem-lab-honeypot sshd[9993]: Received disconnect from 58.84.61.15 port 25552:11: disconnected by user
+Oct 26 19:27:06 siem-lab-honeypot sshd[9993]: Disconnected from user ubuntu 58.84.61.15 port 25552
+Oct 26 19:27:06 siem-lab-honeypot sshd[9838]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 19:27:06 siem-lab-honeypot systemd-logind[702]: Session 47 logged out. Waiting for processes to exit.
+Oct 26 19:27:07 siem-lab-honeypot systemd-logind[702]: Removed session 47.
+Oct 26 19:27:33 siem-lab-honeypot sshd[10271]: Invalid user vr from 209.99.190.186 port 39910
+Oct 26 19:27:33 siem-lab-honeypot sshd[10271]: Connection closed by invalid user vr 209.99.190.186 port 39910 [preauth]
+Oct 26 19:29:23 siem-lab-honeypot sshd[10273]: Invalid user vr from 209.99.190.186 port 32984
+Oct 26 19:29:23 siem-lab-honeypot sshd[10273]: Connection closed by invalid user vr 209.99.190.186 port 32984 [preauth]
+Oct 26 19:30:08 siem-lab-honeypot sshd[10275]: Connection closed by authenticating user root 80.94.92.234 port 52938 [preauth]
+Oct 26 19:31:07 siem-lab-honeypot sshd[10279]: Invalid user vr from 209.99.190.186 port 39786
+Oct 26 19:31:07 siem-lab-honeypot sshd[10279]: Connection closed by invalid user vr 209.99.190.186 port 39786 [preauth]
+Oct 26 19:32:54 siem-lab-honeypot sshd[10291]: Invalid user vr from 209.99.190.186 port 35488
+Oct 26 19:32:54 siem-lab-honeypot sshd[10291]: Connection closed by invalid user vr 209.99.190.186 port 35488 [preauth]
+Oct 26 19:34:02 siem-lab-honeypot sshd[10293]: Connection closed by authenticating user root 80.94.92.234 port 55804 [preauth]
+Oct 26 19:34:40 siem-lab-honeypot sshd[10303]: Invalid user vr from 209.99.190.186 port 45846
+Oct 26 19:34:41 siem-lab-honeypot sshd[10303]: Connection closed by invalid user vr 209.99.190.186 port 45846 [preauth]
+Oct 26 19:36:22 siem-lab-honeypot sshd[10306]: Invalid user vor from 209.99.190.186 port 38792
+Oct 26 19:36:23 siem-lab-honeypot sshd[10306]: Connection closed by invalid user vor 209.99.190.186 port 38792 [preauth]
+Oct 26 19:37:12 siem-lab-honeypot sshd[10308]: Connection closed by authenticating user root 80.94.92.234 port 58252 [preauth]
+Oct 26 19:38:10 siem-lab-honeypot sshd[10310]: Invalid user var from 209.99.190.186 port 40986
+Oct 26 19:38:10 siem-lab-honeypot sshd[10310]: Connection closed by invalid user var 209.99.190.186 port 40986 [preauth]
+Oct 26 19:40:14 siem-lab-honeypot sshd[10322]: Invalid user www from 209.99.190.186 port 60454
+Oct 26 19:40:15 siem-lab-honeypot sshd[10322]: Connection closed by invalid user www 209.99.190.186 port 60454 [preauth]
+Oct 26 19:40:24 siem-lab-honeypot sshd[10324]: Connection closed by authenticating user root 80.94.92.234 port 60692 [preauth]
+Oct 26 19:41:34 siem-lab-honeypot sshd[10327]: Accepted publickey for ubuntu from 58.84.61.15 port 10284 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 19:41:34 siem-lab-honeypot sshd[10327]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 19:41:34 siem-lab-honeypot systemd-logind[702]: New session 49 of user ubuntu.
+Oct 26 19:41:34 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 19:41:36 siem-lab-honeypot sudo:   ubuntu : PWD=/home/ubuntu ; USER=root ; COMMAND=/usr/bin/tail -n 10 /var/log/auth.log
+Oct 26 19:41:36 siem-lab-honeypot sudo: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)
+Oct 26 19:41:36 siem-lab-honeypot sudo: pam_unix(sudo:session): session closed for user root
+Oct 26 19:41:36 siem-lab-honeypot sshd[10392]: Received disconnect from 58.84.61.15 port 10284:11: disconnected by user
+Oct 26 19:41:36 siem-lab-honeypot sshd[10392]: Disconnected from user ubuntu 58.84.61.15 port 10284
+Oct 26 19:41:36 siem-lab-honeypot sshd[10327]: pam_unix(sshd:session): session closed for user ubuntu
+Oct 26 19:41:36 siem-lab-honeypot systemd-logind[702]: Session 49 logged out. Waiting for processes to exit.
+Oct 26 19:41:36 siem-lab-honeypot systemd-logind[702]: Removed session 49.
+Oct 26 19:42:10 siem-lab-honeypot sshd[10398]: Invalid user tmp from 209.99.190.186 port 43482
+Oct 26 19:42:10 siem-lab-honeypot sshd[10398]: Connection closed by invalid user tmp 209.99.190.186 port 43482 [preauth]
+Oct 26 19:43:39 siem-lab-honeypot sshd[10400]: Connection closed by authenticating user root 80.94.92.234 port 34974 [preauth]
+Oct 26 19:44:01 siem-lab-honeypot sshd[10402]: Invalid user sysadmin from 209.99.190.186 port 48448
+Oct 26 19:44:01 siem-lab-honeypot sshd[10402]: Connection closed by invalid user sysadmin 209.99.190.186 port 48448 [preauth]
+Oct 26 19:44:37 siem-lab-honeypot sshd[10404]: Accepted publickey for ubuntu from 58.84.61.15 port 6326 ssh2: RSA SHA256:FPjcmNzJAzrXiT62NoR/eYlI6V+HO3WleNqVE0rUvLo
+Oct 26 19:44:37 siem-lab-honeypot sshd[10404]: pam_unix(sshd:session): session opened for user ubuntu(uid=1000) by (uid=0)
+Oct 26 19:44:37 siem-lab-honeypot systemd-logind[702]: New session 51 of user ubuntu.
+Oct 26 19:44:37 siem-lab-honeypot systemd: pam_unix(systemd-user:session): session opened for user ubuntu(uid=1000) by (uid=0)

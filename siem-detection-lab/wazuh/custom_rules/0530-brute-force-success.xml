@@ -5,7 +5,7 @@
     burst brute-force attack from the same source IP.
     Maps to MITRE ATT&CK T1110.001 (Password Guessing) and T1078 (Valid Accounts).
   -->
-  <rule id="100040" level="14">
+  <rule id="100040" level="14" timeframe="600">
     <if_matched_sid>100010</if_matched_sid> <!-- Base rule: Burst brute-force detected -->
     <if_sid>5715</if_sid> <!-- Base rule: sshd authentication success -->
     <same_source_ip />
@@ -19,9 +19,9 @@
 
   <!--
     Custom Rule: SSH Brute-Force Success (Low-and-Slow Correlation)
-    Detects a successful authentication after low-and-slow brute forcing from the same IP.
+    Detects a successful authentication after low-and-slow brute forcing from the same IP (within 1 hour).
   -->
-  <rule id="100041" level="14">
+  <rule id="100041" level="14" timeframe="3600">
     <if_matched_sid>100012</if_matched_sid> <!-- Base rule: Low-and-slow brute-force detected -->
     <if_sid>5715</if_sid> <!-- Base rule: sshd authentication success -->
     <same_source_ip />

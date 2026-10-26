@@ -1,43 +1,176 @@
-# SIEM Lab Restart & Recovery Guide
+# SIEM Lab — Lifecycle Operations & Safe Restart Guide
 
-Because this lab was built using Terraform (Infrastructure as Code), bringing it all back online from scratch is surprisingly fast. However, because the software installation (Wazuh) was done manually as part of the learning process, there are a few steps required to fully restore the environment.
+**Document Version:** 2.0  
+**Scope:** Provisioning, Configuration, Automated Testing, Evidence Preservation, and Safe Teardown.  
 
-Here is the exact playbook to spin the lab back up in the future:
+---
 
-## 1. Rebuild the Infrastructure
-Open your terminal and run:
+## 1. Prerequisites & Pre-Flight Checks
+
+Before provisioning or restarting the lab, ensure your local operator environment is aligned:
+
+### 1.1 Verify Operator Public IP
+The SIEM management plane (SSH on TCP 22 and Dashboard on TCP 443) is strictly whitelisted to your public IP.
+```powershell
+# In PowerShell / Bash: Check your current public IP
+curl -s https://ifconfig.me/ip
+```
+Update `infra/terraform/terraform.tfvars` if your IP has changed:
+```hcl
+your_public_ip = "YOUR_CURRENT_IP/32"
+```
+
+### 1.2 Verify SSH Key & Google Cloud Credentials
+```bash
+# Verify SSH keypair exists
+ls -l ~/.ssh/siem_lab_key
+
+# Verify GCP authentication
+gcloud auth list
+```
+
+---
+
+## 2. Infrastructure Provisioning (Terraform)
+
+Provision the hardened VPC, firewall rules, and virtual machines:
+
 ```bash
 cd infra/terraform
-terraform apply
+terraform init
+terraform fmt -check
+terraform validate
+terraform apply -auto-approve
 ```
-*This instantly provisions your VPC, subnets, firewalls, and both VMs using your existing SSH keys.*
 
-## 2. Reinstall the SIEM (Wazuh Manager)
-SSH into the new SIEM VM using the IP output by Terraform, and run the quickstart script again:
+**Terraform provisions 11 resources:**
+- Subnet: `10.0.1.0/24` in `us-central1`
+- `siem-lab-wazuh`: Fixed private IP `10.0.1.2`
+- `siem-lab-honeypot`: Fixed private IP `10.0.1.3`
+- Firewalls: Egress deny-all (`priority 65534`) on honeypot, package updates allow (`priority 1100`), Wazuh agent telemetry (`priority 1000`), OpenSearch public deny (`priority 800`).
+
+---
+
+## 3. Wazuh SIEM Stack Installation
+
+SSH into the newly created SIEM VM using the public IP from Terraform output:
 ```bash
-curl -sO https://packages.wazuh.com/4.9/wazuh-install.sh && sudo bash ./wazuh-install.sh -a
+ssh -i ~/.ssh/siem_lab_key ubuntu@<SIEM_PUBLIC_IP>
 ```
-*(Save the new admin password it prints at the end!)*
 
-## 3. Reinstall the Honeypot Agent
-1. Update `infra/setup_honeypot.sh` with the **new** SIEM Private IP.
-2. SSH into the new Honeypot VM and run the script:
+Install Wazuh 4.9.2 All-in-One:
+```bash
+curl -sO https://packages.wazuh.com/4.9/wazuh-install.sh
+sudo bash ./wazuh-install.sh -a
+```
+> [!IMPORTANT]
+> Save the admin password printed upon installation completion. It is also stored in `/home/ubuntu/wazuh-install-files/wazuh-passwords.txt`.
+
+---
+
+## 4. Honeypot Agent Bootstrap & Pinned Enrollment
+
+SSH into the Honeypot VM:
+```bash
+ssh -i ~/.ssh/siem_lab_key ubuntu@<HONEYPOT_PUBLIC_IP>
+```
+
+Execute the bootstrap script:
 ```bash
 chmod +x setup_honeypot.sh
 sudo ./setup_honeypot.sh
 ```
 
-## 4. Restore Your Custom Rules
-Copy your custom XML rules from your `wazuh/custom_rules/` folder back onto the SIEM VM:
+### Critical Package Pinning
+Wazuh Manager 4.9.2 strictly rejects connections from higher agent versions (e.g., 4.14.x). The bootstrap script automatically pins the agent package:
 ```bash
-sudo cp *.xml /var/ossec/etc/rules/
-sudo chown wazuh:wazuh /var/ossec/etc/rules/*.xml
-sudo systemctl restart wazuh-manager
+sudo apt-get install -y wazuh-agent=4.9.2-1
+sudo apt-mark hold wazuh-agent
 ```
 
-## 5. Rebuild the Dashboards
-Since you built the visualizations manually in the UI, you would just follow your `24HR_OBSERVATION_REPORT.md` and the screenshots you took to quickly recreate the dashboard panels in OpenSearch.
+Enroll the agent against the private SIEM manager IP:
+```bash
+sudo /var/ossec/bin/agent-auth -m 10.0.1.2 -A siem-lab-honeypot
+sudo systemctl restart wazuh-agent
+```
 
-***
+---
 
-> **Pro-Tip for the future:** If you ever want to take this project to the next level, you could use a tool called **Ansible** to fully automate steps 2, 3, 4, and 5! (That's what actual DevOps and Security Automation teams do so they never have to configure a server manually twice).
+## 5. Deploy & Validate Custom Detection Rules
+
+From your local machine or repository root, deploy the custom detection rules to the SIEM manager:
+
+```bash
+# Verify static rule syntax locally first
+python tests/validate_rules.py
+
+# Push custom rules to SIEM manager
+scp -i ~/.ssh/siem_lab_key wazuh/custom_rules/*.xml ubuntu@<SIEM_PUBLIC_IP>:/tmp/
+
+# On SIEM Manager: Install and verify syntax
+ssh -i ~/.ssh/siem_lab_key ubuntu@<SIEM_PUBLIC_IP> "
+  sudo cp /tmp/*.xml /var/ossec/etc/rules/
+  sudo chown wazuh:wazuh /var/ossec/etc/rules/*.xml
+  sudo /var/ossec/bin/wazuh-analysisd -t
+  sudo systemctl restart wazuh-manager
+"
+```
+
+---
+
+## 6. Automated Testing & Verification
+
+Run the automated test harnesses to confirm full detection engine functionality:
+
+```bash
+# 1. Run local security and file leak audits
+python tests/security_scan.py
+
+# 2. Run rule unit tests against wazuh-logtest on SIEM Manager
+bash tests/unit/run_rule_unit_tests.sh
+
+# 3. (Optional) Run synthetic event injection on Honeypot
+ssh -i ~/.ssh/siem_lab_key ubuntu@<HONEYPOT_PUBLIC_IP> "bash /home/ubuntu/validate_detections.sh --inject-only"
+```
+
+---
+
+## 7. Operational Dashboards
+
+### 7.1 Import OpenSearch Dashboards
+Automatically import the customized SOC operational dashboards into the live Wazuh UI:
+```bash
+bash wazuh/dashboards/import_dashboards.sh <SIEM_PUBLIC_IP> <WAZUH_PASSWORD>
+```
+Access the dashboards at: `https://<SIEM_PUBLIC_IP>`
+
+### 7.2 Standalone Interactive SOC Visualizer
+Open [dashboards/index.html](file:///c:/Users/yoges/Documents/Security-Engineering-Portfolio/siem-detection-lab/dashboards/index.html) in any modern browser to view interactive KPIs, MITRE ATT&CK charts, live alert feeds, and case records without needing active cloud instances.
+
+---
+
+## 8. Safe Teardown & Mandatory Evidence Preservation
+
+> [!CAUTION]
+> **MANDATORY SAFETY REQUIREMENT:**  
+> Never run `terraform destroy` without first running `preserve_evidence.sh`. Destroying instances before capturing telemetry forfeits real attack evidence, audit logs, and forensic artifacts.
+
+### Step 1: Preserve Forensic Evidence Bundle
+```bash
+# Executes forensic snapshotting and SHA-256 integrity hashing
+bash incident_management/response/preserve_evidence.sh
+```
+Artifacts will be securely captured in `evidence/<TIMESTAMP>/` containing:
+- Raw `honeypot_auth.log`
+- Kernel `honeypot_audit.log`
+- Volatile sockets and routing (`honeypot_system_state.txt`)
+- Normalized Wazuh alerts (`wazuh_alerts.json`)
+- Cryptographic hash manifest (`SHA256SUMS.txt`)
+
+### Step 2: Teardown Cloud Infrastructure
+Once evidence preservation completes with `[+] Evidence preservation complete`:
+```bash
+cd infra/terraform
+terraform destroy -auto-approve
+```
+All GCP virtual machines, static IP allocations, and firewall rules are cleanly decommissioned, preventing unwanted cloud charges.

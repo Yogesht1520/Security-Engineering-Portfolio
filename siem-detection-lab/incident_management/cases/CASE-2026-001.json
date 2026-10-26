@@ -1,0 +1,69 @@
+{
+  "case_id": "CASE-2026-001",
+  "title": "Automated SSH Brute Force - Switzerland Scanner",
+  "status": "contained",
+  "severity": "high",
+  "opened_at": "2026-10-26T19:38:03Z",
+  "closed_at": null,
+  "source_ip": "209.99.190.186",
+  "geo": {
+    "country": "Switzerland",
+    "city": "Zurich",
+    "asn": "AS402253 SKN Subnet & Telecom Ltd",
+    "isp": "SKN Subnet & Telecom Ltd"
+  },
+  "reputation": {
+    "abuseipdb_score": 100,
+    "total_reports": 850,
+    "last_reported_at": "2026-10-26T19:30:00Z"
+  },
+  "wazuh_alert_ids": [
+    "1793042855.1468602",
+    "1793042965.1469146",
+    "1793043067.1469690",
+    "1793043175.1470234",
+    "1793043281.1470778",
+    "1793043383.1471322",
+    "1793043492.1471867",
+    "1793043616.1472412",
+    "1793043714.1477621",
+    "1793043730.1479924",
+    "1793043842.1484989"
+  ],
+  "target_users": [
+    "ubuntu",
+    "sysadmin",
+    "var",
+    "vor",
+    "vr",
+    "tmp",
+    "www"
+  ],
+  "timeline": [
+    {
+      "timestamp": "2026-10-26T19:38:03Z",
+      "event": "Case opened with severity HIGH targeting IP 209.99.190.186"
+    },
+    {
+      "timestamp": "2026-10-26T19:44:34Z",
+      "event": "Evidence preservation runbook executed. Artifacts captured to evidence/20261026_194434/"
+    },
+    {
+      "timestamp": "2026-10-26T19:45:10Z",
+      "event": "Forensic audit confirmed 0 successful sessions. SHA256 cryptographic manifest verified."
+    },
+    {
+      "timestamp": "2026-10-26T19:46:00Z",
+      "event": "Case transitioned to CONTAINED. Hardened egress controls verified intact."
+    }
+  ],
+  "containment_actions": [
+    "Preserved host auth.log, audit.log, volatile network sockets, and Wazuh alerts",
+    "Verified honeypot outbound egress deny firewall rule (priority 65534) prevents lateral movement or reverse C2",
+    "Verified password authentication rejected across all targeted accounts"
+  ],
+  "evidence_preserved": true,
+  "analyst": "SOC Lead / Detection Engineering",
+  "root_cause": "Opportunistic automated cloud botnet probing standard Unix and service accounts via paced dictionary attack.",
+  "lessons_learned": "Scanner paced connection attempts to 1 every 60-120 seconds to evade burst thresholds. Wazuh rule 100012 (low-and-slow threshold) and rule 100014 (account targeting) are critical to capturing this profile."
+}

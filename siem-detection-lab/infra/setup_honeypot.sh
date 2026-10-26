@@ -139,12 +139,27 @@ echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4
   > /etc/apt/sources.list.d/wazuh.list
 
 apt-get update -y
-apt-get install -y wazuh-agent
+apt-get install -y wazuh-agent=4.9.2-1
+
+# Configure Wazuh Agent log collection (auth.log, syslog, audit.log)
+cat >> /var/ossec/etc/ossec.conf << 'LOGCOLLECTOREOF'
+  <localfile>
+    <log_format>syslog</log_format>
+    <location>/var/log/auth.log</location>
+  </localfile>
+  <localfile>
+    <log_format>syslog</log_format>
+    <location>/var/log/syslog</location>
+  </localfile>
+  <localfile>
+    <log_format>audit</log_format>
+    <location>/var/log/audit/audit.log</location>
+  </localfile>
+LOGCOLLECTOREOF
 
 # Do NOT start/enable the agent yet — needs WAZUH_MANAGER IP from Phase 1
-echo "  Wazuh agent package installed. Enrollment deferred to Phase 2."
-echo "  To enroll (Phase 2): set WAZUH_MANAGER_IP and run:"
-echo "    WAZUH_MANAGER=<siem-ip> systemctl restart wazuh-agent"
+echo "  Wazuh agent package installed. Log collection configured."
+echo "  To enroll: set WAZUH_MANAGER=<siem-ip> and restart wazuh-agent"
 
 # =============================================================================
 # 5. MOTD — Disposable Lab Warning

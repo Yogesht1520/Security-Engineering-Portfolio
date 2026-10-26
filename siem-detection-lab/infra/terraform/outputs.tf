@@ -40,7 +40,7 @@ output "wazuh_dashboard_url" {
 
 output "security_posture_summary" {
   description = "Human-readable summary of the firewall posture"
-  value = <<-EOT
+  value       = <<-EOT
     ╔══════════════════════════════════════════════════════════════╗
     ║           SIEM Lab — Security Posture Summary                ║
     ╠══════════════════════════════════════════════════════════════╣

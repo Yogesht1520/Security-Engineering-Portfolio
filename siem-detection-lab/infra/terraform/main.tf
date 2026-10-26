@@ -92,6 +92,69 @@ resource "google_compute_firewall" "siem_allow_agent" {
   description = "SIEM: Wazuh agent ports allowed only from Honeypot VM"
 }
 
+# ── Honeypot: Deny all outbound egress by default ─────────────────────────────
+resource "google_compute_firewall" "honeypot_deny_all_egress" {
+  name      = "honeypot-deny-all-egress"
+  network   = google_compute_network.siem_lab_vpc.name
+  direction = "EGRESS"
+  priority  = 65534
+  deny {
+    protocol = "all"
+  }
+  destination_ranges = ["0.0.0.0/0"]
+  target_tags        = ["honeypot"]
+  description        = "HONEYPOT: Block all outbound connections by default"
+}
+
+# ── Honeypot: Allow internal Wazuh agent traffic to SIEM ──────────────────────
+resource "google_compute_firewall" "honeypot_allow_wazuh_egress" {
+  name      = "honeypot-allow-wazuh-egress"
+  network   = google_compute_network.siem_lab_vpc.name
+  direction = "EGRESS"
+  priority  = 1000
+  allow {
+    protocol = "tcp"
+    ports    = ["1514", "1515"]
+  }
+  destination_ranges = ["10.0.1.0/24"]
+  target_tags        = ["honeypot"]
+  description        = "HONEYPOT: Allow telemetry shipping to Wazuh Manager"
+}
+
+# ── Honeypot: Allow package updates & DNS during setup ────────────────────────
+resource "google_compute_firewall" "honeypot_allow_pkg_egress" {
+  name      = "honeypot-allow-pkg-egress"
+  network   = google_compute_network.siem_lab_vpc.name
+  direction = "EGRESS"
+  priority  = 1100
+  allow {
+    protocol = "tcp"
+    ports    = ["80", "443"]
+  }
+  allow {
+    protocol = "udp"
+    ports    = ["53"]
+  }
+  destination_ranges = ["0.0.0.0/0"]
+  target_tags        = ["honeypot"]
+  description        = "HONEYPOT: Allow package repository and DNS access for bootstrap"
+}
+
+# ── SIEM: Explicit public block for OpenSearch Indexer ────────────────────────
+resource "google_compute_firewall" "siem_deny_indexer_public" {
+  name      = "siem-deny-indexer-public"
+  network   = google_compute_network.siem_lab_vpc.name
+  direction = "INGRESS"
+  priority  = 800
+  deny {
+    protocol = "tcp"
+    ports    = ["9200", "9300"]
+  }
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["siem"]
+  description   = "SIEM: Defense-in-depth block for OpenSearch API from public internet"
+}
+
 # ══════════════════════════════════════════════════════════════════════════════
 # COMPUTE — Honeypot VM
 # ══════════════════════════════════════════════════════════════════════════════

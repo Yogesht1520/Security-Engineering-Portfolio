@@ -7,8 +7,8 @@
   -->
   <rule id="100030" level="12">
     <if_sid>80792</if_sid> <!-- Base rule for auditd execve events -->
-    <regex>exe="/usr/bin/wget"|exe="/usr/bin/curl"|exe="/usr/bin/nc"|exe="/usr/bin/ncat"|exe="/usr/bin/chmod"</regex>
-    <description>Suspicious post-exploitation tool executed via auditd: $(exe).</description>
+    <regex>exe="/usr/bin/wget"|exe="/usr/bin/curl"|exe="/bin/curl"|exe="/bin/wget"|exe="/usr/bin/nc"|exe="/bin/nc"|exe="/usr/bin/ncat"|exe="/usr/bin/netcat"|exe="/usr/bin/socat"|exe="/usr/bin/nmap"</regex>
+    <description>Suspicious post-exploitation reconnaissance/exfiltration tool executed: $(exe).</description>
     <mitre>
       <id>T1059</id>
     </mitre>

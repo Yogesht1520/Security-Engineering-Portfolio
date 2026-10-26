@@ -1,0 +1,33 @@
+name: Validate Wazuh Rules
+
+on:
+  push:
+    paths:
+      - 'wazuh/custom_rules/**'
+      - 'tests/validate_rules.py'
+      - '.github/workflows/validate-wazuh-rules.yml'
+  pull_request:
+    paths:
+      - 'wazuh/custom_rules/**'
+      - 'tests/validate_rules.py'
+      - '.github/workflows/validate-wazuh-rules.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-rules:
+    name: Wazuh Rule Linter & Static Quality Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: '3.11'
+
+      - name: Run Rule Syntax & Collision Validation
+        run: python tests/validate_rules.py

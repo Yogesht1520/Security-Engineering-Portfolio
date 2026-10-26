@@ -1,28 +1,85 @@
-# .gitignore — SIEM Detection Lab
-# Never commit cloud credentials or real infrastructure state
+# =============================================================================
+# .gitignore — SIEM Detection & Threat Engineering Lab
+# Strict exclusions for confidential access data, credentials, AI plans & state
+# =============================================================================
 
-# ── Terraform ─────────────────────────────────────────────────────────────────
-infra/terraform/terraform.tfvars        # contains real OCI credentials + your IP
-infra/terraform/.terraform/             # provider binaries (large, auto-downloaded)
-infra/terraform/.terraform.lock.hcl    # can be committed, but often gitignored per team pref
-infra/terraform/terraform.tfstate      # contains real IP addresses and resource IDs
-infra/terraform/terraform.tfstate.backup
+# ── 1. Confidential Lab Access & Operator Credentials ─────────────────────────
+docs/LAB_ACCESS_DETAILS.md
+*LAB_ACCESS_DETAILS.md
+wazuh-passwords.txt
+*password*.txt
+*credentials*.txt
+*secret*.txt
 
-# ── SSH / API Keys ────────────────────────────────────────────────────────────
+# ── 2. Agentic AI Instructions, Plans & Internal Artifacts ────────────────────
+*PLAN*.md
+*REMEDIATION*.md
+*GAP_ANALYSIS*.md
+*SCRATCHPAD*
+scratch/
+.agents/
+AGENTS.md
+GEMINI.md
+.gemini/
+.cursor/
+.claude/
+antigravity*
+.system_generated/
+prompt*.md
+instructions*.md
+
+# ── 3. Terraform — Infrastructure State & Populated Variables ─────────────────
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform/
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# ── 4. Cloud Service Accounts, Secrets & Cryptographic Keys ───────────────────
+service-account-*.json
+siem-detection-lab-*.json
+*credential*.json
+*secret*.json
+*token*.json
+*-sa-key.json
+gcp-key*.json
 *.pem
 *.key
+*.p12
+*.pfx
+
+# ── 5. SSH Private & Operator Keys ────────────────────────────────────────────
 id_rsa
 id_rsa.pub
+id_ed25519
+id_ed25519.pub
 siem_lab_key
 siem_lab_key.pub
+*.key.pub
 
-# ── Screenshots (large binaries — add selectively) ────────────────────────────
-# screenshots/   # Uncomment to exclude; leave commented to track selected ones
+# ── 6. Python Bytecode, Caches & Virtual Environments ─────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+venv/
+.venv/
+.env
+.env.*
+!*.env.example
 
-# ── OS / Editor ──────────────────────────────────────────────────────────────
+# ── 7. OS, Editor & Temporary Files ───────────────────────────────────────────
 .DS_Store
 Thumbs.db
 *.swp
 *.swo
-.vscode/settings.json
+*.tmp
+*.bak
+.vscode/
+.idea/
 *.exe
