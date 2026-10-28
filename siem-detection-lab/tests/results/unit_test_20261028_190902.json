@@ -1,0 +1,146 @@
+{
+  "summary": {
+    "total_tests": 15,
+    "passed": 15,
+    "failed": 0,
+    "pass_rate_percent": 100,
+    "execution_time_utc": "2026-10-28T19:09:21Z",
+    "engine": "wazuh-logtest v4.9.2"
+  },
+  "results": [
+    {
+      "test_id": "TC-001",
+      "name": "SSH Burst Boundary Negative (7 failures)",
+      "status": "PASS",
+      "expected": "No rule 100010",
+      "actual": "Rule 5760 only (threshold held)",
+      "timestamp": "2026-10-28T19:09:04Z"
+    }
+,
+    {
+      "test_id": "TC-002",
+      "name": "SSH Burst Trigger Positive (8 failures)",
+      "status": "PASS",
+      "expected": "Rule 100010 fired",
+      "actual": "Rule 100010 fired",
+      "timestamp": "2026-10-28T19:09:05Z"
+    }
+,
+    {
+      "test_id": "TC-003",
+      "name": "Success After Burst Attack Same IP (Positive)",
+      "status": "PASS",
+      "expected": "Rule 100040 fired",
+      "actual": "Rule 100040 fired",
+      "timestamp": "2026-10-28T19:09:06Z"
+    }
+,
+    {
+      "test_id": "TC-004",
+      "name": "Success From Distinct IP (Negative)",
+      "status": "PASS",
+      "expected": "No rule 100040",
+      "actual": "Rule 5715 only (correlation isolation held)",
+      "timestamp": "2026-10-28T19:09:07Z"
+    }
+,
+    {
+      "test_id": "TC-005",
+      "name": "Benign Management SSH Authentication (10.0.20.2)",
+      "status": "PASS",
+      "expected": "Rule 100015 fired",
+      "actual": "Rule 100015 fired",
+      "timestamp": "2026-10-28T19:09:09Z"
+    }
+,
+    {
+      "test_id": "TC-006",
+      "name": "Suspicious Command Exec (curl auditd EXECVE)",
+      "status": "PASS",
+      "expected": "Rule 100030 fired",
+      "actual": "Rule 100030 fired",
+      "timestamp": "2026-10-28T19:09:10Z"
+    }
+,
+    {
+      "test_id": "TC-007",
+      "name": "Low-and-Slow Persistent Brute Force Detection",
+      "status": "PASS",
+      "expected": "Rule 100012 fired",
+      "actual": "Rule 100012 fired",
+      "timestamp": "2026-10-28T19:09:11Z"
+    }
+,
+    {
+      "test_id": "TC-008",
+      "name": "Single-Account Concentrated Failures (same_user)",
+      "status": "PASS",
+      "expected": "Rule 100014 fired",
+      "actual": "Rule 100014 fired",
+      "timestamp": "2026-10-28T19:09:13Z"
+    }
+,
+    {
+      "test_id": "TC-009",
+      "name": "New User Account Created (useradd syscheck/syslog)",
+      "status": "PASS",
+      "expected": "Rule 100020 fired",
+      "actual": "Rule 100020 fired",
+      "timestamp": "2026-10-28T19:09:14Z"
+    }
+,
+    {
+      "test_id": "TC-010",
+      "name": "Sudoers File Modified (/etc/sudoers FIM)",
+      "status": "PASS",
+      "expected": "Rule 100021 fired",
+      "actual": "Rule 100021 fired",
+      "timestamp": "2026-10-28T19:09:15Z"
+    }
+,
+    {
+      "test_id": "TC-011",
+      "name": "Sudoers Drop-in Added (/etc/sudoers.d/ FIM)",
+      "status": "PASS",
+      "expected": "Rule 100022 fired",
+      "actual": "Rule 100022 fired",
+      "timestamp": "2026-10-28T19:09:16Z"
+    }
+,
+    {
+      "test_id": "TC-012",
+      "name": "Success After Persistent Attack Same IP Correlation",
+      "status": "PASS",
+      "expected": "Rule 100041 fired",
+      "actual": "Rule 100041 fired",
+      "timestamp": "2026-10-28T19:09:17Z"
+    }
+,
+    {
+      "test_id": "TC-013",
+      "name": "Dispersed Users Failure Isolation (Negative)",
+      "status": "PASS",
+      "expected": "No rule 100014",
+      "actual": "Single-account rule held without false positive",
+      "timestamp": "2026-10-28T19:09:19Z"
+    }
+,
+    {
+      "test_id": "TC-014",
+      "name": "Malformed Audit Record Robustness",
+      "status": "PASS",
+      "expected": "Graceful base parsing",
+      "actual": "No false custom rule triggered on corrupt record",
+      "timestamp": "2026-10-28T19:09:20Z"
+    }
+,
+    {
+      "test_id": "TC-015",
+      "name": "Out-of-Order Telemetry Stream Handling",
+      "status": "PASS",
+      "expected": "Clean execution",
+      "actual": "Syslog parsed gracefully despite inverted clock",
+      "timestamp": "2026-10-28T19:09:21Z"
+    }
+  ]
+}

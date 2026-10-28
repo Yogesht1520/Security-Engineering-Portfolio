@@ -25,11 +25,13 @@ import argparse
 import ipaddress
 from datetime import datetime, timezone
 
+import tempfile
+
 try:
     import jsonschema
-    HAS_JSONSCHEMA = True
 except ImportError:
-    HAS_JSONSCHEMA = False
+    print("FATAL: Required dependency 'jsonschema' is missing. Failing closed to protect case integrity.")
+    sys.exit(1)
 
 # Import local enrichment modules
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -41,8 +43,16 @@ CASES_DIR = os.path.join(BASE_DIR, "cases")
 SCHEMA_PATH = os.path.join(BASE_DIR, "case_schema.json")
 os.makedirs(CASES_DIR, exist_ok=True)
 
-# Valid state machine transitions
+# Valid status list and formal state machine transition rules
 VALID_STATUSES = ["open", "investigating", "contained", "closed", "false_positive"]
+
+TRANSITION_MATRIX = {
+    "open": ["investigating", "contained", "false_positive"],
+    "investigating": ["contained", "closed", "false_positive"],
+    "contained": ["investigating", "closed"],
+    "closed": ["open", "investigating"],          # Authorized reopen
+    "false_positive": ["open", "investigating"],  # Authorized reopen
+}
 
 def get_utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -51,25 +61,28 @@ def load_schema() -> dict:
     if os.path.exists(SCHEMA_PATH):
         with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
-    return {}
+    raise FileNotFoundError(f"Case JSON schema not found at {SCHEMA_PATH}")
 
 def validate_case_data(case: dict):
-    """Enforces JSON Schema compliance before persisting to disk."""
-    if not HAS_JSONSCHEMA:
-        return
+    """Enforces JSON Schema compliance before persisting to disk. Fails closed."""
     schema = load_schema()
-    if schema:
-        jsonschema.validate(instance=case, schema=schema)
+    jsonschema.validate(instance=case, schema=schema)
 
 def atomic_save_case(case_id: str, case_data: dict):
-    """Writes to a temporary file first, validates schema, then atomically renames."""
+    """Writes to a collision-free temporary file first, validates schema, then atomically renames."""
     validate_case_data(case_data)
     filepath = os.path.join(CASES_DIR, f"{case_id}.json")
-    tmppath = os.path.join(CASES_DIR, f"{case_id}.tmp")
     
-    with open(tmppath, "w", encoding="utf-8") as f:
-        json.dump(case_data, f, indent=2)
-    os.replace(tmppath, filepath)
+    with tempfile.NamedTemporaryFile("w", dir=CASES_DIR, delete=False, suffix=".tmp", encoding="utf-8") as tf:
+        tmppath = tf.name
+        json.dump(case_data, tf, indent=2)
+    
+    try:
+        os.replace(tmppath, filepath)
+    except Exception as e:
+        if os.path.exists(tmppath):
+            os.remove(tmppath)
+        raise e
 
 def get_next_case_id() -> str:
     year = datetime.now(timezone.utc).strftime("%Y")
@@ -178,9 +191,15 @@ def transition_case(case_id: str, new_status: str, notes: str = "", analyst: str
     clean_status = new_status.lower().strip()
     if clean_status not in VALID_STATUSES:
         print(f"Error: Invalid status '{clean_status}'. Must be one of: {VALID_STATUSES}")
-        return
+        sys.exit(1)
 
-    old_status = case.get("status", "unknown")
+    old_status = case.get("status", "open").lower().strip()
+    allowed_transitions = TRANSITION_MATRIX.get(old_status, [])
+    if clean_status != old_status and clean_status not in allowed_transitions:
+        print(f"Error: Disallowed lifecycle transition from '{old_status.upper()}' to '{clean_status.upper()}'.")
+        print(f"Allowed next states for {old_status.upper()} are: {[s.upper() for s in allowed_transitions]}")
+        sys.exit(1)
+
     case["status"] = clean_status
     timestamp = get_utc_now()
 

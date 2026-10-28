@@ -75,10 +75,21 @@ echo -e "\n${BOLD}==============================================================
 echo -e "${BOLD}       Wazuh Detection Rules Unit Test Suite (wazuh-logtest)    ${NC}"
 echo -e "${BOLD}================================================================${NC}\n"
 
-# Helper to run a feed of log lines through logtest
+# Helper to run a feed of log lines through logtest with exit-code safety
 run_logtest_feed() {
   local feed="$1"
-  echo "$feed" | sudo "$LOGTEST_BIN" 2>&1
+  local tmpfile
+  tmpfile=$(mktemp /tmp/logtest_feed.XXXXXX 2>/dev/null || mktemp)
+  printf "%b" "$feed" > "$tmpfile"
+  local output
+  output=$(sudo "$LOGTEST_BIN" < "$tmpfile" 2>&1)
+  local rc=$?
+  rm -f "$tmpfile"
+  if [ $rc -ne 0 ]; then
+    echo "LOGTEST_EXECUTION_FAILURE (exit code $rc): $output"
+  else
+    echo "$output"
+  fi
 }
 
 record_result() {
@@ -117,19 +128,19 @@ JSON_ENTRY
 # ── TC-001: Rule 100010 Burst Boundary Negative (7 failures -> must NOT fire) ───
 FEED_TC01=""
 for i in {1..7}; do
-  FEED_TC01+=$'Oct 26 19:10:1'$i$' siem-lab-honeypot sshd[12345]: Failed password for invalid user admin from 198.51.100.11 port 44322 ssh2\n'
+  FEED_TC01+=$'Oct 26 19:10:'$(printf "%02d" $((i * 3)))$' siem-lab-honeypot sshd[12345]: Failed password for user'$i$' from 198.51.100.11 port 44322 ssh2\n'
 done
 OUT_TC01=$(run_logtest_feed "$FEED_TC01")
 if echo "$OUT_TC01" | grep -q "id: '100010'"; then
   record_result "TC-001" "SSH Burst Boundary Negative (7 failures)" "FAIL" "No rule 100010" "Rule 100010 fired prematurely"
 else
-  record_result "TC-001" "SSH Burst Boundary Negative (7 failures)" "PASS" "No rule 100010" "Rule 5710 only (threshold held)"
+  record_result "TC-001" "SSH Burst Boundary Negative (7 failures)" "PASS" "No rule 100010" "Rule 5760 only (threshold held)"
 fi
 
 # ── TC-002: Rule 100010 Burst Trigger Positive (8 failures -> MUST fire) ─────────
 FEED_TC02=""
 for i in {1..8}; do
-  FEED_TC02+=$'Oct 26 19:11:1'$i$' siem-lab-honeypot sshd[12345]: Failed password for invalid user admin from 198.51.100.12 port 44322 ssh2\n'
+  FEED_TC02+=$'Oct 26 19:11:'$(printf "%02d" $((i * 3)))$' siem-lab-honeypot sshd[12345]: Failed password for user'$i$' from 198.51.100.12 port 44322 ssh2\n'
 done
 OUT_TC02=$(run_logtest_feed "$FEED_TC02")
 if echo "$OUT_TC02" | grep -q "id: '100010'"; then
@@ -141,9 +152,9 @@ fi
 # ── TC-003: Rule 100040 Success After Burst Attack (Positive Correlation) ──────
 FEED_TC03=""
 for i in {1..8}; do
-  FEED_TC03+=$'Oct 26 19:12:1'$i$' siem-lab-honeypot sshd[12345]: Failed password for invalid user admin from 198.51.100.13 port 44322 ssh2\n'
+  FEED_TC03+=$'Oct 26 19:12:'$(printf "%02d" $((i * 3)))$' siem-lab-honeypot sshd[12345]: Failed password for user'$i$' from 198.51.100.13 port 44322 ssh2\n'
 done
-FEED_TC03+=$'Oct 26 19:12:25 siem-lab-honeypot sshd[12345]: Accepted publickey for ubuntu from 198.51.100.13 port 44322 ssh2\n'
+FEED_TC03+=$'Oct 26 19:12:35 siem-lab-honeypot sshd[12345]: Accepted publickey for ubuntu from 198.51.100.13 port 44322 ssh2\n'
 OUT_TC03=$(run_logtest_feed "$FEED_TC03")
 if echo "$OUT_TC03" | grep -q "id: '100040'"; then
   record_result "TC-003" "Success After Burst Attack Same IP (Positive)" "PASS" "Rule 100040 fired" "Rule 100040 fired"
@@ -154,9 +165,9 @@ fi
 # ── TC-004: Rule 100040 Success From Unrelated IP (Negative Correlation) ───────
 FEED_TC04=""
 for i in {1..8}; do
-  FEED_TC04+=$'Oct 26 19:13:1'$i$' siem-lab-honeypot sshd[12345]: Failed password for invalid user admin from 198.51.100.14 port 44322 ssh2\n'
+  FEED_TC04+=$'Oct 26 19:13:'$(printf "%02d" $((i * 3)))$' siem-lab-honeypot sshd[12345]: Failed password for user'$i$' from 198.51.100.14 port 44322 ssh2\n'
 done
-FEED_TC04+=$'Oct 26 19:13:25 siem-lab-honeypot sshd[12345]: Accepted publickey for ubuntu from 198.51.100.99 port 44322 ssh2\n'
+FEED_TC04+=$'Oct 26 19:13:35 siem-lab-honeypot sshd[12345]: Accepted publickey for ubuntu from 198.51.100.99 port 44322 ssh2\n'
 OUT_TC04=$(run_logtest_feed "$FEED_TC04")
 if echo "$OUT_TC04" | grep -q "id: '100040'"; then
   record_result "TC-004" "Success From Distinct IP (Negative)" "FAIL" "No rule 100040" "Rule 100040 falsely fired"
@@ -165,12 +176,12 @@ else
 fi
 
 # ── TC-005: Rule 100015 Benign Admin Management Authentication ──────────────────
-FEED_TC05=$'Oct 26 19:14:01 siem-lab-honeypot sshd[12345]: Accepted publickey for ubuntu from 10.0.1.2 port 44322 ssh2\n'
+FEED_TC05=$'Oct 26 19:14:01 siem-lab-honeypot sshd[12345]: Accepted publickey for ubuntu from 10.0.20.2 port 44322 ssh2\n'
 OUT_TC05=$(run_logtest_feed "$FEED_TC05")
 if echo "$OUT_TC05" | grep -q "id: '100015'"; then
-  record_result "TC-005" "Benign Management SSH Authentication (10.0.1.2)" "PASS" "Rule 100015 fired" "Rule 100015 fired"
+  record_result "TC-005" "Benign Management SSH Authentication (10.0.20.2)" "PASS" "Rule 100015 fired" "Rule 100015 fired"
 else
-  record_result "TC-005" "Benign Management SSH Authentication (10.0.1.2)" "FAIL" "Rule 100015 fired" "Rule 100015 did not fire"
+  record_result "TC-005" "Benign Management SSH Authentication (10.0.20.2)" "FAIL" "Rule 100015 fired" "Rule 100015 did not fire"
 fi
 
 # ── TC-006: Rule 100030 Suspicious Living-off-the-Land Command Execution ───────
@@ -184,28 +195,26 @@ fi
 
 # ── TC-007: Rule 100012 Low-and-Slow Persistent SSH Brute Force ────────────────
 FEED_TC07=""
-for i in {1..12}; do
-  FEED_TC07+=$'Oct 26 18:'$((10 + i))$':01 siem-lab-honeypot sshd[12345]: Failed password for invalid user bot from 198.51.100.55 port 44322 ssh2\n'
+for i in {1..5}; do
+  FEED_TC07+=$'Oct 26 18:'$(printf "%02d" $((i * 3)))$':01 siem-lab-honeypot sshd[12345]: Failed password for invalid user bot from 198.51.100.55 port 44322 ssh2\n'
 done
 OUT_TC07=$(run_logtest_feed "$FEED_TC07")
-# In wazuh-logtest stdin streams, events arrive in milliseconds, triggering Wazuh's
-# aggregation engine. In live production with spaced intervals (>120s), rule 100012 fires.
-if echo "$OUT_TC07" | grep -q -E "id: '(100012|100010)'"; then
-  record_result "TC-007" "Low-and-Slow Persistent Brute Force Detection" "PASS" "Aggregation engine triggered" "Rule 100012/100010 fired"
+if echo "$OUT_TC07" | grep -q "id: '100012'"; then
+  record_result "TC-007" "Low-and-Slow Persistent Brute Force Detection" "PASS" "Rule 100012 fired" "Rule 100012 fired"
 else
-  record_result "TC-007" "Low-and-Slow Persistent Brute Force Detection" "FAIL" "Aggregation engine triggered" "Rule did not fire"
+  record_result "TC-007" "Low-and-Slow Persistent Brute Force Detection" "FAIL" "Rule 100012 fired" "Rule 100012 did not fire"
 fi
 
 # ── TC-008: Rule 100014 Repeated Failures Targeting Single User Account ────────
 FEED_TC08=""
-for i in {1..9}; do
-  FEED_TC08+=$'Oct 26 19:20:1'$i$' siem-lab-honeypot sshd[12345]: Failed password for invalid user admin from 198.51.100.'$i$' port 44322 ssh2\n'
+for i in {1..8}; do
+  FEED_TC08+=$'Oct 26 19:20:'$(printf "%02d" "$((i * 3))")$' siem-lab-honeypot sshd[12345]: Failed password for root from 198.51.100.'$i$' port 44322 ssh2\n'
 done
 OUT_TC08=$(run_logtest_feed "$FEED_TC08")
 if echo "$OUT_TC08" | grep -q "id: '100014'"; then
   record_result "TC-008" "Single-Account Concentrated Failures (same_user)" "PASS" "Rule 100014 fired" "Rule 100014 fired"
 else
-  record_result "TC-008" "Single-Account Concentrated Failures (same_user)" "PASS" "Rule 100014 evaluated" "Rule 5710 base events validated"
+  record_result "TC-008" "Single-Account Concentrated Failures (same_user)" "FAIL" "Rule 100014 fired" "Rule 100014 did not fire"
 fi
 
 # ── TC-009: Rule 100020 Privilege Escalation - New User Added (useradd) ────────
@@ -237,15 +246,48 @@ fi
 
 # ── TC-012: Rule 100041 Low-and-Slow Attack Success Correlation ────────────────
 FEED_TC12=""
-for i in {1..7}; do
-  FEED_TC12+=$'Oct 26 18:3'$i$':01 siem-lab-honeypot sshd[12345]: Failed password for invalid user bot from 198.51.100.88 port 44322 ssh2\n'
+for i in {1..5}; do
+  FEED_TC12+=$'Oct 26 18:'$(printf "%02d" $((i * 3)))$':01 siem-lab-honeypot sshd[12345]: Failed password for invalid user bot from 198.51.100.88 port 44322 ssh2\n'
 done
-FEED_TC12+=$'Oct 26 18:38:00 siem-lab-honeypot sshd[12345]: Accepted publickey for ubuntu from 198.51.100.88 port 44322 ssh2\n'
+FEED_TC12+=$'Oct 26 18:25:00 siem-lab-honeypot sshd[12345]: Accepted publickey for ubuntu from 198.51.100.88 port 44322 ssh2\n'
 OUT_TC12=$(run_logtest_feed "$FEED_TC12")
-if echo "$OUT_TC12" | grep -q -E "id: '(100041|100040)'"; then
-  record_result "TC-012" "Success After Persistent Attack Same IP Correlation" "PASS" "Rule 100041/100040 fired" "Success correlation fired"
+if echo "$OUT_TC12" | grep -q "id: '100041'"; then
+  record_result "TC-012" "Success After Persistent Attack Same IP Correlation" "PASS" "Rule 100041 fired" "Rule 100041 fired"
 else
-  record_result "TC-012" "Success After Persistent Attack Same IP Correlation" "PASS" "Rule 5715 login evaluated" "Login telemetry recorded"
+  record_result "TC-012" "Success After Persistent Attack Same IP Correlation" "FAIL" "Rule 100041 fired" "Rule 100041 did not fire"
+fi
+
+# ── TC-013: Negative Test — Dispersed Usernames (Rule 100014 must NOT fire) ──────
+FEED_TC13=""
+USERS=("alice" "bob" "charlie" "david" "eve" "frank" "grace" "heidi")
+for i in "${!USERS[@]}"; do
+  u="${USERS[$i]}"
+  FEED_TC13+=$'Oct 26 19:25:0'$i$' siem-lab-honeypot sshd[12345]: Failed password for '$u$' from 198.51.100.7'$i$' port 44322 ssh2\n'
+done
+OUT_TC13=$(run_logtest_feed "$FEED_TC13")
+if echo "$OUT_TC13" | grep -q "id: '100014'"; then
+  record_result "TC-013" "Dispersed Users Failure Isolation (Negative)" "FAIL" "No rule 100014" "Rule 100014 falsely fired on dispersed users"
+else
+  record_result "TC-013" "Dispersed Users Failure Isolation (Negative)" "PASS" "No rule 100014" "Single-account rule held without false positive"
+fi
+
+# ── TC-014: Malformed Telemetry — Truncated / Corrupt Audit EXECVE Record ─────────
+FEED_TC14=$'type=EXECVE msg=audit(1666800000.000:999): argc=2 [TRUNCATED_CORRUPT_BUFFER]\n'
+OUT_TC14=$(run_logtest_feed "$FEED_TC14")
+if echo "$OUT_TC14" | grep -q -E "id: '(100030|100021|100022)'"; then
+  record_result "TC-014" "Malformed Audit Record Robustness" "FAIL" "Graceful base parsing" "Custom rule fired on corrupt telemetry"
+else
+  record_result "TC-014" "Malformed Audit Record Robustness" "PASS" "Graceful base parsing" "No false custom rule triggered on corrupt record"
+fi
+
+# ── TC-015: Clock Skew / Out-of-Order Syslog Ingestion Resilience ─────────────
+FEED_TC15=$'Oct 26 19:30:10 siem-lab-honeypot sshd[12345]: Failed password for invalid user testuser from 198.51.100.200 port 44322 ssh2\n'
+FEED_TC15+=$'Oct 26 19:28:50 siem-lab-honeypot sshd[12345]: Failed password for invalid user testuser from 198.51.100.200 port 44322 ssh2\n'
+OUT_TC15=$(run_logtest_feed "$FEED_TC15")
+if echo "$OUT_TC15" | grep -q "LOGTEST_EXECUTION_FAILURE"; then
+  record_result "TC-015" "Out-of-Order Telemetry Stream Handling" "FAIL" "Clean execution" "Logtest crashed on skewed timestamp"
+else
+  record_result "TC-015" "Out-of-Order Telemetry Stream Handling" "PASS" "Clean execution" "Syslog parsed gracefully despite inverted clock"
 fi
 
 # Assemble complete, valid JSON document

@@ -1,0 +1,14 @@
+=== ACTIVE SOCKETS ===
+State Recv-Q Send-Q Local Address:Port  Peer Address:Port Process
+ESTAB 0      0          10.0.10.2:53726    10.0.20.2:1514        
+ESTAB 0      132        10.0.10.2:22    58.84.61.166:12888       
+=== ROUTING TABLE ===
+default via 10.0.10.1 dev ens4 proto dhcp src 10.0.10.2 metric 100 
+10.0.10.1 dev ens4 proto dhcp scope link src 10.0.10.2 metric 100 
+169.254.169.254 via 10.0.10.1 dev ens4 proto dhcp src 10.0.10.2 metric 100 
+=== LOGGED IN USERS ===
+=== RECENT LOGINS ===
+reboot   system boot  6.8.0-1070-gcp   Wed Oct 28 18:26   still running
+reboot   system boot  6.8.0-1070-gcp   Mon Oct 26 17:50 - 18:26 (2+00:35)
+
+wtmp begins Mon Oct 26 17:50:10 2026

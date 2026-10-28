@@ -30,11 +30,13 @@ FORBIDDEN_TRACKED_PATTERNS = [
 ]
 
 LEAK_REGEXES = [
-    (re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"), "Private cryptographic key"),
+    (re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----"), "Private cryptographic key"),
     (re.compile(r'"type":\s*"service_account"'), "GCP Service Account JSON key"),
     (re.compile(r'AIza[0-9A-Za-z\\-_]{35}'), "Google API Key"),
     (re.compile(r'AKIA[0-9A-Z]{16}'), "AWS Access Key ID"),
     (re.compile(r'ghp_[0-9a-zA-Z]{36}'), "GitHub Personal Access Token"),
+    (re.compile(r'xox[baprs]-[0-9a-zA-Z]{10,48}'), "Slack API Token"),
+    (re.compile(r'eyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9._-]{15,}\.[A-Za-z0-9._-]+'), "JWT Secret Token"),
 ]
 
 EXCLUDED_DIRS = {".git", ".terraform", "node_modules", ".pytest_cache", "__pycache__"}
@@ -44,8 +46,8 @@ def get_tracked_files():
         output = subprocess.check_output(["git", "ls-files"], text=True)
         return output.strip().splitlines()
     except Exception as e:
-        print(f"[!] Warning: git ls-files failed: {e}")
-        return []
+        print(f"[!] FATAL: git ls-files failed: {e}. Failing closed.")
+        sys.exit(1)
 
 def scan_tracked_filenames(tracked_files):
     print("[1/4] Scanning git tracked files for prohibited sensitive filenames...")
@@ -91,12 +93,16 @@ def scan_file_contents():
     return len(violations) == 0
 
 def scan_git_history():
-    print("\n[3/4] Scanning recent Git commit history for siem-detection-lab...")
+    print("\n[3/4] Scanning complete Git commit history for siem-detection-lab (fail-closed)...")
     try:
-        log_diff = subprocess.check_output(["git", "log", "-p", "-n", "50", "--", "."], text=True, errors="ignore")
+        log_diff = subprocess.check_output(
+            ["git", "log", "-p", "--full-history", "--", "."],
+            text=True,
+            errors="ignore"
+        )
     except Exception as e:
-        print(f"  [!] Git history inspection note: {e}")
-        return True
+        print(f"  [X] FATAL: Git history inspection failed: {e}. Failing closed.")
+        return False
 
     violations = []
     for line in log_diff.splitlines():
@@ -104,14 +110,14 @@ def scan_git_history():
             added_content = line[1:]
             for pattern, desc in LEAK_REGEXES:
                 if pattern.search(added_content):
-                    if "security_scan.py" in added_content or "AIza[0-9" in added_content or "DEMO" in added_content:
+                    if "security_scan.py" in added_content or "AIza[0-9" in added_content or "DEMO" in added_content or "test_security_gate_negative" in added_content:
                         continue
                     violations.append((desc, line[:60]))
                     print(f"  [X] HISTORICAL SECRET DETECTED in commit history: {desc}")
                     break
 
     if not violations:
-        print("  [✓] Zero secrets detected across recent Git commit history.")
+        print("  [✓] Zero secrets detected across complete Git commit history.")
     return len(violations) == 0
 
 def check_effective_gitignore():

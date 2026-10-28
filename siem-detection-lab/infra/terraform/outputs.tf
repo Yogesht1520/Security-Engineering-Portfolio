@@ -33,6 +33,16 @@ output "ssh_siem" {
   value       = "ssh -i ~/.ssh/siem_lab_key ubuntu@${google_compute_instance.siem.network_interface[0].access_config[0].nat_ip}"
 }
 
+output "bastion_public_ip" {
+  description = "Public IP of the Admin Bastion jumpbox"
+  value       = google_compute_instance.bastion.network_interface[0].access_config[0].nat_ip
+}
+
+output "ssh_bastion" {
+  description = "SSH command for Admin Bastion jumpbox"
+  value       = "ssh -i ~/.ssh/siem_lab_key ubuntu@${google_compute_instance.bastion.network_interface[0].access_config[0].nat_ip}"
+}
+
 output "wazuh_dashboard_url" {
   description = "Wazuh Dashboard URL (accessible only from your IP — Phase 1)"
   value       = "https://${google_compute_instance.siem.network_interface[0].access_config[0].nat_ip}"

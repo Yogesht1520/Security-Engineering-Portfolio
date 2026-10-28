@@ -92,9 +92,15 @@ if [ "$AUTO_CONFIRM" = false ]; then
 fi
 
 # ── Function: Host-level iptables isolation ───────────────────────────────────
+# ── Function: Host-level iptables isolation ───────────────────────────────────
 isolate_host() {
   echo "[+] Applying host-level iptables quarantine on honeypot..."
-  ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "ubuntu@${HONEYPOT_IP}" bash -c "'
+  ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "ubuntu@${HONEYPOT_IP}" bash -c "'
+    set -eo pipefail
+    sudo mkdir -p /var/backups
+    sudo iptables-save > /var/backups/iptables_pre_quarantine.rules
+    echo \"  [✓] Current firewall state backed up to /var/backups/iptables_pre_quarantine.rules\"
+
     sudo iptables -F
     sudo iptables -X
     
@@ -109,24 +115,35 @@ isolate_host() {
     sudo iptables -A INPUT -p tcp --dport 22 -m state --state ESTABLISHED,RELATED -j ACCEPT
     sudo iptables -A OUTPUT -p tcp --sport 22 -m state --state ESTABLISHED,RELATED -j ACCEPT
     
-    # Allow Wazuh agent telemetry to internal SIEM (10.0.1.2)
-    sudo iptables -A OUTPUT -p tcp -d 10.0.1.2 --dport 1514 -j ACCEPT
-    sudo iptables -A OUTPUT -p tcp -d 10.0.1.2 --dport 1515 -j ACCEPT
-    sudo iptables -A INPUT -p tcp -s 10.0.1.2 -j ACCEPT
+    # Allow Wazuh agent telemetry to internal SIEM (supports both 10.0.1.2 and 10.0.20.2)
+    sudo iptables -A OUTPUT -p tcp -d 10.0.1.2 --dport 1514 -j ACCEPT 2>/dev/null || true
+    sudo iptables -A OUTPUT -p tcp -d 10.0.1.2 --dport 1515 -j ACCEPT 2>/dev/null || true
+    sudo iptables -A OUTPUT -p tcp -d 10.0.20.2 --dport 1514 -j ACCEPT
+    sudo iptables -A OUTPUT -p tcp -d 10.0.20.2 --dport 1515 -j ACCEPT
+    sudo iptables -A INPUT -p tcp -s 10.0.1.2 -j ACCEPT 2>/dev/null || true
+    sudo iptables -A INPUT -p tcp -s 10.0.20.2 -j ACCEPT
     
     # DROP ALL other ingress and egress
     sudo iptables -P INPUT DROP
     sudo iptables -P FORWARD DROP
     sudo iptables -P OUTPUT DROP
     
-    echo \"[+] Host iptables quarantine rules applied successfully.\"
+    # Post-operation assertion: verify DROP policies are active
+    INPUT_POL=\$(sudo iptables -L INPUT | head -n 1 | awk \"{print \\\$4}\" | tr -d \")\")
+    OUTPUT_POL=\$(sudo iptables -L OUTPUT | head -n 1 | awk \"{print \\\$4}\" | tr -d \")\")
+    if [ \"\$INPUT_POL\" != \"DROP\" ] || [ \"\$OUTPUT_POL\" != \"DROP\" ]; then
+      echo \"[!] ERROR: Post-isolation check failed. Policies: INPUT=\$INPUT_POL OUTPUT=\$OUTPUT_POL\" >&2
+      exit 1
+    fi
+    echo \"  [✓] Post-isolation assertion passed: INPUT=DROP, OUTPUT=DROP.\"
     sudo iptables -L -v -n
   '"
 }
 
 restore_host() {
   echo "[+] Restoring baseline host-level iptables networking on honeypot..."
-  ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "ubuntu@${HONEYPOT_IP}" bash -c "'
+  ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "ubuntu@${HONEYPOT_IP}" bash -c "'
+    set -eo pipefail
     sudo iptables -P INPUT ACCEPT
     sudo iptables -P FORWARD ACCEPT
     sudo iptables -P OUTPUT ACCEPT
@@ -134,10 +151,15 @@ restore_host() {
     # Reload approved baseline rules to preserve metadata protection
     if [ -f /etc/iptables/rules.v4 ]; then
       sudo iptables-restore < /etc/iptables/rules.v4
-      echo \"[+] Host iptables baseline restored from /etc/iptables/rules.v4.\"
+      echo \"  [✓] Host iptables baseline restored from /etc/iptables/rules.v4.\"
+    elif [ -f /var/backups/iptables_pre_quarantine.rules ]; then
+      sudo iptables-restore < /var/backups/iptables_pre_quarantine.rules
+      echo \"  [✓] Host iptables restored from pre-quarantine backup.\"
     else
       sudo iptables -F
       sudo iptables -X
+      # Maintain metadata block
+      sudo iptables -A OUTPUT -d 169.254.169.254/32 -p tcp -j REJECT --reject-with tcp-reset
       sudo iptables -A OUTPUT -d 169.254.169.254/32 -p tcp -j REJECT --reject-with tcp-reset
       echo \"[+] Host iptables reset with metadata isolation preserved.\"
     fi

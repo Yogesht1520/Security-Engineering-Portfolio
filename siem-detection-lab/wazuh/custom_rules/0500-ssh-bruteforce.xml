@@ -2,10 +2,11 @@
   <!--
     Custom Rule: SSH Burst Brute-Force Aggregation
     Detects 8+ failed SSH logins from the same source IP within a 120-second window.
+    Supports both invalid users (5712) and existing accounts (5763).
     Maps to MITRE ATT&CK T1110.001 (Password Guessing).
   -->
   <rule id="100010" level="10">
-    <if_sid>5712</if_sid> <!-- Base built-in rule: sshd brute force 8 failures in 120s -->
+    <if_sid>5712, 5763</if_sid>
     <description>sshd: High-frequency burst brute-force attack detected from $(srcip).</description>
     <mitre>
       <id>T1110.001</id>
@@ -19,7 +20,7 @@
     (1-3 attempts every few minutes) to evade short-window burst detection.
     Detects 5+ failed attempts from the same source IP over a 1-hour window.
   -->
-  <rule id="100012" level="10" frequency="10" timeframe="3600">
+  <rule id="100012" level="10" frequency="5" timeframe="3600">
     <if_matched_sid>5710</if_matched_sid>
     <same_source_ip />
     <description>sshd: Low-and-slow persistent brute-force attack detected from $(srcip).</description>
@@ -36,7 +37,7 @@
     before classifying as distributed spray (see DET-SSH-003).
   -->
   <rule id="100014" level="11" frequency="8" timeframe="300">
-    <if_matched_group>authentication_failed</if_matched_group>
+    <if_matched_sid>5760</if_matched_sid>
     <same_user />
     <description>sshd: High-frequency authentication failures targeting user account '$(dstuser)'.</description>
     <mitre>
@@ -47,13 +48,13 @@
 
   <!--
     Custom Rule: Benign Administrator SSH Activity Classification
-    Classifies expected administrative logins from the SIEM management host (10.0.1.2)
+    Classifies expected administrative logins from the SIEM management host (10.0.20.2)
     to prevent false escalation without suppressing raw telemetry.
   -->
   <rule id="100015" level="3">
-    <if_sid>5715</if_sid> <!-- Base rule: sshd authentication success -->
-    <srcip>10.0.1.2</srcip>
-    <description>sshd: Benign administrative authentication from SIEM management host.</description>
+    <if_sid>5715</if_sid>
+    <srcip>10.0.20.2</srcip>
+    <description>sshd: Benign administrative authentication from SIEM management host (10.0.20.2).</description>
     <group>authentication_success,administrative_baseline,</group>
   </rule>
 </group>

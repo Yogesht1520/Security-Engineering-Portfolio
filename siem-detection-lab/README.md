@@ -20,36 +20,38 @@ flowchart TD
 
     subgraph GCP["Google Cloud Platform - Multi-Tier Segmented VPC"]
         subgraph DMZSubnet["DMZ Tier - Subnet 10.0.10.0/24"]
-            Honeypot["Honeypot VM: 10.0.1.3 / 34.121.64.158<br/>SSH Ingress: 0.0.0.0/0<br/>auditd dual-arch, auth.log<br/>Wazuh Agent 4.9.2-1 Pinned"]
+            Honeypot["Honeypot VM: 10.0.10.2 / 34.121.64.158<br/>SSH Ingress: 0.0.0.0/0<br/>auditd dual-arch, auth.log<br/>Wazuh Agent 4.9.2-1 Pinned"]
         end
 
         subgraph SIEMSubnet["SIEM Core Tier - Subnet 10.0.20.0/24"]
-            SIEM["Wazuh Manager: 10.0.1.2 / 34.71.182.95<br/>OpenSearch Indexer Internal (9200/9300 protected)<br/>Wazuh Ruleset 100010-100041<br/>OpenSearch Dashboards HTTPS (443)"]
+            SIEM["Wazuh Manager: 10.0.20.2 / 34.71.182.95<br/>OpenSearch Indexer Internal (9200/9300 protected)<br/>Wazuh Ruleset 100010-100041<br/>OpenSearch Dashboards HTTPS (443)"]
         end
 
         subgraph AdminSubnet["Management Tier - Subnet 10.0.30.0/24"]
-            Bastion["Restricted Admin / Bastion Plane"]
+            Bastion["Admin Bastion Jumpbox: 10.0.30.2 / 34.28.55.103<br/>Restricted Management Ingress (User Public IP)"]
         end
 
         subgraph IsolationControls["Dual-Control Isolation Architecture"]
             MetaGCP["GCP Egress Priority 900: DENY 169.254.169.254/32"]
             MetaHost["Host iptables REJECT: 169.254.169.254 tcp-reset"]
             EgressDeny["Priority 65534: Default DENY All Outbound"]
-            EgressPkg["Priority 1100: ALLOW Apt Updates TCP 80/443, UDP 53"]
-            EgressSIEM["Priority 1000: ALLOW Telemetry TCP 1514/1515"]
+            EgressPkg["Priority 1100: Canonical Ubuntu Mirrors Only<br/>91.189.91.0/24, 185.125.190.0/24"]
+            EgressDNS["Priority 1050: Pinned DNS (8.8.8.8, 1.1.1.1)"]
+            EgressSIEM["Priority 1000: ALLOW Telemetry to 10.0.20.0/24 (TCP 1514/1515)"]
         end
     end
 
     subgraph SOC["SOC Management Plane"]
         Analyst["SOC Analyst / Detection Engineer<br/>Restricted Management IP"]
         Portal["Interactive SOC Analytics Portal<br/>dashboards/index.html"]
-        CaseMgmt["Incident Case Manager<br/>incident_management/case_manager.py"]
+        CaseMgmt["Incident Case Manager (FSM Enforced)<br/>incident_management/case_manager.py"]
     end
 
     ATK1 -->|"T1110 Paced Dictionary Attack"| Honeypot
     ATK2 -->|"T1110 Automated Banner Scanning"| Honeypot
     Honeypot -->|"Encrypted Agent Logs TCP 1514"| SIEM
     SIEM -->|"Alert Correlation and Telemetry"| Analyst
+    Analyst --> Bastion
     Analyst --> Portal
     Analyst --> CaseMgmt
 ```
@@ -62,12 +64,12 @@ Every detection capability and incident response workflow in this lab is backed 
 
 | Artifact Type | File / Location | Description & Integrity |
 | :--- | :--- | :--- |
-| **Forensic Evidence Bundle** | [`evidence/20261028_165517/`](evidence/20261028_165517/) | Post-hardening snapshot: `honeypot_audit.log` (6.06MB), `honeypot_auth.log` (304KB), `wazuh_alerts.json` (1.11MB), and verified zero-metadata `honeypot_system_state.txt`. |
-| **Cryptographic Manifest** | [`evidence/.../EVIDENCE_MANIFEST.json`](evidence/20261028_165517/EVIDENCE_MANIFEST.json) | Structured JSON provenance manifest with collector identity, UTC timestamps, file sizes, and SHA-256 hashes. |
-| **Active Incident Case** | [`incident_management/cases/CASE-2026-001.json`](incident_management/cases/CASE-2026-001.json) | High-severity case opened and contained against live attacker `209.99.190.186` (Zurich, Switzerland) with JSON schema validation. |
-| **Unit Test Suite Results** | [`tests/results/unit_test_20261028_163635.json`](tests/results/unit_test_20261028_163635.json) | Automated execution of 12 detection unit tests against `wazuh-logtest` (**12/12 Passed - 100% Rule Coverage**). |
+| **Forensic Evidence Bundle** | [`evidence/20261028_191347/`](evidence/20261028_191347/) | Post-migration snapshot: `honeypot_audit.log` (6.18MB), `honeypot_auth.log` (326KB), `wazuh_alerts.json` (2.00MB), zero-metadata `honeypot_system_state.txt`, and verified `honeypot_defense_posture.txt`. |
+| **Cryptographic Manifest & Sigs** | [`evidence/.../EVIDENCE_MANIFEST.json`](evidence/20261028_191347/EVIDENCE_MANIFEST.json) | Structured JSON provenance manifest with collector identity, UTC timestamps, SHA-256 hashes, and detached `.sig` digital signatures. |
+| **Active Incident Case** | [`incident_management/cases/CASE-2026-001.json`](incident_management/cases/CASE-2026-001.json) | High-severity case opened and contained against live attacker `209.99.190.186` (Zurich, Switzerland) with strict FSM lifecycle enforcement. |
+| **Unit Test Suite Results** | [`tests/results/unit_test_latest.json`](tests/results/unit_test_latest.json) | Automated execution of 15 detection unit tests against `wazuh-logtest` (**15/15 Passed — 100% Rule, Boundary & Negative Coverage**). |
 | **Static Rule Audit** | `python tests/validate_rules.py` | Validates XML syntax, duplicate rule IDs, and ID range enforcement (**10/10 Passed**). |
-| **Security Leak Gate** | `python tests/security_scan.py` | Multi-stage scan of workspace and git commit history for secrets, private keys, `.tfstate`, and `.tfvars` (**Zero Leaks**). |
+| **Security Leak Gate** | `python tests/security_scan.py` | Full-history git commit and workspace audit for credentials, Slack tokens, JWTs, and `.tfstate` (**Zero Leaks — Fail Closed**). |
 | **Negative Security Tests** | [`tests/unit/test_security_gate_negative.py`](tests/unit/test_security_gate_negative.py) | Negative assertion test suite confirming security gate catches simulated private keys and forbidden files (**Passing**). |
 
 ---

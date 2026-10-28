@@ -68,26 +68,24 @@ echo "  Metadata isolation enforced (TCP reset on 169.254.169.254:80/443)."
 # Captures: exec events, privilege escalation, file changes, user creation
 # Supports both 64-bit (b64) and 32-bit (b32) syscall architectures
 # =============================================================================
-echo "[2/5] Installing and configuring auditd baseline policy..."
+# 2. AUDITD — Transactional Hardening & Baseline Telemetry with Rollback
+# =============================================================================
+echo "[2/5] Installing and configuring auditd baseline policy (transactional)..."
 apt-get install -y auditd audispd-plugins
 
-# Back up pre-existing rules before applying approved baseline
-if [ -f /etc/audit/rules.d/siem-lab.rules ]; then
-  cp /etc/audit/rules.d/siem-lab.rules "/etc/audit/rules.d/backup_$(date +%s).rules"
-fi
+# Step 1: Back up the entire audit configuration directory and active kernel rules
+mkdir -p /var/backups
+AUDIT_BACKUP_DIR="/var/backups/audit_backup_$(date +%s)"
+cp -r /etc/audit "$AUDIT_BACKUP_DIR"
+auditctl -l > "${AUDIT_BACKUP_DIR}/active_rules_pre.txt" 2>/dev/null || true
+echo "  [✓] Complete audit configuration backed up to ${AUDIT_BACKUP_DIR}"
 
-# Write approved baseline audit rules
-cat > /etc/audit/rules.d/siem-lab.rules << 'AUDITEOF'
+# Step 2: Write candidate rules to a temporary staging file for pre-validation
+CANDIDATE_RULES="/tmp/candidate_audit.rules"
+cat > "$CANDIDATE_RULES" << 'AUDITEOF'
 # ---- SIEM Lab Approved Audit Baseline Policy ----
-# Replaces unverified default configurations with a validated, immutable baseline
-
-# Clear existing unverified rules to establish explicit baseline
--D
-
-# Set buffer size (increase if events are dropping)
+# Buffer and failure configuration
 -b 8192
-
-# Failure mode: 1 = printk on buffer full (prevents silent drop)
 -f 1
 
 # ── Privilege Escalation / Sudo (Dual-Architecture: b64 & b32) ─────────────
@@ -136,15 +134,29 @@ cat > /etc/audit/rules.d/siem-lab.rules << 'AUDITEOF'
 -a always,exit -F arch=b32 -S connect -k outbound_connection
 AUDITEOF
 
-# Restart auditd and validate loaded rules
-systemctl enable auditd
-systemctl restart auditd
+# Step 3: Transactional application with automated rollback
+echo "  Deploying and validating candidate audit policy..."
+if ! (
+  cp "$CANDIDATE_RULES" /etc/audit/rules.d/siem-lab.rules && \
+  augenrules --load && \
+  systemctl enable auditd && \
+  systemctl restart auditd && \
+  auditctl -s | grep -q "enabled 1"
+); then
+  echo "  [!] ERROR: Candidate audit rules failed activation. Initiating automated rollback..." >&2
+  cp -r "$AUDIT_BACKUP_DIR"/* /etc/audit/
+  augenrules --load 2>/dev/null || true
+  systemctl restart auditd 2>/dev/null || true
+  echo "  [✓] Rollback complete: prior audit configuration restored." >&2
+  exit 1
+fi
+rm -f "$CANDIDATE_RULES"
 
-# Verification: Record effective loaded rules and audit daemon status as deployment evidence
-echo "  Validating active auditd policy..."
+# Step 4: Verification and persistent baseline record
+echo "  Validating active auditd policy status..."
 auditctl -s
 auditctl -l > /var/log/audit_effective_baseline.txt
-echo "  auditd baseline configured, verified, and saved to /var/log/audit_effective_baseline.txt."
+echo "  [✓] auditd baseline verified and saved to /var/log/audit_effective_baseline.txt."
 
 # =============================================================================
 # 3. SSH HARDENING

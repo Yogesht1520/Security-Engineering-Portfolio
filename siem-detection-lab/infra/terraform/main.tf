@@ -99,6 +99,7 @@ resource "google_compute_firewall" "honeypot_allow_ssh_public" {
 }
 
 # ── SIEM: Management Ports (Your IP Only) ─────────────────────────────────────
+# ── SIEM: Management Ports (Your IP & Admin Subnet) ───────────────────────────
 resource "google_compute_firewall" "siem_allow_mgmt" {
   name    = "siem-allow-mgmt"
   network = google_compute_network.siem_lab_vpc.name
@@ -108,12 +109,12 @@ resource "google_compute_firewall" "siem_allow_mgmt" {
     ports    = ["22", "443"]
   }
 
-  source_ranges = [var.your_public_ip]
+  source_ranges = [var.your_public_ip, google_compute_subnetwork.admin_subnet.ip_cidr_range]
   target_tags   = ["siem"]
-  description   = "SIEM: SSH and Dashboard restricted to your IP only"
+  description   = "SIEM: SSH and Dashboard restricted to your IP and Admin subnet"
 }
 
-# ── SIEM: Agent Ports (Internal Only) ─────────────────────────────────────────
+# ── SIEM: Agent Ports (DMZ Subnet Only) ───────────────────────────────────────
 resource "google_compute_firewall" "siem_allow_agent" {
   name    = "siem-allow-agent"
   network = google_compute_network.siem_lab_vpc.name
@@ -123,17 +124,33 @@ resource "google_compute_firewall" "siem_allow_agent" {
     ports    = ["1514", "1515"]
   }
 
-  source_tags = ["honeypot"]
-  target_tags = ["siem"]
-  description = "SIEM: Wazuh agent ports allowed only from Honeypot VM"
+  source_ranges = [google_compute_subnetwork.dmz_subnet.ip_cidr_range]
+  source_tags   = ["honeypot"]
+  target_tags   = ["siem"]
+  description   = "SIEM: Wazuh agent ports allowed only from Honeypot VM in DMZ subnet"
+}
+
+# ── Bastion: SSH Management Access ────────────────────────────────────────────
+resource "google_compute_firewall" "bastion_allow_ssh_mgmt" {
+  name    = "bastion-allow-ssh-mgmt"
+  network = google_compute_network.siem_lab_vpc.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+
+  source_ranges = [var.your_public_ip]
+  target_tags   = ["bastion"]
+  description   = "BASTION: SSH restricted to management workstation IP"
 }
 
 # ── Honeypot: Explicit block for GCP Metadata Server (169.254.169.254) ────────
 resource "google_compute_firewall" "honeypot_deny_metadata_egress" {
-  name               = "honeypot-deny-metadata-egress"
-  network            = google_compute_network.siem_lab_vpc.name
-  direction          = "EGRESS"
-  priority           = 900
+  name      = "honeypot-deny-metadata-egress"
+  network   = google_compute_network.siem_lab_vpc.name
+  direction = "EGRESS"
+  priority  = 900
   deny {
     protocol = "all"
   }
@@ -156,7 +173,7 @@ resource "google_compute_firewall" "honeypot_deny_all_egress" {
   description        = "HONEYPOT: Block all outbound connections by default"
 }
 
-# ── Honeypot: Allow internal Wazuh agent traffic to SIEM ──────────────────────
+# ── Honeypot: Allow internal Wazuh agent traffic to SIEM Subnet ───────────────
 resource "google_compute_firewall" "honeypot_allow_wazuh_egress" {
   name      = "honeypot-allow-wazuh-egress"
   network   = google_compute_network.siem_lab_vpc.name
@@ -166,28 +183,48 @@ resource "google_compute_firewall" "honeypot_allow_wazuh_egress" {
     protocol = "tcp"
     ports    = ["1514", "1515"]
   }
-  destination_ranges = ["10.0.1.0/24", "10.0.20.0/24"]
+  destination_ranges = [google_compute_subnetwork.siem_subnet.ip_cidr_range]
   target_tags        = ["honeypot"]
-  description        = "HONEYPOT: Allow telemetry shipping to Wazuh Manager"
+  description        = "HONEYPOT: Allow telemetry shipping to Wazuh Manager in SIEM Subnet"
 }
 
-# ── Honeypot: Allow package updates & DNS during setup ────────────────────────
-resource "google_compute_firewall" "honeypot_allow_pkg_egress" {
-  name      = "honeypot-allow-pkg-egress"
+# ── Honeypot: Restrict DNS egress to approved public resolvers ───────────────
+resource "google_compute_firewall" "honeypot_allow_dns_egress" {
+  name      = "honeypot-allow-dns-egress"
   network   = google_compute_network.siem_lab_vpc.name
   direction = "EGRESS"
   priority  = 1100
   allow {
-    protocol = "tcp"
-    ports    = ["80", "443"]
-  }
-  allow {
     protocol = "udp"
     ports    = ["53"]
   }
-  destination_ranges = ["0.0.0.0/0"]
+  allow {
+    protocol = "tcp"
+    ports    = ["53"]
+  }
+  destination_ranges = ["8.8.8.8/32", "8.8.4.4/32", "1.1.1.1/32"]
   target_tags        = ["honeypot"]
-  description        = "HONEYPOT: Allow package repository and DNS access for bootstrap"
+  description        = "HONEYPOT: Restrict DNS egress to approved public resolvers"
+}
+
+# ── Honeypot: Restrict HTTP/HTTPS outbound to Ubuntu package repositories ────
+resource "google_compute_firewall" "honeypot_allow_pkg_egress" {
+  name      = "honeypot-allow-pkg-egress"
+  network   = google_compute_network.siem_lab_vpc.name
+  direction = "EGRESS"
+  priority  = 1110
+  allow {
+    protocol = "tcp"
+    ports    = ["80", "443"]
+  }
+  destination_ranges = [
+    "91.189.91.0/24",
+    "91.189.92.0/24",
+    "185.125.190.0/24",
+    "185.125.191.0/24"
+  ]
+  target_tags = ["honeypot"]
+  description = "HONEYPOT: Restricted egress strictly for Canonical/Ubuntu package updates"
 }
 
 # ── SIEM: Explicit public block for OpenSearch Indexer ────────────────────────
@@ -206,14 +243,15 @@ resource "google_compute_firewall" "siem_deny_indexer_public" {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
-# COMPUTE — Honeypot VM
+# COMPUTE — Honeypot VM (DMZ Subnet)
 # ══════════════════════════════════════════════════════════════════════════════
 
 resource "google_compute_instance" "honeypot" {
-  name         = "siem-lab-honeypot"
-  machine_type = var.honeypot_machine_type
-  zone         = var.zone
-  tags         = ["honeypot"]
+  name                      = "siem-lab-honeypot"
+  machine_type              = var.honeypot_machine_type
+  zone                      = var.zone
+  tags                      = ["honeypot"]
+  allow_stopping_for_update = true
 
   boot_disk {
     initialize_params {
@@ -224,12 +262,11 @@ resource "google_compute_instance" "honeypot" {
   }
 
   network_interface {
-    subnetwork = google_compute_subnetwork.public_subnet.id
+    subnetwork = google_compute_subnetwork.dmz_subnet.id
     access_config {
       # Ephemeral public IP
     }
   }
-
 
   metadata = {
     ssh-keys       = "ubuntu:${local.ssh_public_key}"
@@ -238,14 +275,15 @@ resource "google_compute_instance" "honeypot" {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
-# COMPUTE — SIEM VM
+# COMPUTE — SIEM VM (SIEM Core Subnet)
 # ══════════════════════════════════════════════════════════════════════════════
 
 resource "google_compute_instance" "siem" {
-  name         = "siem-lab-wazuh"
-  machine_type = var.siem_machine_type
-  zone         = var.zone
-  tags         = ["siem"]
+  name                      = "siem-lab-wazuh"
+  machine_type              = var.siem_machine_type
+  zone                      = var.zone
+  tags                      = ["siem"]
+  allow_stopping_for_update = true
 
   boot_disk {
     initialize_params {
@@ -256,9 +294,39 @@ resource "google_compute_instance" "siem" {
   }
 
   network_interface {
-    subnetwork = google_compute_subnetwork.public_subnet.id
+    subnetwork = google_compute_subnetwork.siem_subnet.id
     access_config {
       # Ephemeral public IP
+    }
+  }
+
+  metadata = {
+    ssh-keys = "ubuntu:${local.ssh_public_key}"
+  }
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COMPUTE — Admin Bastion Jumpbox (Admin Subnet)
+# ══════════════════════════════════════════════════════════════════════════════
+
+resource "google_compute_instance" "bastion" {
+  name         = "siem-lab-bastion"
+  machine_type = "e2-micro"
+  zone         = var.zone
+  tags         = ["admin", "bastion"]
+
+  boot_disk {
+    initialize_params {
+      image = "${var.image_project}/${var.image_family}"
+      size  = 20
+      type  = "pd-standard"
+    }
+  }
+
+  network_interface {
+    subnetwork = google_compute_subnetwork.admin_subnet.id
+    access_config {
+      # Ephemeral public IP for management jumpbox
     }
   }
 
