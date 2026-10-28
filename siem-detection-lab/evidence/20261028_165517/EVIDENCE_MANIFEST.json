@@ -1,0 +1,33 @@
+{
+  "provenance": {
+    "collector": "yogesh@Yogesh",
+    "collection_start_utc": "2026-10-28T16:55:17Z",
+    "collection_end_utc": "2026-10-28T16:55:52Z",
+    "runbook_version": "2.0.0",
+    "target_honeypot_ip": "34.121.64.158",
+    "target_siem_ip": "34.71.182.95",
+    "custody_notice": "Cryptographic hashes verify integrity from recorded collection point forward."
+  },
+  "artifacts": [
+    {
+      "filename": "honeypot_audit.log",
+      "size_bytes": 6063860,
+      "sha256": "a07c00b53dc28da0bb49ca706f095bde0f626e7615a20595fc8525296dcc1606"
+    },
+    {
+      "filename": "honeypot_auth.log",
+      "size_bytes": 304634,
+      "sha256": "ee974180a425f975c79931a61ad08605f6ab9ec4e14fd263c11eaf689c853025"
+    },
+    {
+      "filename": "honeypot_system_state.txt",
+      "size_bytes": 601,
+      "sha256": "c978336e83d792c1907353080895bc7d8e5f1d927cab95c6b143e37af17ff4dc"
+    },
+    {
+      "filename": "wazuh_alerts.json",
+      "size_bytes": 1112776,
+      "sha256": "4bcfde76dd4df151de3baa55645a25e865f1d542042908da0da0537c6ac948cf"
+    }
+  ]
+}

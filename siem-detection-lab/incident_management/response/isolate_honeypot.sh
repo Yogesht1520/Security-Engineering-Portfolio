@@ -7,13 +7,14 @@
 # communication. Supports host-level iptables containment and GCP cloud firewall
 # containment.
 #
-# USAGE:
-#   ./isolate_honeypot.sh [--host|--cloud|--all] [--undo]
+# SAFETY & RESTORATION GUARANTEES:
+# - Confirmation prompt required unless --yes is passed
+# - Cloud firewall isolation targets ONLY the tagged emergency quarantine rule
+# - Host-level un-quarantine restores from persistent baseline rules (/etc/iptables/rules.v4)
+#   ensuring host metadata protection (169.254.169.254 drop) remains strictly intact!
 #
-# EXAMPLES:
-#   ./isolate_honeypot.sh --all          # Apply both host and GCP isolation
-#   ./isolate_honeypot.sh --host         # Apply host-level iptables quarantine
-#   ./isolate_honeypot.sh --undo         # Remove isolation rules and restore access
+# USAGE:
+#   ./isolate_honeypot.sh [--host|--cloud|--all] [--undo] [--yes]
 # =============================================================================
 
 set -uo pipefail
@@ -21,14 +22,24 @@ set -uo pipefail
 HONEYPOT_IP="${HONEYPOT_IP:-34.121.64.158}"
 SIEM_IP="${SIEM_IP:-34.71.182.95}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/siem_lab_key}"
-GCP_ZONE="${GCP_ZONE:-us-central1-a}"
+if [ ! -f "$SSH_KEY" ]; then
+  for candidate in /mnt/c/Users/*/.ssh/siem_lab_key /c/Users/*/.ssh/siem_lab_key; do
+    if [ -f "$candidate" ]; then
+      mkdir -p "$HOME/.ssh"
+      cp "$candidate" "$HOME/.ssh/siem_lab_key"
+      chmod 600 "$HOME/.ssh/siem_lab_key"
+      SSH_KEY="$HOME/.ssh/siem_lab_key"
+      break
+    fi
+  done
+fi
 GCP_NETWORK_TAG="honeypot"
 GCP_RULE_NAME="emergency-honeypot-quarantine"
 
 MODE="all"
 UNDO=false
+AUTO_CONFIRM=false
 
-# Parse command line flags
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --host)
@@ -47,8 +58,12 @@ while [[ $# -gt 0 ]]; do
       UNDO=true
       shift
       ;;
+    --yes|-y)
+      AUTO_CONFIRM=true
+      shift
+      ;;
     -h|--help)
-      echo "Usage: $0 [--host|--cloud|--all] [--undo]"
+      echo "Usage: $0 [--host|--cloud|--all] [--undo] [--yes]"
       exit 0
       ;;
     *)
@@ -64,9 +79,17 @@ echo "================================================================="
 echo "Target Honeypot: $HONEYPOT_IP"
 echo "Target SIEM:     $SIEM_IP"
 echo "Execution Mode:  $MODE"
-echo "Undo / Restore:  $UNDO"
+echo "Action:          $([ "$UNDO" = true ] && echo "RESTORE / UN-QUARANTINE" || echo "ISOLATE / QUARANTINE")"
 echo "Timestamp:       $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 echo "-----------------------------------------------------------------"
+
+if [ "$AUTO_CONFIRM" = false ]; then
+  read -r -p "Are you sure you want to proceed with this operation? [y/N]: " confirm
+  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+    echo "[!] Operation cancelled by user."
+    exit 0
+  fi
+fi
 
 # ── Function: Host-level iptables isolation ───────────────────────────────────
 isolate_host() {
@@ -78,6 +101,9 @@ isolate_host() {
     # Allow loopback
     sudo iptables -A INPUT -i lo -j ACCEPT
     sudo iptables -A OUTPUT -o lo -j ACCEPT
+    
+    # Keep metadata isolation intact during quarantine
+    sudo iptables -A OUTPUT -d 169.254.169.254/32 -p tcp -j REJECT --reject-with tcp-reset
     
     # Allow established SSH session for SOC analyst
     sudo iptables -A INPUT -p tcp --dport 22 -m state --state ESTABLISHED,RELATED -j ACCEPT
@@ -99,14 +125,22 @@ isolate_host() {
 }
 
 restore_host() {
-  echo "[+] Restoring normal host-level iptables networking on honeypot..."
+  echo "[+] Restoring baseline host-level iptables networking on honeypot..."
   ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "ubuntu@${HONEYPOT_IP}" bash -c "'
     sudo iptables -P INPUT ACCEPT
     sudo iptables -P FORWARD ACCEPT
     sudo iptables -P OUTPUT ACCEPT
-    sudo iptables -F
-    sudo iptables -X
-    echo \"[+] Host iptables reset to ACCEPT default.\"
+    
+    # Reload approved baseline rules to preserve metadata protection
+    if [ -f /etc/iptables/rules.v4 ]; then
+      sudo iptables-restore < /etc/iptables/rules.v4
+      echo \"[+] Host iptables baseline restored from /etc/iptables/rules.v4.\"
+    else
+      sudo iptables -F
+      sudo iptables -X
+      sudo iptables -A OUTPUT -d 169.254.169.254/32 -p tcp -j REJECT --reject-with tcp-reset
+      echo \"[+] Host iptables reset with metadata isolation preserved.\"
+    fi
   '"
 }
 

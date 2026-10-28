@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # =============================================================================
-# preserve_evidence.sh — Automated Evidence Preservation Runbook
+# preserve_evidence.sh — Automated Forensic Evidence Preservation Runbook
 #
 # MANDATORY REQUIREMENT: Must be executed BEFORE running `terraform destroy`.
 # Collects forensic snapshots, audit logs, network state, and Wazuh alert streams.
+# Produces both SHA256SUMS.txt and a structured EVIDENCE_MANIFEST.json with
+# collector metadata, timestamps, system identities, and custody assurances.
 # =============================================================================
 
 set -uo pipefail
@@ -11,10 +13,26 @@ set -uo pipefail
 HONEYPOT_IP="${HONEYPOT_IP:-34.121.64.158}"
 SIEM_IP="${SIEM_IP:-34.71.182.95}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/siem_lab_key}"
+if [ ! -f "$SSH_KEY" ]; then
+  for candidate in /mnt/c/Users/*/.ssh/siem_lab_key /c/Users/*/.ssh/siem_lab_key; do
+    if [ -f "$candidate" ]; then
+      mkdir -p "$HOME/.ssh"
+      cp "$candidate" "$HOME/.ssh/siem_lab_key"
+      chmod 600 "$HOME/.ssh/siem_lab_key"
+      SSH_KEY="$HOME/.ssh/siem_lab_key"
+      break
+    fi
+  done
+fi
 
+START_TIME_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 TIMESTAMP=$(date -u +%Y%m%d_%H%M%S)
 EVIDENCE_DIR="evidence/${TIMESTAMP}"
 mkdir -p "$EVIDENCE_DIR"
+
+COLLECTOR_USER=$(whoami 2>/dev/null || echo "soc-analyst")
+COLLECTOR_HOST=$(hostname 2>/dev/null || echo "analyst-workstation")
+RUNBOOK_VERSION="2.0.0"
 
 echo "================================================================="
 echo "        SIEM Lab — Automated Evidence Preservation Runbook       "
@@ -22,7 +40,8 @@ echo "================================================================="
 echo "Target Honeypot: $HONEYPOT_IP"
 echo "Target SIEM:     $SIEM_IP"
 echo "Evidence Output: $EVIDENCE_DIR"
-echo "Timestamp:       $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+echo "Collector:       ${COLLECTOR_USER}@${COLLECTOR_HOST}"
+echo "Collection Start: $START_TIME_UTC"
 echo "-----------------------------------------------------------------"
 
 # ── 1. Copy host authentication and audit logs from Honeypot ─────────────────
@@ -55,18 +74,63 @@ else
   echo "  - Note: gcloud CLI not present locally; host raw logs and volatile state preserved."
 fi
 
-# ── 5. Generate Evidence Manifest & Checksum ─────────────────────────────────
-echo "[5/5] Generating cryptographic sha256 manifest..."
+# ── 5. Generate Evidence Manifest & Checksums ────────────────────────────────
+echo "[5/5] Generating cryptographic manifest and metadata chain of custody..."
+END_TIME_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
 (
   cd "$EVIDENCE_DIR"
   if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum * > SHA256SUMS.txt
+    sha256sum * 2>/dev/null | grep -v "SHA256SUMS.txt" | grep -v "EVIDENCE_MANIFEST.json" > SHA256SUMS.txt || true
   elif command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 * > SHA256SUMS.txt
+    shasum -a 256 * 2>/dev/null | grep -v "SHA256SUMS.txt" | grep -v "EVIDENCE_MANIFEST.json" > SHA256SUMS.txt || true
   fi
 )
 
+# Build JSON Manifest with complete metadata
+cat << JSON_MANIFEST > "${EVIDENCE_DIR}/EVIDENCE_MANIFEST.json"
+{
+  "provenance": {
+    "collector": "${COLLECTOR_USER}@${COLLECTOR_HOST}",
+    "collection_start_utc": "${START_TIME_UTC}",
+    "collection_end_utc": "${END_TIME_UTC}",
+    "runbook_version": "${RUNBOOK_VERSION}",
+    "target_honeypot_ip": "${HONEYPOT_IP}",
+    "target_siem_ip": "${SIEM_IP}",
+    "custody_notice": "Cryptographic hashes verify integrity from recorded collection point forward."
+  },
+  "artifacts": [
+$(
+  FIRST=true
+  for f in "${EVIDENCE_DIR}"/*; do
+    fname=$(basename "$f")
+    if [ "$fname" = "EVIDENCE_MANIFEST.json" ] || [ "$fname" = "SHA256SUMS.txt" ]; then
+      continue
+    fi
+    if [ -f "$f" ]; then
+      fsize=$(wc -c < "$f" | tr -d ' ')
+      if command -v sha256sum >/dev/null 2>&1; then
+        fhash=$(sha256sum "$f" | awk '{print $1}')
+      elif command -v shasum >/dev/null 2>&1; then
+        fhash=$(shasum -a 256 "$f" | awk '{print $1}')
+      else
+        fhash="unavailable"
+      fi
+      if [ "$FIRST" = true ]; then
+        FIRST=false
+      else
+        echo ","
+      fi
+      printf '    {\n      "filename": "%s",\n      "size_bytes": %s,\n      "sha256": "%s"\n    }' "$fname" "$fsize" "$fhash"
+    fi
+  done
+)
+  ]
+}
+JSON_MANIFEST
+
 echo "-----------------------------------------------------------------"
-echo "Evidence preservation complete. Artifacts saved in: $EVIDENCE_DIR"
+echo "Evidence preservation complete."
+echo "Artifacts and custody manifest saved in: $EVIDENCE_DIR"
 echo "It is now SAFE to proceed with teardown or rebuild."
 echo "================================================================="

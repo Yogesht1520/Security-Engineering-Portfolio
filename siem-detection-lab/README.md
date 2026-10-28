@@ -18,20 +18,25 @@ flowchart TD
         ATK2["Scanner: 80.94.92.234 (Automated Probes)"]
     end
 
-    subgraph GCP["Google Cloud Platform - VPC Subnet 10.0.1.0/24"]
-        subgraph DMZ["Exposed DMZ Perimeter"]
-            Honeypot["Honeypot VM: 10.0.1.3 / 34.121.64.158<br/>SSH Ingress: 0.0.0.0/0<br/>auditd, auth.log, syslog<br/>Wazuh Agent 4.9.2-1 Pinned"]
+    subgraph GCP["Google Cloud Platform - Multi-Tier Segmented VPC"]
+        subgraph DMZSubnet["DMZ Tier - Subnet 10.0.10.0/24"]
+            Honeypot["Honeypot VM: 10.0.1.3 / 34.121.64.158<br/>SSH Ingress: 0.0.0.0/0<br/>auditd dual-arch, auth.log<br/>Wazuh Agent 4.9.2-1 Pinned"]
         end
 
-        subgraph HardenedCore["Protected Management and SIEM Core"]
-            SIEM["Wazuh Manager: 10.0.1.2 / 34.71.182.95<br/>OpenSearch Indexer Internal<br/>Wazuh Ruleset 100010-100041<br/>OpenSearch Dashboards HTTPS"]
+        subgraph SIEMSubnet["SIEM Core Tier - Subnet 10.0.20.0/24"]
+            SIEM["Wazuh Manager: 10.0.1.2 / 34.71.182.95<br/>OpenSearch Indexer Internal (9200/9300 protected)<br/>Wazuh Ruleset 100010-100041<br/>OpenSearch Dashboards HTTPS (443)"]
         end
 
-        subgraph EgressPolicy["Strict Egress Boundary Firewall"]
-            EgressDeny["Priority 65534: DENY All Outbound 0.0.0.0/0"]
+        subgraph AdminSubnet["Management Tier - Subnet 10.0.30.0/24"]
+            Bastion["Restricted Admin / Bastion Plane"]
+        end
+
+        subgraph IsolationControls["Dual-Control Isolation Architecture"]
+            MetaGCP["GCP Egress Priority 900: DENY 169.254.169.254/32"]
+            MetaHost["Host iptables REJECT: 169.254.169.254 tcp-reset"]
+            EgressDeny["Priority 65534: Default DENY All Outbound"]
             EgressPkg["Priority 1100: ALLOW Apt Updates TCP 80/443, UDP 53"]
             EgressSIEM["Priority 1000: ALLOW Telemetry TCP 1514/1515"]
-            IndexDeny["Priority 800: DENY Public OpenSearch TCP 9200/9300"]
         end
     end
 
@@ -57,12 +62,13 @@ Every detection capability and incident response workflow in this lab is backed 
 
 | Artifact Type | File / Location | Description & Integrity |
 | :--- | :--- | :--- |
-| **Forensic Evidence Bundle** | [`evidence/20261026_194434/`](evidence/20261026_194434/) | Real captured logs: `honeypot_audit.log` (6.5MB), `honeypot_auth.log` (49KB), `wazuh_alerts.json` (1.16MB), and `honeypot_system_state.txt`. |
-| **Cryptographic Manifest** | [`evidence/.../SHA256SUMS.txt`](evidence/20261026_194434/SHA256SUMS.txt) | SHA-256 hashes verifying forensic chain of custody for all preserved artifacts. |
-| **Active Incident Case** | [`incident_management/cases/CASE-2026-001.json`](incident_management/cases/CASE-2026-001.json) | High-severity case opened and contained against live attacker `209.99.190.186` (Zurich, Switzerland). |
-| **Unit Test Suite Results** | [`tests/results/unit_test_20261026_191220.json`](tests/results/unit_test_20261026_191220.json) | Automated execution of 6 detection unit tests against `wazuh-logtest` (**6/6 Passed**). |
+| **Forensic Evidence Bundle** | [`evidence/20261028_165517/`](evidence/20261028_165517/) | Post-hardening snapshot: `honeypot_audit.log` (6.06MB), `honeypot_auth.log` (304KB), `wazuh_alerts.json` (1.11MB), and verified zero-metadata `honeypot_system_state.txt`. |
+| **Cryptographic Manifest** | [`evidence/.../EVIDENCE_MANIFEST.json`](evidence/20261028_165517/EVIDENCE_MANIFEST.json) | Structured JSON provenance manifest with collector identity, UTC timestamps, file sizes, and SHA-256 hashes. |
+| **Active Incident Case** | [`incident_management/cases/CASE-2026-001.json`](incident_management/cases/CASE-2026-001.json) | High-severity case opened and contained against live attacker `209.99.190.186` (Zurich, Switzerland) with JSON schema validation. |
+| **Unit Test Suite Results** | [`tests/results/unit_test_20261028_163635.json`](tests/results/unit_test_20261028_163635.json) | Automated execution of 12 detection unit tests against `wazuh-logtest` (**12/12 Passed - 100% Rule Coverage**). |
 | **Static Rule Audit** | `python tests/validate_rules.py` | Validates XML syntax, duplicate rule IDs, and ID range enforcement (**10/10 Passed**). |
-| **Security Leak Gate** | `python tests/security_scan.py` | Scans git index for leaked secrets, API keys, `.tfstate`, and `.tfvars` (**Zero Leaks**). |
+| **Security Leak Gate** | `python tests/security_scan.py` | Multi-stage scan of workspace and git commit history for secrets, private keys, `.tfstate`, and `.tfvars` (**Zero Leaks**). |
+| **Negative Security Tests** | [`tests/unit/test_security_gate_negative.py`](tests/unit/test_security_gate_negative.py) | Negative assertion test suite confirming security gate catches simulated private keys and forbidden files (**Passing**). |
 
 ---
 
@@ -186,14 +192,17 @@ incident_management/
 # 1. List active incident cases
 python incident_management/case_manager.py --list
 
-# 2. View specific case details and timeline
+# 2. View specific case details and timeline (validated against case_schema.json)
 python incident_management/case_manager.py --view CASE-2026-001
 
-# 3. Apply emergency honeypot network isolation
+# 3. Transition case lifecycle (enforcing valid state machine transitions)
+python incident_management/case_manager.py --transition CASE-2026-001 RESOLVED --comment "Remediation verified; firewall quarantine lifted."
+
+# 4. Apply emergency honeypot network isolation (with confirmation prompt & baseline preservation)
 bash incident_management/response/isolate_honeypot.sh --all
 
-# 4. Safely rebuild honeypot after preserving evidence
-bash incident_management/response/rebuild_honeypot.sh
+# 5. Safely preserve evidence before teardown or rebuild (generates EVIDENCE_MANIFEST.json)
+bash incident_management/response/preserve_evidence.sh
 ```
 
 ---

@@ -2,29 +2,55 @@
 """
 geoip.py — Autonomous GeoIP Enrichment Utility
 
-Looks up public IP address details via ip-api.com:
-- Country
-- City / Region
-- ISP / Autonomous System Number (ASN)
+Looks up public IP address details via encrypted HTTPS:
+- RFC1918 / Loopback / Bogon pre-validation (prevents private IP leakage)
+- Encrypted HTTPS lookup via ip-api.com
+- Enriches: Country, City / Region, ISP, ASN
 """
 
 import sys
 import json
+import ipaddress
 import urllib.request
 import urllib.error
 
 def lookup_ip(ip_address: str) -> dict:
-    url = f"http://ip-api.com/json/{ip_address}?fields=status,message,country,city,regionName,isp,as,query"
+    clean_ip = ip_address.strip()
+    
+    # 1. IP address syntactic and scope validation
+    try:
+        ip_obj = ipaddress.ip_address(clean_ip)
+    except ValueError as e:
+        return {
+            "ip": clean_ip,
+            "status": "error",
+            "message": f"Invalid IP address format: {e}"
+        }
+
+    # 2. Strict Bogon & Internal RFC1918 filter — Never query third parties for private IPs
+    if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_reserved or ip_obj.is_multicast:
+        return {
+            "ip": clean_ip,
+            "status": "success",
+            "country": "Internal / RFC1918",
+            "city": "Private Network",
+            "region": "Local Infrastructure",
+            "isp": "Private Enterprise Routing",
+            "asn": "AS0 (Internal)"
+        }
+
+    # 3. Encrypted HTTPS external enrichment for public addresses
+    url = f"https://ip-api.com/json/{clean_ip}?fields=status,message,country,city,regionName,isp,as,query"
     try:
         req = urllib.request.Request(
             url,
-            headers={"User-Agent": "SIEM-Lab-Enrichment/1.0"}
+            headers={"User-Agent": "SIEM-Lab-Enrichment/2.0 (Security Engineering Lab)"}
         )
         with urllib.request.urlopen(req, timeout=5) as response:
             data = json.loads(response.read().decode())
             if data.get("status") == "success":
                 return {
-                    "ip": ip_address,
+                    "ip": clean_ip,
                     "status": "success",
                     "country": data.get("country", "Unknown"),
                     "city": data.get("city", "Unknown"),
@@ -34,13 +60,13 @@ def lookup_ip(ip_address: str) -> dict:
                 }
             else:
                 return {
-                    "ip": ip_address,
+                    "ip": clean_ip,
                     "status": "fail",
                     "message": data.get("message", "Lookup failed")
                 }
     except Exception as e:
         return {
-            "ip": ip_address,
+            "ip": clean_ip,
             "status": "error",
             "message": str(e)
         }
