@@ -16,13 +16,13 @@ This document provides architectural evidence and verification procedures provin
                        │
              ┌─────────▼─────────┐
              │    Honeypot VM    │ ──(Blocked: TCP 22, 443)──x  SIEM Management Plane
-             │ (10.0.1.10)       │
+             │ (10.0.10.2 - DMZ) │
              └─────────┬─────────┘
                        │ Allowed: TCP 1514 (Wazuh Agent), TCP 1515 (Enrollment)
                        ▼
              ┌───────────────────┐
-             │   SIEM Manager    │ ◄── Management Access (TCP 22, 443)
-             │ (10.0.1.20)       │     [Restricted to var.your_public_ip ONLY]
+             │   SIEM Manager    │ ◄── Management Access (TCP 22, 443 via Bastion)
+             │ (10.0.20.2 - Core)│     [Restricted to Admin Subnet 10.0.30.0/24]
              └───────────────────┘
 ```
 
@@ -78,7 +78,7 @@ Run these verification commands directly from the **Honeypot VM** to prove isola
 ```bash
 #!/usr/bin/env bash
 # boundary_test.sh — Executed on Honeypot VM
-SIEM_INTERNAL_IP="10.0.1.20" # Replace with your SIEM VM internal IP
+SIEM_INTERNAL_IP="10.0.20.2" # SIEM Core Subnet Internal IP
 
 echo "=== Verifying Network Isolation Boundaries ==="
 

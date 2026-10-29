@@ -43,19 +43,20 @@ terraform validate
 terraform apply -auto-approve
 ```
 
-**Terraform provisions 11 resources:**
-- Subnet: `10.0.1.0/24` in `us-central1`
-- `siem-lab-wazuh`: Fixed private IP `10.0.1.2`
-- `siem-lab-honeypot`: Fixed private IP `10.0.1.3`
-- Firewalls: Egress deny-all (`priority 65534`) on honeypot, package updates allow (`priority 1100`), Wazuh agent telemetry (`priority 1000`), OpenSearch public deny (`priority 800`).
+**Terraform provisions 3-Tier Hardened Architecture:**
+- Tier 1 (DMZ Subnet `10.0.10.0/24`): `siem-lab-honeypot` (Private IP `10.0.10.2`, Public Honeypot IP)
+- Tier 2 (SIEM Core Subnet `10.0.20.0/24`): `siem-lab-wazuh` (Private IP `10.0.20.2`, No Public IP)
+- Tier 3 (Admin Management Subnet `10.0.30.0/24`): `siem-lab-bastion` (Private IP `10.0.30.2`, Bastion Public IP)
+- Firewalls: Egress default-deny (`priority 65534`) on honeypot, package updates allow (`priority 1110`), Wazuh agent telemetry (`priority 1000`), OpenSearch public deny (`priority 800`).
 
 ---
 
 ## 3. Wazuh SIEM Stack Installation
 
-SSH into the newly created SIEM VM using the public IP from Terraform output:
+SSH into the SIEM VM through the Admin Bastion jumpbox (SIEM has no public IP):
 ```bash
-ssh -i ~/.ssh/siem_lab_key ubuntu@<SIEM_PUBLIC_IP>
+# Connect via Bastion Jumpbox ProxyJump
+ssh -i ~/.ssh/siem_lab_key -J ubuntu@<BASTION_PUBLIC_IP> ubuntu@10.0.20.2
 ```
 
 Install Wazuh 4.9.2 All-in-One:
@@ -90,7 +91,7 @@ sudo apt-mark hold wazuh-agent
 
 Enroll the agent against the private SIEM manager IP:
 ```bash
-sudo /var/ossec/bin/agent-auth -m 10.0.1.2 -A siem-lab-honeypot
+sudo /var/ossec/bin/agent-auth -m 10.0.20.2 -A siem-lab-honeypot
 sudo systemctl restart wazuh-agent
 ```
 
@@ -104,11 +105,11 @@ From your local machine or repository root, deploy the custom detection rules to
 # Verify static rule syntax locally first
 python tests/validate_rules.py
 
-# Push custom rules to SIEM manager
-scp -i ~/.ssh/siem_lab_key wazuh/custom_rules/*.xml ubuntu@<SIEM_PUBLIC_IP>:/tmp/
+# Push custom rules to SIEM manager (via Bastion jumpbox)
+scp -i ~/.ssh/siem_lab_key -o "ProxyJump=ubuntu@<BASTION_PUBLIC_IP>" wazuh/custom_rules/*.xml ubuntu@10.0.20.2:/tmp/
 
 # On SIEM Manager: Install and verify syntax
-ssh -i ~/.ssh/siem_lab_key ubuntu@<SIEM_PUBLIC_IP> "
+ssh -i ~/.ssh/siem_lab_key -J ubuntu@<BASTION_PUBLIC_IP> ubuntu@10.0.20.2 "
   sudo cp /tmp/*.xml /var/ossec/etc/rules/
   sudo chown wazuh:wazuh /var/ossec/etc/rules/*.xml
   sudo /var/ossec/bin/wazuh-analysisd -t

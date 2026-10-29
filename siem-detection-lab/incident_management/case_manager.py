@@ -7,6 +7,7 @@ Provides end-to-end incident case tracking:
   --list: Displays all open, contained, and closed cases
   --view: Shows full JSON details of a specific case
   --transition: Formally transitions case status with audit timeline entry
+  --reopen: Privileged reopening of terminal cases with authorization seal
   --add-alert: Appends a Wazuh alert ID to an existing case
   --close: Formally closes a case with resolution notes
 
@@ -14,6 +15,8 @@ Security & Data Integrity Guarantees:
 - Full JSON Schema validation against case_schema.json prior to every disk write
 - IP syntactic validation (ipaddress module)
 - Atomic file replacement (write-to-temp + os.replace) to prevent file corruption
+- Strict state machine enforcement: Disallows ordinary transitions out of terminal states
+- Privileged Reopen Governance: Requires explicit authorizer, justification, and SHA-256 seal
 - Timezone-aware UTC timestamps
 - Complete audit logging in the case timeline
 """
@@ -21,6 +24,7 @@ Security & Data Integrity Guarantees:
 import os
 import sys
 import json
+import hashlib
 import argparse
 import ipaddress
 from datetime import datetime, timezone
@@ -46,12 +50,13 @@ os.makedirs(CASES_DIR, exist_ok=True)
 # Valid status list and formal state machine transition rules
 VALID_STATUSES = ["open", "investigating", "contained", "closed", "false_positive"]
 
+# Strict transition matrix: Terminal states ('closed', 'false_positive') require privileged reopen
 TRANSITION_MATRIX = {
     "open": ["investigating", "contained", "false_positive"],
     "investigating": ["contained", "closed", "false_positive"],
     "contained": ["investigating", "closed"],
-    "closed": ["open", "investigating"],          # Authorized reopen
-    "false_positive": ["open", "investigating"],  # Authorized reopen
+    "closed": [],          # Ordinary transitions disallowed; requires privileged --reopen
+    "false_positive": [],  # Ordinary transitions disallowed; requires privileged --reopen
 }
 
 def get_utc_now() -> str:
@@ -142,6 +147,7 @@ def create_case(title: str, severity: str, source_ip: str, analyst: str = "SOC A
                 "event": f"Case opened with severity {severity.upper()} targeting IP {clean_ip} by {analyst}"
             }
         ],
+        "reopen_records": [],
         "containment_actions": [],
         "evidence_preserved": False,
         "analyst": analyst,
@@ -184,7 +190,7 @@ def transition_case(case_id: str, new_status: str, notes: str = "", analyst: str
     fpath = os.path.join(CASES_DIR, f"{case_id}.json")
     if not os.path.exists(fpath):
         print(f"Error: Case {case_id} not found.")
-        return
+        sys.exit(1)
     with open(fpath, "r", encoding="utf-8") as f:
         case = json.load(f)
 
@@ -194,6 +200,13 @@ def transition_case(case_id: str, new_status: str, notes: str = "", analyst: str
         sys.exit(1)
 
     old_status = case.get("status", "open").lower().strip()
+
+    # Guard: terminal cases cannot be reopened via regular transition
+    if old_status in ["closed", "false_positive"]:
+        print(f"Error: Disallowed transition out of terminal state '{old_status.upper()}'.")
+        print("Privileged Governance: Reopening closed cases requires explicit authorization via --reopen.")
+        sys.exit(1)
+
     allowed_transitions = TRANSITION_MATRIX.get(old_status, [])
     if clean_status != old_status and clean_status not in allowed_transitions:
         print(f"Error: Disallowed lifecycle transition from '{old_status.upper()}' to '{clean_status.upper()}'.")
@@ -218,6 +231,68 @@ def transition_case(case_id: str, new_status: str, notes: str = "", analyst: str
 
     atomic_save_case(case_id, case)
     print(f"[+] Case {case_id} transitioned to {clean_status.upper()}.")
+
+def reopen_case(case_id: str, authorizer: str, justification: str, target_status: str = "investigating", analyst: str = "SOC Analyst"):
+    """Privileged reopening of a closed or false-positive incident with immutable audit trail."""
+    fpath = os.path.join(CASES_DIR, f"{case_id}.json")
+    if not os.path.exists(fpath):
+        print(f"Error: Case {case_id} not found.")
+        sys.exit(1)
+    with open(fpath, "r", encoding="utf-8") as f:
+        case = json.load(f)
+
+    old_status = case.get("status", "").lower().strip()
+    if old_status not in ["closed", "false_positive"]:
+        print(f"Error: Case {case_id} is currently in status '{old_status.upper()}' (not a closed terminal state). Use --transition instead.")
+        sys.exit(1)
+
+    clean_authorizer = authorizer.strip()
+    if not clean_authorizer:
+        print("Error: Privileged reopen REJECTED: --authorizer is required to identify the approving lead/manager.")
+        sys.exit(1)
+
+    clean_justification = justification.strip()
+    if len(clean_justification) < 10:
+        print("Error: Privileged reopen REJECTED: --justification must provide substantive operational reasoning (min 10 characters).")
+        sys.exit(1)
+
+    clean_target = target_status.lower().strip()
+    if clean_target not in ["open", "investigating"]:
+        print(f"Error: Invalid reopen target status '{clean_target}'. Must be 'open' or 'investigating'.")
+        sys.exit(1)
+
+    # Compute deterministic SHA-256 seal of the prior case state
+    prior_state_canonical = json.dumps(case, sort_keys=True)
+    prior_state_sha256 = hashlib.sha256(prior_state_canonical.encode("utf-8")).hexdigest()
+
+    timestamp = get_utc_now()
+    case["status"] = clean_target
+    case["closed_at"] = None
+
+    if "reopen_records" not in case:
+        case["reopen_records"] = []
+
+    reopen_entry = {
+        "reopened_at": timestamp,
+        "authorizer": clean_authorizer,
+        "justification": clean_justification,
+        "prior_status": old_status,
+        "prior_state_sha256": prior_state_sha256
+    }
+    case["reopen_records"].append(reopen_entry)
+
+    timeline_event = {
+        "timestamp": timestamp,
+        "event": f"PRIVILEGED REOPEN AUTHORIZED by {clean_authorizer} (Transitioned: {old_status.upper()} -> {clean_target.upper()}). Justification: {clean_justification} [Prior State Seal: {prior_state_sha256[:16]}...]",
+        "authorizer": clean_authorizer,
+        "justification": clean_justification
+    }
+    case["timeline"].append(timeline_event)
+
+    atomic_save_case(case_id, case)
+    print(f"[+] Case {case_id} REOPENED to status {clean_target.upper()} under authority of '{clean_authorizer}'.")
+    print(f"    Cryptographic Prior State Seal: {prior_state_sha256}")
+    return case
 
 def add_alert_to_case(case_id: str, alert_id: str, analyst: str = "SOC Analyst"):
     fpath = os.path.join(CASES_DIR, f"{case_id}.json")
@@ -250,8 +325,12 @@ def main():
     parser.add_argument("--analyst", type=str, default="SOC Analyst", help="Analyst handling the case")
     parser.add_argument("--list", action="store_true", help="List all tracked cases")
     parser.add_argument("--view", type=str, help="View case details by Case ID")
-    parser.add_argument("--transition", nargs=2, metavar=("CASE_ID", "STATUS"), help="Transition case status")
+    parser.add_argument("--transition", nargs=2, metavar=("CASE_ID", "STATUS"), help="Standard lifecycle transition")
     parser.add_argument("--notes", type=str, default="", help="Optional notes for transition or resolution")
+    parser.add_argument("--reopen", type=str, metavar="CASE_ID", help="Privileged reopen of a closed or false-positive case")
+    parser.add_argument("--authorizer", type=str, default="", help="Identity of authority approving privileged reopen")
+    parser.add_argument("--justification", type=str, default="", help="Substantive justification for privileged reopen")
+    parser.add_argument("--target-status", type=str, default="investigating", choices=["open", "investigating"], help="Target status upon reopen")
     parser.add_argument("--add-alert", nargs=2, metavar=("CASE_ID", "ALERT_ID"), help="Link an alert to a case")
     parser.add_argument("--close", nargs=2, metavar=("CASE_ID", "RESOLUTION"), help="Close a case")
 
@@ -268,6 +347,8 @@ def main():
         view_case(args.view)
     elif args.transition:
         transition_case(args.transition[0], args.transition[1], notes=args.notes, analyst=args.analyst)
+    elif args.reopen:
+        reopen_case(args.reopen, authorizer=args.authorizer, justification=args.justification, target_status=args.target_status, analyst=args.analyst)
     elif args.add_alert:
         add_alert_to_case(args.add_alert[0], args.add_alert[1], analyst=args.analyst)
     elif args.close:

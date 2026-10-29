@@ -24,7 +24,7 @@ flowchart TD
         end
 
         subgraph SIEMSubnet["SIEM Core Tier - Subnet 10.0.20.0/24"]
-            SIEM["Wazuh Manager: 10.0.20.2 / 34.71.182.95<br/>OpenSearch Indexer Internal (9200/9300 protected)<br/>Wazuh Ruleset 100010-100041<br/>OpenSearch Dashboards HTTPS (443)"]
+            SIEM["Wazuh Manager: 10.0.20.2 (Private Core - No Public IP)<br/>OpenSearch Indexer Internal (9200/9300 protected)<br/>Wazuh Ruleset 100010-100041<br/>OpenSearch Dashboards HTTPS (443 via Bastion Tunnel)"]
         end
 
         subgraph AdminSubnet["Management Tier - Subnet 10.0.30.0/24"]

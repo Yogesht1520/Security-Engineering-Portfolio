@@ -115,12 +115,9 @@ isolate_host() {
     sudo iptables -A INPUT -p tcp --dport 22 -m state --state ESTABLISHED,RELATED -j ACCEPT
     sudo iptables -A OUTPUT -p tcp --sport 22 -m state --state ESTABLISHED,RELATED -j ACCEPT
     
-    # Allow Wazuh agent telemetry to internal SIEM (supports both 10.0.1.2 and 10.0.20.2)
-    sudo iptables -A OUTPUT -p tcp -d 10.0.1.2 --dport 1514 -j ACCEPT 2>/dev/null || true
-    sudo iptables -A OUTPUT -p tcp -d 10.0.1.2 --dport 1515 -j ACCEPT 2>/dev/null || true
+    # Allow Wazuh agent telemetry to internal SIEM Subnet Manager (10.0.20.2)
     sudo iptables -A OUTPUT -p tcp -d 10.0.20.2 --dport 1514 -j ACCEPT
     sudo iptables -A OUTPUT -p tcp -d 10.0.20.2 --dport 1515 -j ACCEPT
-    sudo iptables -A INPUT -p tcp -s 10.0.1.2 -j ACCEPT 2>/dev/null || true
     sudo iptables -A INPUT -p tcp -s 10.0.20.2 -j ACCEPT
     
     # DROP ALL other ingress and egress
@@ -144,11 +141,8 @@ restore_host() {
   echo "[+] Restoring baseline host-level iptables networking on honeypot..."
   ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "ubuntu@${HONEYPOT_IP}" bash -c "'
     set -eo pipefail
-    sudo iptables -P INPUT ACCEPT
-    sudo iptables -P FORWARD ACCEPT
-    sudo iptables -P OUTPUT ACCEPT
     
-    # Reload approved baseline rules to preserve metadata protection
+    # Reload approved baseline rules to preserve metadata and egress protection
     if [ -f /etc/iptables/rules.v4 ]; then
       sudo iptables-restore < /etc/iptables/rules.v4
       echo \"  [✓] Host iptables baseline restored from /etc/iptables/rules.v4.\"
@@ -156,12 +150,50 @@ restore_host() {
       sudo iptables-restore < /var/backups/iptables_pre_quarantine.rules
       echo \"  [✓] Host iptables restored from pre-quarantine backup.\"
     else
+      # Reconstruct defense-in-depth baseline if backup files are absent
       sudo iptables -F
       sudo iptables -X
-      # Maintain metadata block
+      
+      # Allow loopback
+      sudo iptables -A INPUT -i lo -j ACCEPT
+      sudo iptables -A OUTPUT -o lo -j ACCEPT
+      
+      # Critical metadata server block
       sudo iptables -A OUTPUT -d 169.254.169.254/32 -p tcp -j REJECT --reject-with tcp-reset
-      sudo iptables -A OUTPUT -d 169.254.169.254/32 -p tcp -j REJECT --reject-with tcp-reset
-      echo \"[+] Host iptables reset with metadata isolation preserved.\"
+      
+      # Established connections
+      sudo iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+      sudo iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+      
+      # Honeypot intentional SSH exposure
+      sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+      
+      # SIEM Telemetry Egress (10.0.20.2)
+      sudo iptables -A OUTPUT -p tcp -d 10.0.20.2 --dport 1514 -j ACCEPT
+      sudo iptables -A OUTPUT -p tcp -d 10.0.20.2 --dport 1515 -j ACCEPT
+      
+      # Explicit DNS Resolvers
+      sudo iptables -A OUTPUT -p udp -d 8.8.8.8 --dport 53 -j ACCEPT
+      sudo iptables -A OUTPUT -p udp -d 8.8.4.4 --dport 53 -j ACCEPT
+      sudo iptables -A OUTPUT -p udp -d 1.1.1.1 --dport 53 -j ACCEPT
+      sudo iptables -A OUTPUT -p tcp -d 8.8.8.8 --dport 53 -j ACCEPT
+      sudo iptables -A OUTPUT -p tcp -d 8.8.4.4 --dport 53 -j ACCEPT
+      sudo iptables -A OUTPUT -p tcp -d 1.1.1.1 --dport 53 -j ACCEPT
+      
+      # Ubuntu Package Repositories
+      for cidr in 91.189.91.0/24 91.189.92.0/24 185.125.190.0/24 185.125.191.0/24; do
+        sudo iptables -A OUTPUT -p tcp -d \"\$cidr\" --dport 80 -j ACCEPT
+        sudo iptables -A OUTPUT -p tcp -d \"\$cidr\" --dport 443 -j ACCEPT
+      done
+      
+      # Set default policies (default-deny outbound)
+      sudo iptables -P INPUT ACCEPT
+      sudo iptables -P FORWARD DROP
+      sudo iptables -P OUTPUT DROP
+      
+      sudo mkdir -p /etc/iptables
+      sudo iptables-save > /etc/iptables/rules.v4
+      echo \"  [✓] Host iptables baseline reconstructed with strict egress controls and saved.\"
     fi
   '"
 }
@@ -212,6 +244,6 @@ else
   fi
   echo "-----------------------------------------------------------------"
   echo "[!] QUARANTINE ACTIVE: Honeypot is isolated from public traffic."
-  echo "    Wazuh agent can still send telemetry to SIEM (10.0.1.2)."
+  echo "    Wazuh agent can still send telemetry to SIEM Manager (10.0.20.2)."
   echo "================================================================="
 fi

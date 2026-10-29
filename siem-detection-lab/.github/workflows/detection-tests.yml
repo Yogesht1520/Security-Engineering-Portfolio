@@ -1,0 +1,84 @@
+name: Detection Engineering CI & Regression Suite
+
+on:
+  push:
+    paths:
+      - 'wazuh/custom_rules/**'
+      - 'tests/**'
+      - 'incident_management/**'
+      - 'infra/setup_honeypot.sh'
+      - '.github/workflows/detection-tests.yml'
+  pull_request:
+    paths:
+      - 'wazuh/custom_rules/**'
+      - 'tests/**'
+      - 'incident_management/**'
+      - 'infra/setup_honeypot.sh'
+      - '.github/workflows/detection-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  unit-and-governance-gates:
+    name: Detection & Governance Quality Gates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: '3.11'
+
+      - name: Install Test Dependencies
+        run: pip install jsonschema
+
+      - name: 1. Validate Wazuh Rules XML Syntax & ID Ranges
+        run: python tests/validate_rules.py
+
+      - name: 2. Run Security Gate Negative Failure Assertions
+        run: python tests/unit/test_security_gate_negative.py
+
+      - name: 3. Run Incident Case Lifecycle & Privileged Reopen Assertions
+        run: python tests/unit/test_case_manager_lifecycle.py
+
+      - name: 4. Run Auditd Transactional Rollback Simulation
+        run: bash tests/unit/test_auditd_rollback.sh
+
+  wazuh-logtest-regression:
+    name: Wazuh Rule Unit Test Suite (15 Test Cases)
+    runs-on: ubuntu-latest
+    needs: unit-and-governance-gates
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install Wazuh Manager Engine (wazuh-logtest)
+        run: |
+          echo "[*] Adding Wazuh official apt repository..."
+          curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --dearmor -o /usr/share/keyrings/wazuh.gpg
+          echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends wazuh-manager=4.9.2-1
+
+      - name: Install Custom Rules & Validate Analysisd
+        run: |
+          echo "[*] Staging custom detection rules..."
+          sudo cp wazuh/custom_rules/*.xml /var/ossec/etc/rules/
+          sudo chown -R wazuh:wazuh /var/ossec/etc/rules/
+          sudo /var/ossec/bin/wazuh-analysisd -t
+
+      - name: Execute 15/15 Detection Regression Suite
+        run: bash tests/unit/run_rule_unit_tests.sh
+
+      - name: Upload Test Results Artifact
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        if: always()
+        with:
+          name: wazuh-detection-regression-results
+          path: tests/results/
+

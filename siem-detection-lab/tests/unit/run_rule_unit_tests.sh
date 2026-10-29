@@ -60,10 +60,18 @@ if ! command -v "$LOGTEST_BIN" >/dev/null 2>&1 && [ ! -x "$LOGTEST_BIN" ]; then
   fi
 fi
 
-# ── If running on Wazuh Manager VM ───────────────────────────────────────────
+# ── If running on Wazuh Manager VM / CI Container ───────────────────────────
 RESULTS_DIR="tests/results"
 sudo mkdir -p "$RESULTS_DIR" 2>/dev/null || mkdir -p "$RESULTS_DIR"
 sudo chown -R "$USER":"$USER" "$RESULTS_DIR" 2>/dev/null || true
+
+# Synchronize repository custom rules into Wazuh rules directory if present
+if [ -d "wazuh/custom_rules" ] && [ -d "/var/ossec/etc/rules" ]; then
+  echo -e "${CYAN}[*] Synchronizing custom detection rules to /var/ossec/etc/rules/...${NC}"
+  sudo cp wazuh/custom_rules/*.xml /var/ossec/etc/rules/ 2>/dev/null || true
+  sudo chown -R wazuh:wazuh /var/ossec/etc/rules/*.xml 2>/dev/null || true
+fi
+
 RESULT_JSON="${RESULTS_DIR}/unit_test_$(date +%Y%m%d_%H%M%S).json"
 TEMP_ENTRIES=$(mktemp)
 
@@ -306,6 +314,7 @@ $(cat "$TEMP_ENTRIES")
   ]
 }
 JSON_DOC
+cp "$RESULT_JSON" "${RESULTS_DIR}/unit_test_latest.json"
 rm -f "$TEMP_ENTRIES"
 
 echo -e "\n----------------------------------------------------------------"

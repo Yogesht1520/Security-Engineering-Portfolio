@@ -13,7 +13,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SIEM_HOST="${1:-10.0.1.2}"
+SIEM_HOST="${1:-10.0.20.2}"
 WAZUH_PASS="${2:-${WAZUH_PASSWORD:-}}"
 
 if [ -z "$WAZUH_PASS" ]; then

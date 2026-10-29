@@ -109,9 +109,9 @@ resource "google_compute_firewall" "siem_allow_mgmt" {
     ports    = ["22", "443"]
   }
 
-  source_ranges = [var.your_public_ip, google_compute_subnetwork.admin_subnet.ip_cidr_range]
+  source_ranges = [google_compute_subnetwork.admin_subnet.ip_cidr_range]
   target_tags   = ["siem"]
-  description   = "SIEM: SSH and Dashboard restricted to your IP and Admin subnet"
+  description   = "SIEM: SSH and Dashboard restricted strictly to Admin Subnet via Bastion"
 }
 
 # ── SIEM: Agent Ports (DMZ Subnet Only) ───────────────────────────────────────
@@ -243,6 +243,29 @@ resource "google_compute_firewall" "siem_deny_indexer_public" {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
+# CLOUD NAT — Secure Outbound Connectivity for Private Core Subnet
+# ══════════════════════════════════════════════════════════════════════════════
+
+resource "google_compute_router" "nat_router" {
+  name    = "siem-lab-nat-router"
+  region  = var.region
+  network = google_compute_network.siem_lab_vpc.id
+}
+
+resource "google_compute_router_nat" "nat_gateway" {
+  name                               = "siem-lab-nat-gateway"
+  router                             = google_compute_router.nat_router.name
+  region                             = var.region
+  nat_ip_allocate_option             = "AUTO_ONLY"
+  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+
+  log_config {
+    enable = false
+    filter = "ERRORS_ONLY"
+  }
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
 # COMPUTE — Honeypot VM (DMZ Subnet)
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -295,9 +318,7 @@ resource "google_compute_instance" "siem" {
 
   network_interface {
     subnetwork = google_compute_subnetwork.siem_subnet.id
-    access_config {
-      # Ephemeral public IP
-    }
+    # No public IP: SIEM is accessible exclusively via Admin Bastion jumpbox
   }
 
   metadata = {

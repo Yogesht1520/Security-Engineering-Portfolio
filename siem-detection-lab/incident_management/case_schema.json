@@ -70,7 +70,23 @@
         "required": ["timestamp", "event"],
         "properties": {
           "timestamp": { "type": "string" },
-          "event": { "type": "string" }
+          "event": { "type": "string" },
+          "authorizer": { "type": "string" },
+          "justification": { "type": "string" }
+        }
+      }
+    },
+    "reopen_records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["reopened_at", "authorizer", "justification", "prior_status", "prior_state_sha256"],
+        "properties": {
+          "reopened_at": { "type": "string" },
+          "authorizer": { "type": "string" },
+          "justification": { "type": "string" },
+          "prior_status": { "type": "string" },
+          "prior_state_sha256": { "type": "string" }
         }
       }
     },

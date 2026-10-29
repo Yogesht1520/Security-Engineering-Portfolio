@@ -2,10 +2,17 @@
 """
 geoip.py — Autonomous GeoIP Enrichment Utility
 
-Looks up public IP address details via encrypted HTTPS:
-- RFC1918 / Loopback / Bogon pre-validation (prevents private IP leakage)
-- Encrypted HTTPS lookup via ip-api.com
-- Enriches: Country, City / Region, ISP, ASN
+Enforces an explicit IANA-derived Special-Purpose and Bogon Address Policy:
+- Implements deterministic pre-validation based on authoritative IANA Special-Purpose
+  Address Registries (RFC 6890 / RFC 5735 / RFC 5156 / RFC 6598 / RFC 5737).
+- Policy Contract: Prevents leakage of internal, benchmarking, documentation, or
+  reserved addresses to external third-party lookup APIs.
+- Maintenance Governance: Maintained against the official IANA IPv4 & IPv6 registries:
+  https://www.iana.org/assignments/iana-ipv4-special-registry/
+  https://www.iana.org/assignments/iana-ipv6-special-registry/
+- Encrypted external HTTPS lookup via ip-api.com strictly for routable public unicast.
+- Enriches: Country, City / Region, ISP, ASN.
+- In-memory caching minimizes redundant outbound queries and respects rate limits.
 """
 
 import sys
@@ -14,7 +21,10 @@ import ipaddress
 import urllib.request
 import urllib.error
 
-# Authoritative IANA Special-Purpose and Bogon Address Ranges (RFC 6890 / RFC 5735 / RFC 5156)
+# Authoritative IANA Special-Purpose Address Policy (RFC 6890 / RFC 5735 / RFC 5156)
+# Governed baseline of reserved, protocol-assignment, and non-routable address prefixes.
+# Audited against the IANA IPv4 and IPv6 Special-Purpose Registries.
+IANA_BOGON_POLICY_VERSION = "2026.1"
 IANA_BOGON_NETWORKS = [
     # IPv4 Special Purpose & Bogons
     ipaddress.ip_network("0.0.0.0/8"),          # Current network (only valid as source)

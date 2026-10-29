@@ -93,10 +93,11 @@ def scan_file_contents():
     return len(violations) == 0
 
 def scan_git_history():
-    print("\n[3/4] Scanning complete Git commit history for siem-detection-lab (fail-closed)...")
+    print("\n[3/4] Scanning complete Git commit history for siem-detection-lab across all refs (fail-closed)...")
     try:
+        # Scans all local and fetched remote refs (--all) across complete history (--full-history)
         log_diff = subprocess.check_output(
-            ["git", "log", "-p", "--full-history", "--", "."],
+            ["git", "log", "-p", "--full-history", "--all", "--", "."],
             text=True,
             errors="ignore"
         )
