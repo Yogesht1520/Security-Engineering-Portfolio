@@ -4,30 +4,50 @@
 
 ---
 
-## 1. Virtual Machine Access
+## 1. Virtual Machine Access (3-Tier Hardened Architecture)
 
-### SIEM Manager VM (`siem-lab-wazuh`)
-- **Public IP**: `<SIEM_PUBLIC_IP>` (retrieve via: `terraform output -raw siem_public_ip`)
-- **Private IP**: `10.0.1.2`
-- **Machine Type**: `e2-standard-2` (2 vCPU, 8 GB RAM, 100 GB SSD)
-- **Allowed Management IP**: `<YOUR_PUBLIC_IP>/32`
+### Tier 3: Admin Bastion Jumpbox (`siem-lab-bastion`)
+- **Subnet**: `siem-lab-admin-subnet` (`10.0.30.0/24`)
+- **Public IP**: `<BASTION_PUBLIC_IP>` (retrieve via: `terraform output -raw bastion_public_ip`)
+- **Private IP**: `10.0.30.2`
+- **Machine Type**: `e2-micro` (2 vCPU, 1 GB RAM, 20 GB standard PD)
+- **Allowed Management IP**: `<YOUR_PUBLIC_IP>/32` (strictly restricted by GCP firewall)
+- **Identity & Access**: GCP OS Login enabled (`enable-oslogin = "TRUE"`), MFA-capable
 - **SSH Command**:
   ```bash
-  ssh -i ~/.ssh/siem_lab_key ubuntu@<SIEM_PUBLIC_IP>
+  ssh -i ~/.ssh/siem_lab_key ubuntu@<BASTION_PUBLIC_IP>
   ```
-- **Wazuh Web Dashboard**:
-  - URL: `https://<SIEM_PUBLIC_IP>`
+
+---
+
+### Tier 2: SIEM Core Manager VM (`siem-lab-wazuh`)
+- **Subnet**: `siem-lab-siem-subnet` (`10.0.20.0/24`)
+- **Public IP**: **None** (resides strictly in isolated private core subnet)
+- **Private IP**: `10.0.20.2`
+- **Machine Type**: `e2-standard-2` (2 vCPU, 8 GB RAM, 100 GB SSD)
+- **Internet Access**: Google Cloud NAT Gateway (outbound updates only, no public inbound)
+- **Secure SSH via Bastion Jumpbox**:
+  ```bash
+  ssh -i ~/.ssh/siem_lab_key -J ubuntu@<BASTION_PUBLIC_IP> ubuntu@10.0.20.2
+  ```
+- **Wazuh Web Dashboard (Encrypted Local Tunnel)**:
+  - Command to open tunnel:
+    ```bash
+    ssh -i ~/.ssh/siem_lab_key -N -L 8443:10.0.20.2:443 ubuntu@<BASTION_PUBLIC_IP>
+    ```
+  - Local URL: `https://localhost:8443`
   - **Username**: `admin`
   - **Password**: `<PRINTED_AT_INSTALLATION_OR_IN_WAZUH_PASSWORDS_TXT>`
 
 ---
 
-### Honeypot VM (`siem-lab-honeypot`)
+### Tier 1: Honeypot VM (`siem-lab-honeypot`)
+- **Subnet**: `siem-lab-dmz-subnet` (`10.0.10.0/24`)
 - **Public IP**: `<HONEYPOT_PUBLIC_IP>` (retrieve via: `terraform output -raw honeypot_public_ip`)
-- **Private IP**: `10.0.1.3`
+- **Private IP**: `10.0.10.2`
 - **Machine Type**: `e2-micro` (2 vCPU burstable, 1 GB RAM, 30 GB standard PD)
 - **SSH Ingress Exposure**: `0.0.0.0/0` (Intentional Honeypot)
-- **SSH Command**:
+- **Direct SSH Command**:
   ```bash
   ssh -i ~/.ssh/siem_lab_key ubuntu@<HONEYPOT_PUBLIC_IP>
   ```
@@ -40,17 +60,23 @@
 ╔══════════════════════════════════════════════════════════════════════╗
 ║              SIEM Lab — Active Security Posture Summary              ║
 ╠══════════════════════════════════════════════════════════════════════╣
-║ HONEYPOT VM: <HONEYPOT_PUBLIC_IP>                                    ║
+║ TIER 1: HONEYPOT VM (<HONEYPOT_PUBLIC_IP>) — DMZ Subnet 10.0.10.0/24  ║
 ║   • INGRESS: TCP 22 → 0.0.0.0/0 (Honeypot target)                    ║
-║   • EGRESS:  TCP 1514, 1515 → 10.0.1.0/24 (Wazuh telemetry)         ║
-║   • EGRESS:  TCP 80, 443, UDP 53 → 0.0.0.0/0 (Package repositories)  ║
+║   • EGRESS:  TCP 1514, 1515 → 10.0.20.0/24 (Wazuh telemetry to SIEM) ║
+║   • EGRESS:  Canonical Ubuntu CIDRs (80, 443) & DNS (8.8.8.8, 1.1.1.1)║
+║   • EGRESS:  DENY 169.254.169.254/32 (Metadata blocked at Priority 900)║
 ║   • EGRESS:  DENY ALL other outbound traffic (Priority 65534)        ║
 ╠══════════════════════════════════════════════════════════════════════╣
-║ SIEM VM: <SIEM_PUBLIC_IP>                                            ║
-║   • INGRESS: TCP 22  → <YOUR_PUBLIC_IP>/32 (Management IP only)      ║
-║   • INGRESS: TCP 443 → <YOUR_PUBLIC_IP>/32 (Wazuh Dashboard only)     ║
-║   • INGRESS: TCP 1514, 1515 → 10.0.1.3 (Honeypot Agent only)        ║
+║ TIER 2: SIEM CORE VM (10.0.20.2) — Core Subnet 10.0.20.0/24          ║
+║   • PUBLIC IP: NONE (Zero internet ingress attack surface)           ║
+║   • INGRESS: TCP 22, 443 → 10.0.30.0/24 (Admin Subnet via Bastion)   ║
+║   • INGRESS: TCP 1514, 1515 → 10.0.10.2 (Honeypot Agent only)        ║
 ║   • INGRESS: DENY TCP 9200, 9300 from 0.0.0.0/0 (OpenSearch protected)║
+║   • EGRESS:  Cloud NAT (outbound updates only)                       ║
+╠══════════════════════════════════════════════════════════════════════╣
+║ TIER 3: ADMIN BASTION (<BASTION_PUBLIC_IP>) — Admin Subnet 10.0.30.0 ║
+║   • INGRESS: TCP 22 → <YOUR_PUBLIC_IP>/32 (Analyst IP only)          ║
+║   • ACCESS:  GCP OS Login enabled, MFA-capable, centralized IAM      ║
 ╚══════════════════════════════════════════════════════════════════════╝
 ```
 
@@ -59,16 +85,23 @@
 ## 3. Operational Quick Reference
 
 ```bash
-# Obtain all active connection outputs from Terraform:
-cd infra/terraform
-terraform output
+# Connect to Honeypot
+ssh -i ~/.ssh/siem_lab_key ubuntu@<HONEYPOT_PUBLIC_IP>
 
-# View live Honeypot SSH authentication attempts:
-ssh -i ~/.ssh/siem_lab_key ubuntu@<HONEYPOT_PUBLIC_IP> "sudo tail -f /var/log/auth.log"
+# Connect to Bastion
+ssh -i ~/.ssh/siem_lab_key ubuntu@<BASTION_PUBLIC_IP>
 
-# View live normalized Wazuh SIEM alerts:
-ssh -i ~/.ssh/siem_lab_key ubuntu@<SIEM_PUBLIC_IP> "sudo tail -f /var/ossec/logs/alerts/alerts.json"
+# Connect to SIEM through Bastion ProxyJump
+ssh -i ~/.ssh/siem_lab_key -J ubuntu@<BASTION_PUBLIC_IP> ubuntu@10.0.20.2
 
-# Import custom OpenSearch Dashboards:
-bash wazuh/dashboards/import_dashboards.sh <SIEM_PUBLIC_IP> <WAZUH_PASSWORD>
+# Open Wazuh Dashboard Local Tunnel (run in background or terminal window)
+ssh -i ~/.ssh/siem_lab_key -N -L 8443:10.0.20.2:443 ubuntu@<BASTION_PUBLIC_IP>
+# Then open: https://localhost:8443
+
+# Tail alerts live on SIEM
+ssh -i ~/.ssh/siem_lab_key -J ubuntu@<BASTION_PUBLIC_IP> ubuntu@10.0.20.2 \
+  "sudo tail -f /var/ossec/logs/alerts/alerts.json"
+
+# Import Dashboards via Local Tunnel
+bash wazuh/dashboards/import_dashboards.sh localhost:8443 <WAZUH_PASSWORD>
 ```

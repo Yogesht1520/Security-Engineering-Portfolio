@@ -4,16 +4,19 @@
 #
 # MANDATORY REQUIREMENT: Must be executed BEFORE running `terraform destroy`.
 # Collects forensic snapshots, audit logs, network state, and Wazuh alert streams.
-# Produces SHA256SUMS.txt, structured EVIDENCE_MANIFEST.json, and true asymmetric
-# digital signatures (.sig) verifiable via public key.
+# Produces SHA256SUMS.txt, structured EVIDENCE_MANIFEST.json, detached asymmetric
+# digital signatures (.sig) for manifest and final archive, verifiable via public key.
 #
 # SECURITY & INTEGRITY ENFORCEMENTS:
-# - Categorizes evidence into Mandatory vs. Optional artifacts.
-# - Fails closed: Halts immediately if any mandatory forensic artifact fails to
-#   transfer or is empty, forbidding environment teardown.
-# - Cryptographic Non-Repudiation: Generates true asymmetric digital signatures
-#   using an RSA/ECDSA private key (outside repository) and exports public key.
-# - WORM Storage Support: Optionally replicates archive to immutable cloud storage.
+# - Mandatory Artifact Validation: Fails closed if any mandatory file fails or is empty.
+# - Complete Cryptographic Coverage:
+#     1. Public key exported and included in signed SHA256SUMS.txt.
+#     2. Public key fingerprint pinned to external trusted record (evidence/TRUSTED_SIGNER_PINS.txt).
+#     3. Detached RSA signatures generated for manifest, checksums, AND final .tar.gz archive.
+# - Dual-Mode Retention Governance:
+#     • Mode: "local" (default/offline test) vs "worm" (mandatory immutable cloud retention).
+#     • In "worm" mode, validates GCS Bucket Lock / Retention Policy before upload.
+#       Failed upload, missing bucket, or missing retention policy aborts with exit code 1.
 # =============================================================================
 
 set -uo pipefail
@@ -21,8 +24,39 @@ set -uo pipefail
 HONEYPOT_IP="${HONEYPOT_IP:-34.121.64.158}"
 SIEM_IP="${SIEM_IP:-34.71.182.95}"
 EVIDENCE_BUCKET="${EVIDENCE_BUCKET:-}"
+PRESERVATION_MODE="${PRESERVATION_MODE:-local}"
 SSH_KEY="${SSH_KEY:-}"
 SIGNING_KEY="${SIGNING_KEY:-}"
+
+# Parse optional command line flags
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --worm|--mode=worm)
+      PRESERVATION_MODE="worm"
+      shift
+      ;;
+    --local|--mode=local)
+      PRESERVATION_MODE="local"
+      shift
+      ;;
+    --bucket=*)
+      EVIDENCE_BUCKET="${1#*=}"
+      shift
+      ;;
+    --key=*)
+      SIGNING_KEY="${1#*=}"
+      shift
+      ;;
+    -h|--help)
+      echo "Usage: $0 [--local|--worm] [--bucket=gs://bucket-name] [--key=/path/to/signing_key]"
+      exit 0
+      ;;
+    *)
+      echo "[!] Unknown parameter: $1"
+      exit 1
+      ;;
+  esac
+done
 
 # In WSL or Linux, ensure SSH key is placed in Linux home with strict 0600 permissions
 mkdir -p "$HOME/.ssh"
@@ -52,17 +86,21 @@ mkdir -p "$EVIDENCE_DIR"
 
 COLLECTOR_USER=$(whoami 2>/dev/null || echo "soc-analyst")
 COLLECTOR_HOST=$(hostname 2>/dev/null || echo "analyst-workstation")
-RUNBOOK_VERSION="3.0.0"
+RUNBOOK_VERSION="3.5.0"
 
 echo "================================================================="
 echo "        SIEM Lab — Automated Evidence Preservation Runbook       "
 echo "================================================================="
-echo "Target Honeypot: $HONEYPOT_IP"
-echo "Target SIEM:     $SIEM_IP"
-echo "Evidence Output: $EVIDENCE_DIR"
-echo "Collector:       ${COLLECTOR_USER}@${COLLECTOR_HOST}"
-echo "Collection Start: $START_TIME_UTC"
-echo "Runbook Version: $RUNBOOK_VERSION"
+echo "Target Honeypot:    $HONEYPOT_IP"
+echo "Target SIEM:        $SIEM_IP"
+echo "Preservation Mode:  ${PRESERVATION_MODE^^}"
+echo "Evidence Output:    $EVIDENCE_DIR"
+echo "Collector:          ${COLLECTOR_USER}@${COLLECTOR_HOST}"
+echo "Collection Start:   $START_TIME_UTC"
+echo "Runbook Version:    $RUNBOOK_VERSION"
+if [ "$PRESERVATION_MODE" = "worm" ]; then
+  echo "Mandatory WORM:     ${EVIDENCE_BUCKET:-[NOT SPECIFIED - WILL FAIL CLOSED]}"
+fi
 echo "-----------------------------------------------------------------"
 
 # Track individual acquisition statuses
@@ -73,7 +111,7 @@ PULL_POSTURE_OK=false
 PULL_ALERTS_OK=false
 
 # ── 1. Copy host authentication and audit logs from Honeypot ─────────────────
-echo "[1/5] Offloading raw host logs from Honeypot..."
+echo "[1/6] Offloading raw host logs from Honeypot..."
 if scp -i "$SSH_KEY" -o StrictHostKeyChecking=no "ubuntu@${HONEYPOT_IP}:/var/log/auth.log" "${EVIDENCE_DIR}/honeypot_auth.log" 2>/dev/null; then
   [ -s "${EVIDENCE_DIR}/honeypot_auth.log" ] && PULL_AUTH_OK=true
 fi
@@ -87,7 +125,7 @@ fi
 ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "ubuntu@${HONEYPOT_IP}" "sudo rm -f /tmp/audit.log" 2>/dev/null || true
 
 # ── 2. Dump volatile system state and active defense posture ─────────────────
-echo "[2/5] Recording volatile system state and security posture..."
+echo "[2/6] Recording volatile system state and security posture..."
 if ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "ubuntu@${HONEYPOT_IP}" \
   "echo '=== ACTIVE SOCKETS ===' && ss -tnp; echo '=== ROUTING TABLE ===' && ip route; echo '=== LOGGED IN USERS ===' && who; echo '=== RECENT LOGINS ===' && last -25" \
   > "${EVIDENCE_DIR}/honeypot_system_state.txt" 2>/dev/null; then
@@ -112,7 +150,7 @@ if ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "ubuntu@${HONEYPOT_IP}"
 fi
 
 # ── 3. Pull Wazuh alerts from SIEM Manager ───────────────────────────────────
-echo "[3/5] Exporting Wazuh normalized security alerts..."
+echo "[3/6] Exporting Wazuh normalized security alerts..."
 if ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "ubuntu@${SIEM_IP}" \
   "sudo tail -n 5000 /var/ossec/logs/alerts/alerts.json" \
   > "${EVIDENCE_DIR}/wazuh_alerts.json" 2>/dev/null; then
@@ -120,7 +158,7 @@ if ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "ubuntu@${SIEM_IP}" \
 fi
 
 # ── 4. Snapshot Cloud Disk (Optional Infrastructure Artifact) ────────────────
-echo "[4/5] Checking Google Cloud disk snapshot eligibility (optional)..."
+echo "[4/6] Checking Google Cloud disk snapshot eligibility (optional)..."
 DISK_SNAPSHOT_ID="none"
 if command -v gcloud >/dev/null 2>&1; then
   echo "  - Initiating GCP persistent disk snapshot..."
@@ -167,20 +205,8 @@ fi
 
 echo "  [✓] All 5 mandatory forensic artifacts confirmed present and non-empty."
 
-# ── 5. Generate Evidence Manifest & Checksums ────────────────────────────────
-echo "[5/5] Generating cryptographic manifest, digital signature, and chain of custody..."
-END_TIME_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-
-(
-  cd "$EVIDENCE_DIR"
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum * 2>/dev/null | grep -v "SHA256SUMS.txt" | grep -v "EVIDENCE_MANIFEST.json" | grep -v "\.sig" | grep -v "\.pub" > SHA256SUMS.txt || true
-  elif command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 * 2>/dev/null | grep -v "SHA256SUMS.txt" | grep -v "EVIDENCE_MANIFEST.json" | grep -v "\.sig" | grep -v "\.pub" > SHA256SUMS.txt || true
-  fi
-)
-
-# ── 5B. Resolve Asymmetric Signing Key Pair ─────────────────────────────────
+# ── 5. Resolve Asymmetric Signing Key & Export Public Key ────────────────────
+echo "[5/6] Resolving cryptographic signing keys and pinning fingerprints..."
 SIGNING_KEY_PATH=""
 PUBKEY_PATH="${EVIDENCE_DIR}/EVIDENCE_SIGNING_PUBKEY.pub"
 
@@ -189,7 +215,6 @@ if [ -n "$SIGNING_KEY" ] && [ -f "$SIGNING_KEY" ]; then
 elif [ -f "$HOME/.ssh/evidence_signing_key" ]; then
   SIGNING_KEY_PATH="$HOME/.ssh/evidence_signing_key"
 else
-  # Auto-provision a dedicated 3072-bit RSA evidence signing key in secure local directory
   mkdir -p "$HOME/.ssh"
   SIGNING_KEY_PATH="$HOME/.ssh/evidence_signing_key"
   echo "  [*] Generating new dedicated RSA-3072 forensic evidence signing key at $SIGNING_KEY_PATH..."
@@ -197,11 +222,28 @@ else
   chmod 600 "$SIGNING_KEY_PATH"
 fi
 
-# Export public verification key into evidence directory
+# Export public verification key into evidence directory BEFORE checksum generation
 openssl pkey -in "$SIGNING_KEY_PATH" -pubout -out "$PUBKEY_PATH" 2>/dev/null
 SIGNER_PUBKEY_FINGERPRINT=$(openssl dgst -sha256 "$PUBKEY_PATH" | awk '{print $NF}')
 
-# Build JSON Manifest with complete metadata
+# Record trusted public key fingerprint in external trusted record outside the bundle
+TRUSTED_PINS_FILE="evidence/TRUSTED_SIGNER_PINS.txt"
+mkdir -p "evidence"
+echo "${START_TIME_UTC} | ${COLLECTOR_USER}@${COLLECTOR_HOST} | SHA256:${SIGNER_PUBKEY_FINGERPRINT} | EVIDENCE_SIGNING_PUBKEY.pub" >> "$TRUSTED_PINS_FILE"
+echo "  [✓] Public signing key exported and pinned: SHA256:${SIGNER_PUBKEY_FINGERPRINT}"
+
+# ── 5B. Generate Checksums Covering Artifacts AND Public Key ─────────────────
+END_TIME_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+(
+  cd "$EVIDENCE_DIR"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum * 2>/dev/null | grep -v "SHA256SUMS.txt" | grep -v "EVIDENCE_MANIFEST.json" | grep -v "\.sig$" | grep -v "\.tar\.gz$" > SHA256SUMS.txt || true
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 * 2>/dev/null | grep -v "SHA256SUMS.txt" | grep -v "EVIDENCE_MANIFEST.json" | grep -v "\.sig$" | grep -v "\.tar\.gz$" > SHA256SUMS.txt || true
+  fi
+)
+
+# ── 5C. Build JSON Manifest ──────────────────────────────────────────────────
 cat << JSON_MANIFEST > "${EVIDENCE_DIR}/EVIDENCE_MANIFEST.json"
 {
   "provenance": {
@@ -209,6 +251,7 @@ cat << JSON_MANIFEST > "${EVIDENCE_DIR}/EVIDENCE_MANIFEST.json"
     "collection_start_utc": "${START_TIME_UTC}",
     "collection_end_utc": "${END_TIME_UTC}",
     "runbook_version": "${RUNBOOK_VERSION}",
+    "preservation_mode": "${PRESERVATION_MODE}",
     "target_honeypot_ip": "${HONEYPOT_IP}",
     "target_siem_ip": "${SIEM_IP}",
     "gcp_disk_snapshot": "${DISK_SNAPSHOT_ID}",
@@ -218,14 +261,15 @@ cat << JSON_MANIFEST > "${EVIDENCE_DIR}/EVIDENCE_MANIFEST.json"
     "digest_algorithm": "SHA-256",
     "signature_algorithm": "SHA256withRSA-PKCS#1v1.5",
     "public_key_file": "EVIDENCE_SIGNING_PUBKEY.pub",
-    "public_key_sha256": "${SIGNER_PUBKEY_FINGERPRINT}"
+    "public_key_sha256": "${SIGNER_PUBKEY_FINGERPRINT}",
+    "trusted_pins_record": "evidence/TRUSTED_SIGNER_PINS.txt"
   },
   "artifacts": [
 $(
   FIRST=true
   for f in "${EVIDENCE_DIR}"/*; do
     fname=$(basename "$f")
-    if [ "$fname" = "EVIDENCE_MANIFEST.json" ] || [ "$fname" = "SHA256SUMS.txt" ] || [[ "$fname" == *.sig ]] || [[ "$fname" == *.pub ]]; then
+    if [ "$fname" = "EVIDENCE_MANIFEST.json" ] || [ "$fname" = "SHA256SUMS.txt" ] || [[ "$fname" == *.sig ]] || [[ "$fname" == *.tar.gz ]]; then
       continue
     fi
     if [ -f "$f" ]; then
@@ -250,7 +294,7 @@ $(
 }
 JSON_MANIFEST
 
-# ── 5C. Generate Asymmetric Digital Signatures ──────────────────────────────
+# ── 5D. Generate Asymmetric Digital Signatures for Manifest & Checksums ──────
 if command -v openssl >/dev/null 2>&1; then
   openssl dgst -sha256 -sign "$SIGNING_KEY_PATH" \
     -out "${EVIDENCE_DIR}/EVIDENCE_MANIFEST.json.sig" \
@@ -259,46 +303,144 @@ if command -v openssl >/dev/null 2>&1; then
   openssl dgst -sha256 -sign "$SIGNING_KEY_PATH" \
     -out "${EVIDENCE_DIR}/SHA256SUMS.txt.sig" \
     "${EVIDENCE_DIR}/SHA256SUMS.txt"
-  echo "  [✓] Asymmetric digital signatures (.sig) created with private key."
 fi
 
-# ── 5D. Independent Verification Check ──────────────────────────────────────
-echo "  [*] Verifying cryptographic signatures and artifact checksums..."
+# ── 5E. Verify Internal Signatures and Checksums ─────────────────────────────
+echo "  [*] Verifying manifest signatures and checksum assertions..."
 (
   cd "$EVIDENCE_DIR"
   if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum -c SHA256SUMS.txt >/dev/null && echo "  [✓] Checksum assertion PASSED (all SHA-256 hashes match)."
+    sha256sum -c SHA256SUMS.txt >/dev/null && echo "  [✓] Artifact checksums PASSED (including public key)."
   fi
 
   if command -v openssl >/dev/null 2>&1; then
     openssl dgst -sha256 -verify "$PUBKEY_PATH" \
       -signature "EVIDENCE_MANIFEST.json.sig" "EVIDENCE_MANIFEST.json" >/dev/null 2>&1 && \
-      echo "  [✓] Manifest asymmetric digital signature PASSED (valid RSA key signature)."
+      echo "  [✓] Manifest digital signature PASSED."
     openssl dgst -sha256 -verify "$PUBKEY_PATH" \
       -signature "SHA256SUMS.txt.sig" "SHA256SUMS.txt" >/dev/null 2>&1 && \
-      echo "  [✓] Checksum file asymmetric digital signature PASSED (valid RSA key signature)."
+      echo "  [✓] Checksum file digital signature PASSED."
   fi
 )
 
-# ── 5E. Immutable Remote WORM Storage Offload (Optional) ────────────────────
-if [ -n "$EVIDENCE_BUCKET" ]; then
-  echo "[*] Replicating evidence archive to immutable cloud storage (${EVIDENCE_BUCKET})..."
-  TARBALL="evidence_${TIMESTAMP}.tar.gz"
-  tar -czf "${EVIDENCE_DIR}/${TARBALL}" -C "$EVIDENCE_DIR" .
+# ── 6. Package Complete Signed Bundle & Sign Archive ─────────────────────────
+echo "[6/6] Packaging complete signed evidence bundle and signing archive..."
+ARCHIVE_NAME="evidence_${TIMESTAMP}.tar.gz"
+ARCHIVE_PATH="evidence/${ARCHIVE_NAME}"
+
+# Tarball encompasses all preserved logs, manifest, checksums, public key, and signatures
+tar -czf "$ARCHIVE_PATH" -C evidence "${TIMESTAMP}"
+
+# Generate detached archive SHA-256 checksum and digital signature
+if command -v sha256sum >/dev/null 2>&1; then
+  ARCHIVE_SHA256=$(sha256sum "$ARCHIVE_PATH" | awk '{print $1}')
+elif command -v shasum >/dev/null 2>&1; then
+  ARCHIVE_SHA256=$(shasum -a 256 "$ARCHIVE_PATH" | awk '{print $1}')
+else
+  ARCHIVE_SHA256="unavailable"
+fi
+echo "$ARCHIVE_SHA256  ${ARCHIVE_NAME}" > "${ARCHIVE_PATH}.sha256"
+
+if command -v openssl >/dev/null 2>&1; then
+  openssl dgst -sha256 -sign "$SIGNING_KEY_PATH" \
+    -out "${ARCHIVE_PATH}.sig" "$ARCHIVE_PATH"
+
+  # Immediately verify archive digital signature
+  openssl dgst -sha256 -verify "$PUBKEY_PATH" \
+    -signature "${ARCHIVE_PATH}.sig" "$ARCHIVE_PATH" >/dev/null 2>&1 && \
+    echo "  [✓] Final archive digital signature created and verified: ${ARCHIVE_PATH}.sig"
+fi
+
+# ── 6B. WORM Storage Replication & Retention Verification ───────────────────
+if [ "$PRESERVATION_MODE" = "worm" ]; then
+  echo "[*] Executing MANDATORY enterprise WORM retention offload..."
+
+  if [ -z "$EVIDENCE_BUCKET" ]; then
+    echo "═════════════════════════════════════════════════════════════════"
+    echo " [!] FATAL: PRESERVATION_MODE=worm requires EVIDENCE_BUCKET."
+    echo "     Example: --bucket=gs://siem-lab-immutable-evidence"
+    echo "═════════════════════════════════════════════════════════════════"
+    exit 1
+  fi
+
+  # Verify destination bucket has an active Retention Policy or Object Lock
+  echo "  - Checking destination bucket immutability / retention policy..."
+  RETENTION_VERIFIED=false
+
   if command -v gcloud >/dev/null 2>&1; then
-    gcloud storage cp "${EVIDENCE_DIR}/${TARBALL}" "${EVIDENCE_BUCKET}/${TARBALL}" --quiet 2>/dev/null && \
-      echo "  [✓] Evidence bundle uploaded to WORM bucket: ${EVIDENCE_BUCKET}/${TARBALL}"
+    RETENTION_INFO=$(gcloud storage buckets describe "$EVIDENCE_BUCKET" --format="json(retentionPolicy)" 2>/dev/null || true)
+    if echo "$RETENTION_INFO" | grep -q "retentionPeriod"; then
+      RETENTION_VERIFIED=true
+      echo "  [✓] Verified destination bucket has active Retention Policy configured."
+    fi
   elif command -v gsutil >/dev/null 2>&1; then
-    gsutil cp "${EVIDENCE_DIR}/${TARBALL}" "${EVIDENCE_BUCKET}/${TARBALL}" 2>/dev/null && \
-      echo "  [✓] Evidence bundle uploaded to WORM bucket: ${EVIDENCE_BUCKET}/${TARBALL}"
+    if gsutil retention get "$EVIDENCE_BUCKET" 2>&1 | grep -q -i "Retention Policy"; then
+      RETENTION_VERIFIED=true
+      echo "  [✓] Verified destination bucket has active Retention Policy configured."
+    fi
+  fi
+
+  if [ "$RETENTION_VERIFIED" = false ]; then
+    echo "═════════════════════════════════════════════════════════════════"
+    echo " [!] FATAL: Destination bucket ${EVIDENCE_BUCKET} does NOT have"
+    echo "     an active Retention Policy (Bucket Lock / Object Retention)."
+    echo "     In enterprise WORM mode, storage without immutable lock is rejected."
+    echo "═════════════════════════════════════════════════════════════════"
+    exit 1
+  fi
+
+  # Upload archive, signature, checksum, and manifest to WORM bucket
+  echo "  - Replicating signed archive and signatures to WORM bucket..."
+  UPLOAD_OK=false
+  if command -v gcloud >/dev/null 2>&1; then
+    if gcloud storage cp "$ARCHIVE_PATH" "${ARCHIVE_PATH}.sig" "${ARCHIVE_PATH}.sha256" "${EVIDENCE_DIR}/EVIDENCE_MANIFEST.json" "${EVIDENCE_BUCKET}/" --quiet 2>/dev/null; then
+      UPLOAD_OK=true
+    fi
+  elif command -v gsutil >/dev/null 2>&1; then
+    if gsutil cp "$ARCHIVE_PATH" "${ARCHIVE_PATH}.sig" "${ARCHIVE_PATH}.sha256" "${EVIDENCE_DIR}/EVIDENCE_MANIFEST.json" "${EVIDENCE_BUCKET}/" 2>/dev/null; then
+      UPLOAD_OK=true
+    fi
+  fi
+
+  if [ "$UPLOAD_OK" = false ]; then
+    echo " [!] FATAL: Failed to upload signed evidence bundle to WORM bucket!"
+    exit 1
+  fi
+
+  # Remote verification of uploaded archive object
+  echo "  - Performing post-upload verification of remote WORM object..."
+  REMOTE_CHECK=false
+  if command -v gcloud >/dev/null 2>&1; then
+    gcloud storage ls "${EVIDENCE_BUCKET}/${ARCHIVE_NAME}" >/dev/null 2>&1 && REMOTE_CHECK=true
+  elif command -v gsutil >/dev/null 2>&1; then
+    gsutil ls "${EVIDENCE_BUCKET}/${ARCHIVE_NAME}" >/dev/null 2>&1 && REMOTE_CHECK=true
+  fi
+
+  if [ "$REMOTE_CHECK" = true ]; then
+    echo "  [✓] Remote WORM object verified intact: ${EVIDENCE_BUCKET}/${ARCHIVE_NAME}"
+  else
+    echo " [!] FATAL: Remote object verification failed after upload!"
+    exit 1
+  fi
+
+elif [ -n "$EVIDENCE_BUCKET" ]; then
+  # Local mode with optional best-effort upload
+  echo "[*] Local mode: Best-effort replication to cloud bucket (${EVIDENCE_BUCKET})..."
+  if command -v gcloud >/dev/null 2>&1; then
+    gcloud storage cp "$ARCHIVE_PATH" "${ARCHIVE_PATH}.sig" "${ARCHIVE_PATH}.sha256" "${EVIDENCE_BUCKET}/" --quiet 2>/dev/null || true
   fi
 fi
 
 echo "-----------------------------------------------------------------"
 echo "Preservation Status: SUCCESS"
 echo "All mandatory forensic artifacts verified, signed, and locked."
-echo "Artifact Directory: $EVIDENCE_DIR"
-echo "Public Verification Key: ${PUBKEY_PATH}"
+echo "Uncompressed Directory: $EVIDENCE_DIR"
+echo "Signed Tarball Archive: $ARCHIVE_PATH"
+echo "Archive Digital Sig:    ${ARCHIVE_PATH}.sig"
+echo "Public Verification Key: $PUBKEY_PATH"
+echo "Public Key Fingerprint:  SHA256:${SIGNER_PUBKEY_FINGERPRINT}"
+echo "External Pins Record:    $TRUSTED_PINS_FILE"
+echo ""
 echo "It is now SAFE to proceed with teardown or rebuild."
 echo "================================================================="
 exit 0

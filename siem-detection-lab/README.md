@@ -125,7 +125,11 @@ Pre-configured dashboard definitions are exported as version-controlled `.ndjson
 - [`ssh_bruteforce_deepdive.ndjson`](wazuh/dashboards/ssh_bruteforce_deepdive.ndjson): Credential access and brute-force correlation analytics.
 - Import command:
   ```bash
-  bash wazuh/dashboards/import_dashboards.sh <SIEM_PUBLIC_IP> <WAZUH_PASSWORD>
+  # Option 1: Via local SSH port forward tunnel through Bastion (https://localhost:8443)
+  bash wazuh/dashboards/import_dashboards.sh localhost:8443 <WAZUH_PASSWORD>
+
+  # Option 2: Directly from Bastion host to private SIEM core IP (10.0.20.2)
+  bash wazuh/dashboards/import_dashboards.sh 10.0.20.2 <WAZUH_PASSWORD>
   ```
 
 ---

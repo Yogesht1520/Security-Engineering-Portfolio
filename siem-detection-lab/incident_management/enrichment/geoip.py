@@ -16,10 +16,13 @@ Enforces an explicit IANA-derived Special-Purpose and Bogon Address Policy:
 """
 
 import sys
+import time
 import json
+import threading
 import ipaddress
 import urllib.request
 import urllib.error
+from collections import OrderedDict
 
 # Authoritative IANA Special-Purpose Address Policy (RFC 6890 / RFC 5735 / RFC 5156)
 # Governed baseline of reserved, protocol-assignment, and non-routable address prefixes.
@@ -57,8 +60,43 @@ IANA_BOGON_NETWORKS = [
     ipaddress.ip_network("ff00::/8"),           # Multicast
 ]
 
-# Simple in-memory cache to prevent redundant HTTP requests and respect rate limits
-_GEOIP_CACHE = {}
+class GeoIPCache:
+    """Thread-safe, bounded LRU cache with TTL expiration for GeoIP enrichment."""
+    def __init__(self, max_size: int = 1000, ttl_seconds: int = 86400):
+        self.max_size = max_size
+        self.ttl_seconds = ttl_seconds
+        self._cache = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, ip: str) -> dict | None:
+        with self._lock:
+            if ip not in self._cache:
+                return None
+            data, timestamp = self._cache[ip]
+            if time.time() - timestamp > self.ttl_seconds:
+                del self._cache[ip]
+                return None
+            self._cache.move_to_end(ip)
+            return data
+
+    def set(self, ip: str, data: dict):
+        with self._lock:
+            if ip in self._cache:
+                del self._cache[ip]
+            elif len(self._cache) >= self.max_size:
+                self._cache.popitem(last=False) # Evict oldest LRU entry
+            self._cache[ip] = (data, time.time())
+
+    def clear(self):
+        with self._lock:
+            self._cache.clear()
+
+    def __len__(self):
+        with self._lock:
+            return len(self._cache)
+
+# Global bounded, thread-safe cache instance (1000 entries max, 24-hour TTL)
+_GEOIP_CACHE = GeoIPCache(max_size=1000, ttl_seconds=86400)
 
 def is_bogon_or_special(ip_obj: ipaddress.IPv4Address | ipaddress.IPv6Address) -> tuple[bool, str]:
     """Evaluates whether an IP address belongs to any IANA special-purpose or bogon block."""
@@ -71,11 +109,12 @@ def is_bogon_or_special(ip_obj: ipaddress.IPv4Address | ipaddress.IPv6Address) -
 
 def lookup_ip(ip_address: str) -> dict:
     clean_ip = ip_address.strip()
-    
-    # 0. Check in-memory cache
-    if clean_ip in _GEOIP_CACHE:
-        return _GEOIP_CACHE[clean_ip]
-    
+
+    # 0. Check thread-safe, TTL-bounded cache
+    cached = _GEOIP_CACHE.get(clean_ip)
+    if cached is not None:
+        return cached
+
     # 1. IP address syntactic and scope validation
     try:
         ip_obj = ipaddress.ip_address(clean_ip)
@@ -98,7 +137,7 @@ def lookup_ip(ip_address: str) -> dict:
             "isp": "IANA Reserved Routing",
             "asn": "AS0 (Bogon)"
         }
-        _GEOIP_CACHE[clean_ip] = result
+        _GEOIP_CACHE.set(clean_ip, result)
         return result
 
     # 3. Encrypted HTTPS external enrichment for public addresses
@@ -111,7 +150,7 @@ def lookup_ip(ip_address: str) -> dict:
         with urllib.request.urlopen(req, timeout=5) as response:
             data = json.loads(response.read().decode())
             if data.get("status") == "success":
-                return {
+                result = {
                     "ip": clean_ip,
                     "status": "success",
                     "country": data.get("country", "Unknown"),
@@ -120,6 +159,8 @@ def lookup_ip(ip_address: str) -> dict:
                     "isp": data.get("isp", "Unknown"),
                     "asn": data.get("as", "Unknown")
                 }
+                _GEOIP_CACHE.set(clean_ip, result)
+                return result
             else:
                 return {
                     "ip": clean_ip,

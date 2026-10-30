@@ -200,29 +200,51 @@ restore_host() {
 
 # ── Function: GCP Cloud Firewall isolation ────────────────────────────────────
 isolate_cloud() {
-  echo "[+] Checking GCP CLI for cloud-level isolation..."
-  if command -v gcloud >/dev/null 2>&1; then
-    echo "  - Creating emergency high-priority GCP DENY firewall rule..."
-    gcloud compute firewall-rules create "$GCP_RULE_NAME" \
-      --direction=INGRESS \
-      --priority=10 \
-      --action=DENY \
-      --rules=all \
-      --target-tags="$GCP_NETWORK_TAG" \
-      --description="EMERGENCY INCIDENT RESPONSE: Quarantine honeypot ingress" \
-      --quiet || echo "  [!] Rule creation failed or rule already exists"
+  echo "[+] Enforcing GCP cloud-level firewall quarantine..."
+  if ! command -v gcloud >/dev/null 2>&1; then
+    echo "  [!] FATAL: gcloud CLI not detected locally. Cannot execute cloud firewall containment." >&2
+    exit 1
+  fi
+
+  echo "  - Creating emergency high-priority GCP DENY firewall rule ($GCP_RULE_NAME)..."
+  if ! gcloud compute firewall-rules create "$GCP_RULE_NAME" \
+    --direction=INGRESS \
+    --priority=10 \
+    --action=DENY \
+    --rules=all \
+    --target-tags="$GCP_NETWORK_TAG" \
+    --description="EMERGENCY INCIDENT RESPONSE: Quarantine honeypot ingress" \
+    --quiet 2>/dev/null; then
+
+    # Check idempotency: verify if the rule already exists and is active
+    if gcloud compute firewall-rules describe "$GCP_RULE_NAME" --quiet >/dev/null 2>&1; then
+      echo "  [✓] Emergency quarantine rule already exists and is currently enforced."
+    else
+      echo "  [!] FATAL: Failed to create GCP quarantine rule '$GCP_RULE_NAME'! Propagating error." >&2
+      exit 1
+    fi
   else
-    echo "  [!] gcloud CLI not detected locally. Skipping cloud firewall rule creation."
+    echo "  [✓] GCP cloud firewall quarantine rule created successfully."
   fi
 }
 
 restore_cloud() {
   echo "[+] Restoring GCP cloud firewall..."
-  if command -v gcloud >/dev/null 2>&1; then
-    echo "  - Deleting emergency isolation firewall rule..."
-    gcloud compute firewall-rules delete "$GCP_RULE_NAME" --quiet || echo "  [!] Rule deletion failed or rule does not exist"
+  if ! command -v gcloud >/dev/null 2>&1; then
+    echo "  [!] FATAL: gcloud CLI not detected locally. Cannot verify cloud firewall state." >&2
+    exit 1
+  fi
+
+  echo "  - Deleting emergency isolation firewall rule ($GCP_RULE_NAME)..."
+  if ! gcloud compute firewall-rules delete "$GCP_RULE_NAME" --quiet 2>/dev/null; then
+    if ! gcloud compute firewall-rules describe "$GCP_RULE_NAME" --quiet >/dev/null 2>&1; then
+      echo "  [✓] Emergency quarantine rule was already absent."
+    else
+      echo "  [!] FATAL: Failed to delete GCP quarantine rule '$GCP_RULE_NAME'! Propagating error." >&2
+      exit 1
+    fi
   else
-    echo "  [!] gcloud CLI not detected locally."
+    echo "  [✓] Emergency quarantine firewall rule deleted successfully."
   fi
 }
 

@@ -48,6 +48,9 @@ jobs:
       - name: 4. Run Auditd Transactional Rollback Simulation
         run: bash tests/unit/test_auditd_rollback.sh
 
+      - name: 5. Run GeoIP Bounded Cache & TTL Concurrency Suite
+        run: python tests/unit/test_geoip_cache.py
+
   wazuh-logtest-regression:
     name: Wazuh Rule Unit Test Suite (15 Test Cases)
     runs-on: ubuntu-latest

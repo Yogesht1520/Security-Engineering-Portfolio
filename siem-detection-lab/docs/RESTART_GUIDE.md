@@ -141,9 +141,13 @@ ssh -i ~/.ssh/siem_lab_key ubuntu@<HONEYPOT_PUBLIC_IP> "bash /home/ubuntu/valida
 ### 7.1 Import OpenSearch Dashboards
 Automatically import the customized SOC operational dashboards into the live Wazuh UI:
 ```bash
-bash wazuh/dashboards/import_dashboards.sh <SIEM_PUBLIC_IP> <WAZUH_PASSWORD>
+# Option 1: Via local SSH port-forward tunnel through Bastion (https://localhost:8443)
+bash wazuh/dashboards/import_dashboards.sh localhost:8443 <WAZUH_PASSWORD>
+
+# Option 2: Directly from Admin Bastion jumpbox to internal SIEM manager IP
+bash wazuh/dashboards/import_dashboards.sh 10.0.20.2 <WAZUH_PASSWORD>
 ```
-Access the dashboards at: `https://<SIEM_PUBLIC_IP>`
+Access the dashboards locally via SSH tunnel: `https://localhost:8443` (execute `terraform output -raw wazuh_dashboard_tunnel` to open the tunnel).
 
 ### 7.2 Standalone Interactive SOC Visualizer
 Open [dashboards/index.html](file:///c:/Users/yoges/Documents/Security-Engineering-Portfolio/siem-detection-lab/dashboards/index.html) in any modern browser to view interactive KPIs, MITRE ATT&CK charts, live alert feeds, and case records without needing active cloud instances.

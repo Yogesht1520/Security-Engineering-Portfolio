@@ -292,8 +292,9 @@ resource "google_compute_instance" "honeypot" {
   }
 
   metadata = {
-    ssh-keys       = "ubuntu:${local.ssh_public_key}"
-    startup-script = file("${path.module}/../setup_honeypot.sh")
+    ssh-keys               = "ubuntu:${local.ssh_public_key}"
+    startup-script         = file("${path.module}/../setup_honeypot.sh")
+    block-project-ssh-keys = "TRUE"
   }
 }
 
@@ -322,7 +323,9 @@ resource "google_compute_instance" "siem" {
   }
 
   metadata = {
-    ssh-keys = "ubuntu:${local.ssh_public_key}"
+    ssh-keys               = "ubuntu:${local.ssh_public_key}"
+    enable-oslogin         = "TRUE"
+    block-project-ssh-keys = "TRUE"
   }
 }
 
@@ -352,6 +355,8 @@ resource "google_compute_instance" "bastion" {
   }
 
   metadata = {
-    ssh-keys = "ubuntu:${local.ssh_public_key}"
+    ssh-keys               = "ubuntu:${local.ssh_public_key}"
+    enable-oslogin         = "TRUE"
+    block-project-ssh-keys = "TRUE"
   }
 }
