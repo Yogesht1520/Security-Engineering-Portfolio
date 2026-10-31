@@ -1,9 +1,10 @@
-// Auto-generated live telemetry data bundle for Interactive SOC Portal
+// Captured SOC Telemetry Snapshot for Standalone Visualization Prototype
+// Generated from Wazuh alerts, case manager records (CASE-2026-001), and forensic evidence manifest.
 const LIVE_DATA = {
   "case": {
     "case_id": "CASE-2026-001",
     "title": "Automated SSH Brute Force - Switzerland Scanner",
-    "status": "contained",
+    "status": "investigating",
     "severity": "high",
     "opened_at": "2026-10-26T19:38:03Z",
     "closed_at": null,
@@ -57,6 +58,16 @@ const LIVE_DATA = {
       {
         "timestamp": "2026-10-26T19:46:00Z",
         "event": "Case transitioned to CONTAINED. Hardened egress controls verified intact."
+      },
+      {
+        "timestamp": "2026-10-30T10:42:53Z",
+        "event": "Status transitioned from CONTAINED to CLOSED by SOC Lead. Notes: Containment verified; host audit log preserved and scanner IP confirmed blocked"
+      },
+      {
+        "timestamp": "2026-10-30T10:45:20Z",
+        "event": "PRIVILEGED REOPEN AUTHORIZED by SOC Lead Alice (Transitioned: CLOSED -> INVESTIGATING). Justification: Secondary auth probe from 209.99.190.186 discovered in honeypot auth.log requiring expanded forensic analysis [Prior State Seal: 2ce554feaef73c58...]",
+        "authorizer": "SOC Lead Alice",
+        "justification": "Secondary auth probe from 209.99.190.186 discovered in honeypot auth.log requiring expanded forensic analysis"
       }
     ],
     "containment_actions": [
@@ -66,8 +77,17 @@ const LIVE_DATA = {
     ],
     "evidence_preserved": true,
     "analyst": "SOC Lead / Detection Engineering",
-    "root_cause": "Opportunistic automated cloud botnet probing standard Unix and service accounts via paced dictionary attack.",
-    "lessons_learned": "Scanner paced connection attempts to 1 every 60-120 seconds to evade burst thresholds. Wazuh rule 100012 (low-and-slow threshold) and rule 100014 (account targeting) are critical to capturing this profile."
+    "root_cause": "Containment verified; host audit log preserved and scanner IP confirmed blocked",
+    "lessons_learned": "Scanner paced connection attempts to 1 every 60-120 seconds to evade burst thresholds. Wazuh rule 100012 (low-and-slow threshold) and rule 100014 (account targeting) are critical to capturing this profile.",
+    "reopen_records": [
+      {
+        "reopened_at": "2026-10-30T10:45:20Z",
+        "authorizer": "SOC Lead Alice",
+        "justification": "Secondary auth probe from 209.99.190.186 discovered in honeypot auth.log requiring expanded forensic analysis",
+        "prior_status": "closed",
+        "prior_state_sha256": "2ce554feaef73c58f2c663736c3b56ed38124a13f869f4a35df94a8b651c05c3"
+      }
+    ]
   },
   "total_alerts_captured": 781,
   "alerts": [

@@ -255,7 +255,7 @@ cat << JSON_MANIFEST > "${EVIDENCE_DIR}/EVIDENCE_MANIFEST.json"
   "provenance": {
     "collector": "${COLLECTOR_USER}@${COLLECTOR_HOST}",
     "collection_start_utc": "${START_TIME_UTC}",
-    "collection_end_utc": "${END_TIME_UTC}",
+    "manifest_sealed_utc": "${END_TIME_UTC}",
     "runbook_version": "${RUNBOOK_VERSION}",
     "preservation_mode": "${PRESERVATION_MODE}",
     "target_honeypot_ip": "${HONEYPOT_IP}",
@@ -287,12 +287,44 @@ $(
       else
         fhash="unavailable"
       fi
+
+      case "$fname" in
+        *auth.log)
+          fsrc="${HONEYPOT_IP}:/var/log/auth.log"
+          fmethod="scp -i <key> (sanitized copy)"
+          ;;
+        *audit.log)
+          fsrc="${HONEYPOT_IP}:/var/log/audit/audit.log"
+          fmethod="scp -i <key> via restricted temporary staging"
+          ;;
+        *system_state.txt)
+          fsrc="${HONEYPOT_IP} volatile memory/proc"
+          fmethod="ssh remote diagnostic stream (ss, iptables, ip route)"
+          ;;
+        *defense_posture.txt)
+          fsrc="${HONEYPOT_IP} security subsystem"
+          fmethod="ssh remote isolation probe (systemctl, curl metadata, iptables)"
+          ;;
+        *alerts.json)
+          fsrc="${SIEM_IP}:/var/ossec/logs/alerts/alerts.json"
+          fmethod="scp -i <key> via Bastion jumpbox"
+          ;;
+        *PUBKEY.pub)
+          fsrc="${COLLECTOR_USER}@${COLLECTOR_HOST} local key generation"
+          fmethod="openssl pkey -pubout"
+          ;;
+        *)
+          fsrc="siem-lab-telemetry"
+          fmethod="automated runbook capture"
+          ;;
+      esac
+
       if [ "$FIRST" = true ]; then
         FIRST=false
       else
         echo ","
       fi
-      printf '    {\n      "filename": "%s",\n      "size_bytes": %s,\n      "sha256": "%s"\n    }' "$fname" "$fsize" "$fhash"
+      printf '    {\n      "filename": "%s",\n      "size_bytes": %s,\n      "sha256": "%s",\n      "source": "%s",\n      "acquisition_method": "%s",\n      "acquired_at_utc": "%s"\n    }' "$fname" "$fsize" "$fhash" "$fsrc" "$fmethod" "$START_TIME_UTC"
     fi
   done
 )
@@ -448,6 +480,12 @@ if [ "$PRESERVATION_MODE" = "worm" ]; then
   echo "  - Performing byte-level download and remote cryptographic verification..."
   TMP_VERIFY_DIR=$(mktemp -d /tmp/worm_verify.XXXXXX 2>/dev/null || mktemp -d)
 
+  # Guaranteed cleanup trap for temporary verification directory
+  cleanup_worm_verify() {
+    rm -rf "$TMP_VERIFY_DIR"
+  }
+  trap cleanup_worm_verify EXIT INT TERM
+
   DOWNLOAD_OK=false
   if command -v gcloud >/dev/null 2>&1; then
     if gcloud storage cp "${EVIDENCE_BUCKET}/${ARCHIVE_NAME}" \
@@ -469,11 +507,18 @@ if [ "$PRESERVATION_MODE" = "worm" ]; then
 
   if [ "$DOWNLOAD_OK" = false ]; then
     echo " [!] FATAL: Failed to download remote objects from WORM bucket for integrity assertion!"
-    rm -rf "$TMP_VERIFY_DIR"
     exit 1
   fi
 
-  # 1. SHA-256 against local archive hash
+  # 1. Byte length and exact size verification
+  LOCAL_SIZE=$(wc -c < "$ARCHIVE_PATH" | tr -d ' ')
+  REMOTE_SIZE=$(wc -c < "${TMP_VERIFY_DIR}/${ARCHIVE_NAME}" | tr -d ' ')
+  if [ "$LOCAL_SIZE" != "$REMOTE_SIZE" ]; then
+    echo " [!] FATAL: Remote archive byte count ($REMOTE_SIZE bytes) does not match local byte count ($LOCAL_SIZE bytes)!"
+    exit 1
+  fi
+
+  # 2. SHA-256 against local archive hash
   if command -v sha256sum >/dev/null 2>&1; then
     REMOTE_ARCHIVE_HASH=$(sha256sum "${TMP_VERIFY_DIR}/${ARCHIVE_NAME}" | awk '{print $1}')
   elif command -v shasum >/dev/null 2>&1; then
@@ -486,50 +531,62 @@ if [ "$PRESERVATION_MODE" = "worm" ]; then
     echo " [!] FATAL: Remote archive SHA-256 checksum mismatch!"
     echo "     Local:  $ARCHIVE_SHA256"
     echo "     Remote: $REMOTE_ARCHIVE_HASH"
-    rm -rf "$TMP_VERIFY_DIR"
     exit 1
   fi
   echo "  [✓] 1/5: Remote archive SHA-256 matched local hash bit-for-bit (${REMOTE_ARCHIVE_HASH})"
 
-  # 2. RSA signature verification on remote archive using pinned public key
+  # 3. Assert Public Key Fingerprint against Trusted Pins Record BEFORE verification
+  TRUSTED_PIN=$(awk -F '|' '{print $3}' "$TRUSTED_PINS_FILE" 2>/dev/null | tr -d ' ' | tail -n 1)
+  CURRENT_PUBKEY_PIN="SHA256:$(openssl dgst -sha256 "$PUBKEY_PATH" | awk '{print $NF}')"
+  if [ -n "$TRUSTED_PIN" ] && [ "$CURRENT_PUBKEY_PIN" != "$TRUSTED_PIN" ]; then
+    echo " [!] FATAL: Public key fingerprint ($CURRENT_PUBKEY_PIN) does NOT match trusted pin ($TRUSTED_PIN) in $TRUSTED_PINS_FILE!"
+    exit 1
+  fi
+
+  # RSA signature verification on remote archive using pinned public key
   if ! openssl dgst -sha256 -verify "$PUBKEY_PATH" \
     -signature "${TMP_VERIFY_DIR}/${ARCHIVE_NAME}.sig" "${TMP_VERIFY_DIR}/${ARCHIVE_NAME}" >/dev/null 2>&1; then
     echo " [!] FATAL: Remote archive RSA digital signature verification failed!"
-    rm -rf "$TMP_VERIFY_DIR"
     exit 1
   fi
-  echo "  [✓] 2/5: Remote archive RSA signature valid under pinned public key."
+  echo "  [✓] 2/5: Remote archive RSA signature valid under verified pinned public key."
 
-  # 3. Verify remote .sha256 checksum file
+  # 4. Verify remote .sha256 checksum file
   REMOTE_CHECKSUM_CONTENT=$(cat "${TMP_VERIFY_DIR}/${ARCHIVE_NAME}.sha256" | awk '{print $1}')
   if [ "$REMOTE_CHECKSUM_CONTENT" != "$ARCHIVE_SHA256" ]; then
     echo " [!] FATAL: Remote .sha256 checksum file content mismatch!"
-    rm -rf "$TMP_VERIFY_DIR"
     exit 1
   fi
   echo "  [✓] 3/5: Remote checksum file validated."
 
-  # 4. Verify presence and byte-for-byte match of remote manifest
+  # 4B. Verify presence and byte-for-byte match of remote manifest
   if ! cmp -s "${EVIDENCE_DIR}/EVIDENCE_MANIFEST.json" "${TMP_VERIFY_DIR}/EVIDENCE_MANIFEST.json"; then
     echo " [!] FATAL: Remote manifest content mismatch with local manifest!"
-    rm -rf "$TMP_VERIFY_DIR"
     exit 1
   fi
   echo "  [✓] 4/5: Remote manifest byte-for-byte integrity verified."
 
-  # 5. Verify actual object retention configuration
+  # 5. Verify actual object retention configuration (Fail-Closed)
+  RETENTION_VERIFIED=false
   if command -v gcloud >/dev/null 2>&1; then
-    OBJ_META=$(gcloud storage objects describe "${EVIDENCE_BUCKET}/${ARCHIVE_NAME}" --format="json(retentionExpirationTime)" 2>/dev/null || true)
-    if echo "$OBJ_META" | grep -q "retentionExpirationTime"; then
+    OBJ_META=$(gcloud storage objects describe "${EVIDENCE_BUCKET}/${ARCHIVE_NAME}" --format="json" 2>/dev/null || true)
+    if echo "$OBJ_META" | grep -q '"retentionExpirationTime"'; then
       echo "  [✓] 5/5: Object retention expiration confirmed active on remote object."
-    else
-      echo "  [✓] 5/5: Bucket retention policy enforced on remote object."
+      RETENTION_VERIFIED=true
+    elif echo "$OBJ_META" | grep -q '"generation"'; then
+      REMOTE_GEN=$(echo "$OBJ_META" | jq -r '.generation' 2>/dev/null || echo "")
+      if [ -n "$REMOTE_GEN" ] && [ "$IS_LOCKED" = "true" ]; then
+        echo "  [✓] 5/5: Bucket-level locked WORM policy applies to object generation ${REMOTE_GEN}."
+        RETENTION_VERIFIED=true
+      fi
     fi
-  else
-    echo "  [✓] 5/5: Bucket retention policy enforced on remote object."
   fi
 
-  rm -rf "$TMP_VERIFY_DIR"
+  if [ "$RETENTION_VERIFIED" = false ]; then
+    echo " [!] FATAL: Failed to verify object retention or locked WORM compliance on remote object!"
+    exit 1
+  fi
+
   echo "  [✓] Complete Remote WORM byte-level integrity & signature verification PASSED."
 
 elif [ -n "$EVIDENCE_BUCKET" ]; then

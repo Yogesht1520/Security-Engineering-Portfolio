@@ -129,20 +129,56 @@ document.addEventListener('DOMContentLoaded', () => {
       const user = a.data?.srcuser || a.data?.dstuser || '--';
       const desc = a.rule?.description || 'Normalized Security Event';
 
-      tr.innerHTML = `
-        <td style="font-family: var(--font-mono); color: var(--text-dim);">${timeStr}</td>
-        <td><span class="rule-link">#${ruleId}</span></td>
-        <td><span class="badge-level ${badgeClass}">Lvl ${lvl}</span></td>
-        <td><span class="ip-tag">${srcIp}</span></td>
-        <td style="font-family: var(--font-mono); color: var(--accent-amber);">${user}</td>
-        <td>${desc}</td>
-        <td><button class="btn btn-outline btn-inspect" style="padding: 0.25rem 0.65rem; font-size: 0.75rem;">Inspect</button></td>
-      `;
+      const tdTime = document.createElement('td');
+      tdTime.style.fontFamily = 'var(--font-mono)';
+      tdTime.style.color = 'var(--text-dim)';
+      tdTime.textContent = timeStr;
 
-      tr.querySelector('.btn-inspect').addEventListener('click', () => {
+      const tdRule = document.createElement('td');
+      const spanRule = document.createElement('span');
+      spanRule.className = 'rule-link';
+      spanRule.textContent = `#${ruleId}`;
+      tdRule.appendChild(spanRule);
+
+      const tdLevel = document.createElement('td');
+      const spanLevel = document.createElement('span');
+      spanLevel.className = `badge-level ${badgeClass}`;
+      spanLevel.textContent = `Lvl ${lvl}`;
+      tdLevel.appendChild(spanLevel);
+
+      const tdIp = document.createElement('td');
+      const spanIp = document.createElement('span');
+      spanIp.className = 'ip-tag';
+      spanIp.textContent = srcIp;
+      tdIp.appendChild(spanIp);
+
+      const tdUser = document.createElement('td');
+      tdUser.style.fontFamily = 'var(--font-mono)';
+      tdUser.style.color = 'var(--accent-amber)';
+      tdUser.textContent = user;
+
+      const tdDesc = document.createElement('td');
+      tdDesc.textContent = desc;
+
+      const tdAction = document.createElement('td');
+      const btnInspect = document.createElement('button');
+      btnInspect.className = 'btn btn-outline btn-inspect';
+      btnInspect.style.padding = '0.25rem 0.65rem';
+      btnInspect.style.fontSize = '0.75rem';
+      btnInspect.textContent = 'Inspect';
+      btnInspect.addEventListener('click', () => {
         rawAlertCode.textContent = JSON.stringify(a, null, 2);
         rawModal.classList.add('open');
       });
+      tdAction.appendChild(btnInspect);
+
+      tr.appendChild(tdTime);
+      tr.appendChild(tdRule);
+      tr.appendChild(tdLevel);
+      tr.appendChild(tdIp);
+      tr.appendChild(tdUser);
+      tr.appendChild(tdDesc);
+      tr.appendChild(tdAction);
 
       alertsTbody.appendChild(tr);
     });
@@ -182,20 +218,30 @@ document.addEventListener('DOMContentLoaded', () => {
         li.style.marginBottom = '0.5rem';
         li.style.borderLeft = '2px solid var(--accent-cyan)';
         li.style.paddingLeft = '0.75rem';
-        li.innerHTML = `
-          <strong style="color: var(--text-dim); font-family: var(--font-mono); font-size: 0.75rem;">${item.timestamp}</strong>
-          <div>${item.event}</div>
-        `;
+
+        const strong = document.createElement('strong');
+        strong.style.color = 'var(--text-dim)';
+        strong.style.fontFamily = 'var(--font-mono)';
+        strong.style.fontSize = '0.75rem';
+        strong.textContent = item.timestamp || '';
+
+        const eventDiv = document.createElement('div');
+        eventDiv.textContent = item.event || '';
+
+        li.appendChild(strong);
+        li.appendChild(eventDiv);
         timelineUl.appendChild(li);
       });
 
       const hashDiv = document.getElementById('modal-evidence-hashes');
       hashDiv.innerHTML = `
-        ✓ 0f8eeb6f... honeypot_audit.log (6.5 MB)<br>
-        ✓ a508e6a1... honeypot_auth.log (49.7 KB)<br>
-        ✓ 0d298d7a... honeypot_system_state.txt (751 B)<br>
-        ✓ 0683e12f... wazuh_alerts.json (1.16 MB)<br>
-        <span style="color: var(--accent-emerald);">SHA-256 Chain of Custody Cryptographically Verified</span>
+        ✓ 9ef714dd... honeypot_audit.log (6.18 MB)<br>
+        ✓ 6cc44576... honeypot_auth.log (326 KB)<br>
+        ✓ 940ee2b2... honeypot_defense_posture.txt (1.25 KB)<br>
+        ✓ f40ef342... honeypot_system_state.txt (684 B)<br>
+        ✓ c78a37db... wazuh_alerts.json (2.00 MB)<br>
+        ✓ 356be706... EVIDENCE_SIGNING_PUBKEY.pub (625 B)<br>
+        <span style="color: var(--accent-emerald);">RSA-3072 Detached Signatures & WORM Bucket Lock Cryptographically Verified</span>
       `;
 
       caseModal.classList.add('open');

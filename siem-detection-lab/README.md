@@ -1,10 +1,10 @@
 # Enterprise SIEM & Threat Detection Engineering Lab
 
-[![Terraform Validated](https://img.shields.io/badge/Terraform-Validated-blue?logo=terraform&logoColor=white)](.github/workflows/validate-terraform.yml)
-[![ShellCheck Linted](https://img.shields.io/badge/ShellCheck-Passing-brightgreen?logo=gnu-bash&logoColor=white)](.github/workflows/validate-shell.yml)
-[![Wazuh Rules Validated](https://img.shields.io/badge/Wazuh_Rules-10%2F10_Passing-success?logo=wazuh&logoColor=white)](.github/workflows/validate-wazuh-rules.yml)
-[![Detection CI](https://img.shields.io/badge/Detection_CI-15%2F15_Passing-success?logo=github-actions&logoColor=white)](.github/workflows/detection-tests.yml)
-[![Security Gate](https://img.shields.io/badge/Security_Gate-Zero_Leaks-brightgreen?logo=security&logoColor=white)](.github/workflows/security.yml)
+[![Terraform Validation](https://github.com/Yogesht1520/Security-Engineering-Portfolio/actions/workflows/siem-validate-terraform.yml/badge.svg)](https://github.com/Yogesht1520/Security-Engineering-Portfolio/actions/workflows/siem-validate-terraform.yml)
+[![ShellCheck Linting](https://github.com/Yogesht1520/Security-Engineering-Portfolio/actions/workflows/siem-validate-shell.yml/badge.svg)](https://github.com/Yogesht1520/Security-Engineering-Portfolio/actions/workflows/siem-validate-shell.yml)
+[![Wazuh Rules Validation](https://github.com/Yogesht1520/Security-Engineering-Portfolio/actions/workflows/siem-validate-wazuh-rules.yml/badge.svg)](https://github.com/Yogesht1520/Security-Engineering-Portfolio/actions/workflows/siem-validate-wazuh-rules.yml)
+[![Detection CI & Regression](https://github.com/Yogesht1520/Security-Engineering-Portfolio/actions/workflows/siem-detection-tests.yml/badge.svg)](https://github.com/Yogesht1520/Security-Engineering-Portfolio/actions/workflows/siem-detection-tests.yml)
+[![Security & Secret Gate](https://github.com/Yogesht1520/Security-Engineering-Portfolio/actions/workflows/siem-security.yml/badge.svg)](https://github.com/Yogesht1520/Security-Engineering-Portfolio/actions/workflows/siem-security.yml)
 
 An enterprise-grade, end-to-end Security Operations Center (SOC) and Detection Engineering laboratory deployed in Google Cloud Platform (GCP). The lab exposes an intentionally instrumented Linux honeypot to capture live internet attack campaigns, processes raw kernel audit and authentication telemetry through a unified Wazuh SIEM stack, and correlates multi-stage intrusions using custom MITRE ATT&CK-mapped detection rules, automated response runbooks, and interactive operational dashboards.
 
@@ -171,6 +171,30 @@ Interactive incident response drawer displaying `CASE-2026-001`, containment sta
   Start-Process "dashboards/index.html"
   ```
 
+### 4.3 Production Control & Evidence Gallery
+
+The following gallery organizes the verified cloud controls, access barriers, and compliance assertions demonstrated across the laboratory:
+
+#### A. Cloud Network Architecture & Tiered Isolation
+![GCP VPC Tiering](screenshots/gcp_vpc_tiering.png)
+*Figure 9: Multi-tier segmented GCP VPC showing Honeypot in DMZ (`10.0.10.0/24`), Wazuh SIEM isolated in private core (`10.0.20.0/24` with No External IP), and Admin Bastion (`10.0.30.0/24`).*
+
+#### B. Zero-Trust Administrator Access & OS Login MFA
+![Bastion OS Login MFA](screenshots/bastion_oslogin_mfa.png)
+*Figure 10: Google Cloud IAM OS Login session via Identity-Aware Proxy (IAP) demonstrating MFA challenge verification and zero static SSH keys.*
+
+#### C. Encrypted Operator Dashboard Access
+![Wazuh Tunnel Dashboard](screenshots/wazuh_tunnel_dashboard.png)
+*Figure 11: Production Wazuh SIEM 4.9.2 console accessed via encrypted local SSH tunnel (`https://localhost:8443`) through the Admin Bastion.*
+
+#### D. Immutable WORM Retention & Storage Bucket Lock
+![GCS WORM Bucket Lock](screenshots/gcs_worm_bucket_lock.png)
+*Figure 12: Google Cloud Storage bucket protection tab displaying 30-day compliance retention in finalized Locked mode for forensic chain-of-custody preservation.*
+
+#### E. CI/CD Governance & Continuous Regression Matrix
+![GitHub Actions All Passing](screenshots/github_actions_all_passing.png)
+*Figure 13: GitHub Actions CI/CD matrix confirming all 5 automated quality gates passing concurrently with read-only permissions and pinned action SHAs.*
+
 ---
 
 ## 5. Incident Management & Response Tooling
@@ -202,13 +226,16 @@ python incident_management/case_manager.py --list
 # 2. View specific case details and timeline (validated against case_schema.json)
 python incident_management/case_manager.py --view CASE-2026-001
 
-# 3. Transition case lifecycle (enforcing valid state machine transitions)
-python incident_management/case_manager.py --transition CASE-2026-001 RESOLVED --comment "Remediation verified; firewall quarantine lifted."
+# 3. Formally close a contained case with resolution notes
+python incident_management/case_manager.py --transition CASE-2026-001 closed --notes "Remediation verified; host audit log preserved and scanner IP confirmed blocked"
 
-# 4. Apply emergency honeypot network isolation (with confirmation prompt & baseline preservation)
+# 4. Privileged reopen of a closed case (governance-restricted to authorized roles with prior state seal)
+python incident_management/case_manager.py --reopen CASE-2026-001 --authorizer "SOC Lead Alice" --justification "Secondary auth probe from 209.99.190.186 discovered in honeypot auth.log requiring expanded forensic analysis" --target-status investigating
+
+# 5. Apply emergency honeypot network isolation (with confirmation prompt & baseline preservation)
 bash incident_management/response/isolate_honeypot.sh --all
 
-# 5. Safely preserve evidence before teardown or rebuild (generates EVIDENCE_MANIFEST.json)
+# 6. Safely preserve evidence before teardown or rebuild (generates EVIDENCE_MANIFEST.json & digital signatures)
 bash incident_management/response/preserve_evidence.sh
 ```
 
@@ -222,11 +249,11 @@ All infrastructure code, scripts, detection rules, and incident governance state
 2. [**Validate Shell Scripts**](.github/workflows/validate-shell.yml): Executes `shellcheck --severity=warning` across all repository shell scripts.
 3. [**Validate Wazuh Rules**](.github/workflows/validate-wazuh-rules.yml): Executes `tests/validate_rules.py` for XML schema compliance, range checking (100000–109999), and collision prevention.
 4. [**Detection Engineering CI & Regression Suite**](.github/workflows/detection-tests.yml):
-   - **Logtest Detection Engine (15 Test Cases)**: Runs `tests/unit/run_rule_unit_tests.sh` against the live `wazuh-logtest` engine to assert positive and negative firing thresholds, multi-log correlation boundaries, and clock skew handling.
+   - **Logtest Detection Engine (15 Test Cases)**: Runs `tests/unit/run_rule_unit_tests.sh`. On live deployments, tests execute against the official `/var/ossec/bin/wazuh-logtest` binary on the Wazuh Manager VM; in lightweight local/CI environments, it utilizes `tests/unit/mock_logtest.py` to evaluate rule matches deterministically.
    - **Negative Security Gate Tests**: Runs `tests/unit/test_security_gate_negative.py` to assert that synthetic key leaks and sensitive filename additions correctly fail the gate closed.
-   - **Incident Case Lifecycle & Reopen Governance**: Runs `tests/unit/test_case_manager_lifecycle.py` verifying state transitions, unprivileged reopen rejection, authorizer requirements, and SHA-256 prior state sealing.
+   - **Incident Case Lifecycle & Reopen Governance**: Runs `tests/unit/test_case_manager_lifecycle.py` inside an isolated temporary directory verifying state transitions, unprivileged reopen rejection, authorizer role requirements, and SHA-256 prior state sealing.
    - **Auditd Transactional Rollback Simulation**: Runs `tests/unit/test_auditd_rollback.sh` to assert transactional recovery, candidate purging, and kernel rule restoration.
-   - **GeoIP Cache & Single-Flight Concurrency Suite**: Runs `tests/unit/test_geoip_cache.py` asserting bounded LRU capacity (1000 items), TTL expiration, thread safety, and same-IP request coalescing (single-flight execution).
+   - **GeoIP Cache & Single-Flight Concurrency Suite**: Runs `tests/unit/test_geoip_cache.py` asserting bounded LRU capacity (1000 items), TTL expiration, thread safety, caller timeout handling, and same-IP request coalescing (single-flight execution).
 5. [**Security Gate**](.github/workflows/security.yml): Executes `tests/security_scan.py` to inspect tracked filenames, working tree secrets, and full Git commit history across all local and remote refs (`git log -p --full-history --all`).
 
 ---

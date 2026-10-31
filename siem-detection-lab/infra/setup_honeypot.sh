@@ -47,10 +47,15 @@ apt-get install -y \
 # to prevent compromised honeypot processes from extracting instance credentials.
 # =============================================================================
 echo "[1B] Enforcing host-level cloud metadata isolation..."
-iptables -F OUTPUT 2>/dev/null || true
-iptables -A OUTPUT -d 169.254.169.254/32 -p tcp -j REJECT --reject-with tcp-reset
-ip6tables -F OUTPUT 2>/dev/null || true
-ip6tables -A OUTPUT -d fe80::/10 -j REJECT 2>/dev/null || true
+# Defensive Policy Preservation: Do not flush existing OUTPUT chains.
+# Instead, check if isolation rule is already active; if not, prepend at rule position 1.
+if ! iptables -C OUTPUT -d 169.254.169.254/32 -p tcp -j REJECT --reject-with tcp-reset 2>/dev/null; then
+  iptables -I OUTPUT 1 -d 169.254.169.254/32 -p tcp -j REJECT --reject-with tcp-reset
+fi
+
+if ! ip6tables -C OUTPUT -d fe80::/10 -j REJECT 2>/dev/null; then
+  ip6tables -I OUTPUT 1 -d fe80::/10 -j REJECT 2>/dev/null || true
+fi
 
 # Persist iptables rules across reboots
 mkdir -p /etc/iptables

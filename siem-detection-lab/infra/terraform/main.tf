@@ -268,6 +268,13 @@ resource "google_compute_router_nat" "nat_gateway" {
 # ══════════════════════════════════════════════════════════════════════════════
 # COMPUTE — Honeypot VM (DMZ Subnet)
 # ══════════════════════════════════════════════════════════════════════════════
+# ARCHITECTURAL ACCESS MODEL DISTINCTION:
+# The honeypot intentionally uses an isolated instance-level SSH key pair and
+# does NOT enable Google Cloud OS Login (enable-oslogin is intentionally absent).
+# Rationale: The honeypot is an untrusted threat trap exposed to the public internet
+# (0.0.0.0/0). Isolating it from Google Cloud IAM / OS Login guarantees that an
+# external attacker attempting SSH brute force has zero path to pivot into GCP IAM
+# identities, OS Login credentials, or organization management planes.
 
 resource "google_compute_instance" "honeypot" {
   name                      = "siem-lab-honeypot"
@@ -299,8 +306,13 @@ resource "google_compute_instance" "honeypot" {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
-# COMPUTE — SIEM VM (SIEM Core Subnet)
+# COMPUTE — SIEM VM & Admin Bastion (Hardened Management Plane via OS Login)
 # ══════════════════════════════════════════════════════════════════════════════
+# Unlike the honeypot, the SIEM Core and Bastion VMs enforce enterprise OS Login
+# with Google Cloud IAM multi-factor authentication (MFA) and zero static keys.
+# IAM PREREQUISITES FOR OPERATORS:
+#   - roles/compute.osAdminLogin (or roles/compute.osLogin)
+#   - roles/iap.tunnelResourceAccessor (for secure IAP tunneling without public SSH)
 
 resource "google_compute_instance" "siem" {
   name                      = "siem-lab-wazuh"

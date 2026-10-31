@@ -24,19 +24,40 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 INTEGRATION_MODE=false
+FORCE_LIVE_DANGER=false
+
 for arg in "$@"; do
   case "$arg" in
     --integration)
       INTEGRATION_MODE=true
-      shift
+      ;;
+    --force-live-danger)
+      FORCE_LIVE_DANGER=true
       ;;
   esac
 done
 
-# Auto-detect root on Linux with auditctl installed
-if [ "$INTEGRATION_MODE" = false ] && [ "$(id -u 2>/dev/null || echo 1)" -eq 0 ] && command -v auditctl >/dev/null 2>&1 && command -v augenrules >/dev/null 2>&1; then
-  echo -e "${CYAN}[*] Root permissions and active auditctl detected. Enabling Live VM Integration Mode.${NC}"
-  INTEGRATION_MODE=true
+# Check if environment specifies disposable VM marker
+if [ "${DISPOSABLE_VM:-false}" = "true" ]; then
+  FORCE_LIVE_DANGER=true
+fi
+
+# SAFETY ENFORCEMENT: Live host modification requires BOTH explicit --integration
+# AND disposable VM confirmation (--force-live-danger or DISPOSABLE_VM=true).
+# Root auto-detection is strictly disabled to prevent accidental workstation mutation.
+if [ "$INTEGRATION_MODE" = true ]; then
+  if [ "$FORCE_LIVE_DANGER" != true ]; then
+    echo -e "${RED}[!] SAFETY BLOCKED: Live VM integration modifies /etc/audit/rules.d/ and reloads kernel rules.${NC}" >&2
+    echo -e "    To execute on a dedicated, disposable lab instance, supply explicit confirmation:" >&2
+    echo -e "    $0 --integration --force-live-danger" >&2
+    echo -e "    or set DISPOSABLE_VM=true." >&2
+    echo -e "    Defaulting to safe Simulated Sandbox Mode for workstation/CI integrity." >&2
+    exit 1
+  fi
+  if [ "$(id -u 2>/dev/null || echo 1)" -ne 0 ]; then
+    echo -e "${RED}[!] ERROR: Live integration test requires root privileges (sudo).${NC}" >&2
+    exit 1
+  fi
 fi
 
 TESTS_RUN=0
@@ -63,12 +84,12 @@ record_result() {
 
 echo -e "\n${BOLD}================================================================${NC}"
 echo -e "${BOLD}   Auditd Bootstrap Transactional Rollback Test Suite          ${NC}"
-echo -e "${BOLD}   Execution Mode: $([ "$INTEGRATION_MODE" = true ] && echo "Live Linux VM Integration" || echo "Simulated Sandbox")${NC}"
+echo -e "${BOLD}   Execution Mode: $([ "$INTEGRATION_MODE" = true ] && echo "Live Linux VM Integration (Explicit Confirmation Verified)" || echo "Simulated Sandbox")${NC}"
 echo -e "${BOLD}================================================================${NC}\n"
 
 if [ "$INTEGRATION_MODE" = true ]; then
   # ════════════════════════════════════════════════════════════════════════════
-  # LIVE VM INTEGRATION TEST SUITE
+  # LIVE VM INTEGRATION TEST SUITE (Guaranteed Exit Trap & Baseline Recovery)
   # ════════════════════════════════════════════════════════════════════════════
   echo -e "${CYAN}[*] Executing Live Integration Test against Kernel Audit Subsystem...${NC}"
   
@@ -79,22 +100,45 @@ if [ "$INTEGRATION_MODE" = true ]; then
   
   CANDIDATE_CORRUPT="/tmp/live_corrupt_test.rules"
   echo "-a invalid_action_flag -S execve -k broken" > "$CANDIDATE_CORRUPT"
+
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  PROD_ROLLBACK="${SCRIPT_DIR}/../../infra/rollback_auditd.sh"
+
+  # Exit Trap: Guarantees full host state restoration under ANY termination path
+  cleanup_live_host() {
+    echo -e "\n${CYAN}[*] Running guaranteed live host exit trap cleanup...${NC}"
+    rm -f "$CANDIDATE_CORRUPT"
+    rm -f /etc/audit/rules.d/siem-lab.rules
+    if [ -d "$INT_BACKUP" ]; then
+      if [ -f "$PROD_ROLLBACK" ]; then
+        bash "$PROD_ROLLBACK" "$INT_BACKUP" "/etc/audit/rules.d/siem-lab.rules" >/dev/null 2>&1 || true
+      fi
+      rm -rf "$INT_BACKUP"
+    fi
+  }
+  trap cleanup_live_host EXIT INT TERM
   
   echo "  - Staging corrupt audit rule directly into /etc/audit/rules.d/siem-lab.rules..."
   cp "$CANDIDATE_CORRUPT" /etc/audit/rules.d/siem-lab.rules
   
   # Trigger deployment verification
   DEPLOY_FAILED=false
-  if ! (augenrules --load 2>/dev/null && auditctl -s | grep -q "enabled 1"); then
+  if ! (augenrules --load 2>/dev/null && auditctl -s 2>/dev/null | grep -q "enabled 1"); then
     DEPLOY_FAILED=true
     echo "  [✓] Corrupt rule correctly failed validation. Executing shared production rollback engine (infra/rollback_auditd.sh)..."
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    PROD_ROLLBACK="${SCRIPT_DIR}/../../infra/rollback_auditd.sh"
     if [ -f "$PROD_ROLLBACK" ]; then
-      bash "$PROD_ROLLBACK" "$INT_BACKUP" "/etc/audit/rules.d/siem-lab.rules"
+      if ! bash "$PROD_ROLLBACK" "$INT_BACKUP" "/etc/audit/rules.d/siem-lab.rules"; then
+        echo "  [!] ERROR: Production rollback engine failed during recovery!" >&2
+      fi
     else
       echo "  [!] ERROR: Production rollback engine $PROD_ROLLBACK not found!" >&2
       exit 1
+    fi
+  else
+    # Safety: Even if candidate was unexpectedly accepted, trigger rollback to avoid leaving host modified
+    echo "  [!] UNEXPECTED: Corrupt rule was accepted by parser. Triggering forced rollback..." >&2
+    if [ -f "$PROD_ROLLBACK" ]; then
+      bash "$PROD_ROLLBACK" "$INT_BACKUP" "/etc/audit/rules.d/siem-lab.rules" || true
     fi
   fi
   

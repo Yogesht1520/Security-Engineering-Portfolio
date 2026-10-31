@@ -11,7 +11,117 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from incident_management.enrichment.geoip import GeoIPCache, SingleFlight
+from incident_management.enrichment.geoip import GeoIPCache, SingleFlight, lookup_ip, _GEOIP_CACHE
+import io
+import json
+from unittest.mock import patch
+
+def test_constructor_validation():
+    print("[*] Testing GeoIPCache constructor bounds validation...")
+    try:
+        GeoIPCache(max_size=0, ttl_seconds=10)
+        assert False, "Expected ValueError for max_size=0"
+    except ValueError:
+        pass
+
+    try:
+        GeoIPCache(max_size=-5, ttl_seconds=10)
+        assert False, "Expected ValueError for negative max_size"
+    except ValueError:
+        pass
+
+    try:
+        GeoIPCache(max_size=10, ttl_seconds=0)
+        assert False, "Expected ValueError for ttl_seconds=0"
+    except ValueError:
+        pass
+    print("  [✓] Constructor parameter validation (positive bounds) PASSED.")
+
+def test_cache_immutability_defensive_copy():
+    print("[*] Testing cache record immutability (defensive copy)...")
+    cache = GeoIPCache(max_size=10, ttl_seconds=60)
+    original = {"country": "Switzerland", "city": "Zurich"}
+    cache.set("209.99.190.186", original)
+
+    retrieved = cache.get("209.99.190.186")
+    assert retrieved == original
+
+    # Attempt to mutate caller's copy
+    retrieved["country"] = "MUTATED_COUNTRY"
+
+    second_fetch = cache.get("209.99.190.186")
+    assert second_fetch["country"] == "Switzerland", "CRITICAL: Internal cache was mutated by external caller!"
+    print("  [✓] Cache record mutation isolation verified: get() returned an independent copy.")
+
+def test_single_flight_timeout():
+    print("[*] Testing SingleFlight timeout handling on stalled leader...")
+    sf = SingleFlight()
+    leader_started = threading.Event()
+
+    def stalled_fetch():
+        leader_started.set()
+        time.sleep(1.0)
+        return {"result": "late"}
+
+    def leader():
+        sf.do("stall_key", stalled_fetch)
+
+    t_lead = threading.Thread(target=leader)
+    t_lead.start()
+    leader_started.wait()
+
+    # Follower with a very short timeout (0.05s) should raise TimeoutError
+    try:
+        sf.do("stall_key", lambda: {"result": "fallback"}, timeout=0.05)
+        assert False, "Expected TimeoutError when leader stalled"
+    except TimeoutError:
+        print("  [✓] SingleFlight bounded timeout correctly aborted follower after leader stall.")
+    finally:
+        t_lead.join()
+
+def test_lookup_ip_mocked_http_coalescing():
+    print("[*] Testing lookup_ip() integration with mocked urllib.request.urlopen...")
+    _GEOIP_CACHE.clear()
+
+    http_call_count = 0
+    mock_lock = threading.Lock()
+
+    def fake_urlopen(req, timeout=5):
+        nonlocal http_call_count
+        with mock_lock:
+            http_call_count += 1
+        time.sleep(0.1) # Simulate network latency
+        fake_response = json.dumps({
+            "status": "success",
+            "country": "Switzerland",
+            "city": "Zurich",
+            "regionName": "Zurich",
+            "isp": "SKN Subnet",
+            "as": "AS402253",
+            "query": "209.99.190.186"
+        }).encode("utf-8")
+        return io.BytesIO(fake_response)
+
+    threads = []
+    results = []
+
+    def client_worker():
+        res = lookup_ip("209.99.190.186")
+        results.append(res)
+
+    with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+        for _ in range(10):
+            t = threading.Thread(target=client_worker)
+            threads.append(t)
+            t.start()
+
+        for t in threads:
+            t.join()
+
+    assert len(results) == 10
+    assert all(r.get("country") == "Switzerland" for r in results)
+    assert http_call_count == 1, f"CRITICAL: Expected exactly 1 external HTTP request, got {http_call_count}!"
+    print(f"  [✓] Integration Mock: 10 concurrent lookup_ip() requests triggered exactly {http_call_count} HTTP call.")
 
 def test_single_flight_coalescing():
     print("[*] Testing Single-Flight duplicate request coalescing...")
@@ -52,7 +162,11 @@ def test_bounded_lru_and_ttl():
     print("      GeoIP Cache Bounded LRU, Thread Safety & TTL Suite      ")
     print("=" * 65)
 
+    test_constructor_validation()
+    test_cache_immutability_defensive_copy()
     test_single_flight_coalescing()
+    test_single_flight_timeout()
+    test_lookup_ip_mocked_http_coalescing()
 
     # 1. Bounded Size (LRU eviction)
     cache = GeoIPCache(max_size=3, ttl_seconds=5)

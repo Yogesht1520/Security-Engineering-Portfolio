@@ -20,14 +20,21 @@ Update `infra/terraform/terraform.tfvars` if your IP has changed:
 your_public_ip = "YOUR_CURRENT_IP/32"
 ```
 
-### 1.2 Verify SSH Key & Google Cloud Credentials
-```bash
-# Verify SSH keypair exists
-ls -l ~/.ssh/siem_lab_key
+### 1.2 Access Model Prerequisites (OS Login & Honeypot SSH)
 
-# Verify GCP authentication
+The lab strictly separates the management access plane from the untrusted threat zone:
+- **Management Plane (Bastion & SIEM):** Protected by **Google Cloud IAM OS Login with MFA** and Google Identity-Aware Proxy (IAP). Static SSH keys are blocked.
+  *Required IAM Roles:*
+  - `roles/compute.osAdminLogin` (or `roles/compute.osLogin`)
+  - `roles/iap.tunnelResourceAccessor`
+- **Honeypot VM:** Uses an **isolated instance SSH key** (`~/.ssh/siem_lab_key`) and intentionally does *not* enable OS Login. This prevents threat actors probing the honeypot from pivoting into the GCP management plane.
+
+```bash
+# Verify GCP CLI authentication for OS Login
 gcloud auth list
-```
+
+# Verify isolated SSH keypair exists for Honeypot ingestion
+ls -l ~/.ssh/siem_lab_key
 
 ---
 
@@ -53,10 +60,19 @@ terraform apply -auto-approve
 
 ## 3. Wazuh SIEM Stack Installation
 
-SSH into the SIEM VM through the Admin Bastion jumpbox (SIEM has no public IP):
+Access the management plane using Google Cloud IAM OS Login via Identity-Aware Proxy (IAP) with MFA enforcement:
+
 ```bash
-# Connect via Bastion Jumpbox ProxyJump
-ssh -i ~/.ssh/siem_lab_key -J ubuntu@<BASTION_PUBLIC_IP> ubuntu@10.0.20.2
+# 1. SSH into Admin Bastion via Google Cloud OS Login (IAP Tunnel + MFA)
+gcloud compute ssh siem-lab-bastion --zone=us-central1-a --tunnel-through-iap
+
+# 2. From Bastion, connect to the internal SIEM Manager (10.0.20.2):
+gcloud compute ssh siem-lab-wazuh --zone=us-central1-a --internal-ip
+```
+
+*(Alternatively, if accessing via Bastion ProxyJump using authorized OS Login keys)*:
+```bash
+ssh -J <OPERATOR>@<BASTION_PUBLIC_IP> <OPERATOR>@10.0.20.2
 ```
 
 Install Wazuh 4.9.2 All-in-One:
@@ -150,7 +166,7 @@ bash wazuh/dashboards/import_dashboards.sh 10.0.20.2 <WAZUH_PASSWORD>
 Access the dashboards locally via SSH tunnel: `https://localhost:8443` (execute `terraform output -raw wazuh_dashboard_tunnel` to open the tunnel).
 
 ### 7.2 Standalone Interactive SOC Visualizer
-Open [dashboards/index.html](file:///c:/Users/yoges/Documents/Security-Engineering-Portfolio/siem-detection-lab/dashboards/index.html) in any modern browser to view interactive KPIs, MITRE ATT&CK charts, live alert feeds, and case records without needing active cloud instances.
+Open `dashboards/index.html` in any modern browser to view interactive KPIs, MITRE ATT&CK charts, live alert feeds, and case records without needing active cloud instances.
 
 ---
 

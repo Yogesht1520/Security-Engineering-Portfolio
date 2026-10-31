@@ -43,12 +43,19 @@ from enrichment.geoip import lookup_ip
 from enrichment.reputation import check_reputation
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CASES_DIR = os.path.join(BASE_DIR, "cases")
+# Support dynamic test directory isolation via SIEM_CASES_DIR
+CASES_DIR = os.environ.get("SIEM_CASES_DIR", os.path.join(BASE_DIR, "cases"))
 SCHEMA_PATH = os.path.join(BASE_DIR, "case_schema.json")
 os.makedirs(CASES_DIR, exist_ok=True)
 
 # Valid status list and formal state machine transition rules
 VALID_STATUSES = ["open", "investigating", "contained", "closed", "false_positive"]
+
+# Authorized roles permitted to execute privileged reopens
+AUTHORIZED_REOPEN_ROLES = [
+    "soc lead", "incident commander", "security director", "ciso",
+    "lead analyst", "tier 3 analyst", "security engineering lead"
+]
 
 # Strict transition matrix: Terminal states ('closed', 'false_positive') require privileged reopen
 TRANSITION_MATRIX = {
@@ -58,6 +65,37 @@ TRANSITION_MATRIX = {
     "closed": [],          # Ordinary transitions disallowed; requires privileged --reopen
     "false_positive": [],  # Ordinary transitions disallowed; requires privileged --reopen
 }
+
+import contextlib
+
+@contextlib.contextmanager
+def case_lock(case_id: str):
+    """Cross-platform advisory file locking to prevent concurrent update races."""
+    lock_path = os.path.join(CASES_DIR, f"{case_id}.flock")
+    lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR)
+    try:
+        if sys.platform != "win32":
+            import fcntl
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        else:
+            import msvcrt
+            msvcrt.locking(lock_fd, msvcrt.LK_LOCK, 1)
+        yield
+    finally:
+        try:
+            if sys.platform != "win32":
+                import fcntl
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            else:
+                import msvcrt
+                msvcrt.locking(lock_fd, msvcrt.LK_UNLCK, 1)
+        except Exception:
+            pass
+        os.close(lock_fd)
+        try:
+            os.remove(lock_path)
+        except Exception:
+            pass
 
 def get_utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -187,109 +225,121 @@ def view_case(case_id: str):
         print(json.dumps(json.load(f), indent=2))
 
 def transition_case(case_id: str, new_status: str, notes: str = "", analyst: str = "SOC Analyst"):
-    fpath = os.path.join(CASES_DIR, f"{case_id}.json")
-    if not os.path.exists(fpath):
-        print(f"Error: Case {case_id} not found.")
-        sys.exit(1)
-    with open(fpath, "r", encoding="utf-8") as f:
-        case = json.load(f)
+    with case_lock(case_id):
+        fpath = os.path.join(CASES_DIR, f"{case_id}.json")
+        if not os.path.exists(fpath):
+            print(f"Error: Case {case_id} not found.")
+            sys.exit(1)
+        with open(fpath, "r", encoding="utf-8") as f:
+            case = json.load(f)
 
-    clean_status = new_status.lower().strip()
-    if clean_status not in VALID_STATUSES:
-        print(f"Error: Invalid status '{clean_status}'. Must be one of: {VALID_STATUSES}")
-        sys.exit(1)
+        clean_status = new_status.lower().strip()
+        if clean_status not in VALID_STATUSES:
+            print(f"Error: Invalid status '{clean_status}'. Must be one of: {VALID_STATUSES}")
+            sys.exit(1)
 
-    old_status = case.get("status", "open").lower().strip()
+        old_status = case.get("status", "open").lower().strip()
 
-    # Guard: terminal cases cannot be reopened via regular transition
-    if old_status in ["closed", "false_positive"]:
-        print(f"Error: Disallowed transition out of terminal state '{old_status.upper()}'.")
-        print("Privileged Governance: Reopening closed cases requires explicit authorization via --reopen.")
-        sys.exit(1)
+        # Guard: terminal cases cannot be reopened via regular transition
+        if old_status in ["closed", "false_positive"]:
+            print(f"Error: Disallowed transition out of terminal state '{old_status.upper()}'.")
+            print("Privileged Governance: Reopening closed cases requires explicit authorization via --reopen.")
+            sys.exit(1)
 
-    allowed_transitions = TRANSITION_MATRIX.get(old_status, [])
-    if clean_status != old_status and clean_status not in allowed_transitions:
-        print(f"Error: Disallowed lifecycle transition from '{old_status.upper()}' to '{clean_status.upper()}'.")
-        print(f"Allowed next states for {old_status.upper()} are: {[s.upper() for s in allowed_transitions]}")
-        sys.exit(1)
+        allowed_transitions = TRANSITION_MATRIX.get(old_status, [])
+        if clean_status != old_status and clean_status not in allowed_transitions:
+            print(f"Error: Disallowed lifecycle transition from '{old_status.upper()}' to '{clean_status.upper()}'.")
+            print(f"Allowed next states for {old_status.upper()} are: {[s.upper() for s in allowed_transitions]}")
+            sys.exit(1)
 
-    case["status"] = clean_status
-    timestamp = get_utc_now()
+        case["status"] = clean_status
+        timestamp = get_utc_now()
 
-    event_msg = f"Status transitioned from {old_status.upper()} to {clean_status.upper()} by {analyst}"
-    if notes:
-        event_msg += f". Notes: {notes}"
-    case["timeline"].append({
-        "timestamp": timestamp,
-        "event": event_msg
-    })
-
-    if clean_status in ["closed", "false_positive"] and not case.get("closed_at"):
-        case["closed_at"] = timestamp
+        event_msg = f"Status transitioned from {old_status.upper()} to {clean_status.upper()} by {analyst}"
         if notes:
-            case["root_cause"] = notes
+            event_msg += f". Notes: {notes}"
+        case["timeline"].append({
+            "timestamp": timestamp,
+            "event": event_msg
+        })
 
-    atomic_save_case(case_id, case)
-    print(f"[+] Case {case_id} transitioned to {clean_status.upper()}.")
+        if clean_status in ["closed", "false_positive"] and not case.get("closed_at"):
+            case["closed_at"] = timestamp
+            if notes:
+                case["root_cause"] = notes
+
+        atomic_save_case(case_id, case)
+        print(f"[+] Case {case_id} transitioned to {clean_status.upper()}.")
 
 def reopen_case(case_id: str, authorizer: str, justification: str, target_status: str = "investigating", analyst: str = "SOC Analyst"):
     """Privileged reopening of a closed or false-positive incident with immutable audit trail."""
-    fpath = os.path.join(CASES_DIR, f"{case_id}.json")
-    if not os.path.exists(fpath):
-        print(f"Error: Case {case_id} not found.")
-        sys.exit(1)
-    with open(fpath, "r", encoding="utf-8") as f:
-        case = json.load(f)
+    with case_lock(case_id):
+        fpath = os.path.join(CASES_DIR, f"{case_id}.json")
+        if not os.path.exists(fpath):
+            print(f"Error: Case {case_id} not found.")
+            sys.exit(1)
+        with open(fpath, "r", encoding="utf-8") as f:
+            case = json.load(f)
 
-    old_status = case.get("status", "").lower().strip()
-    if old_status not in ["closed", "false_positive"]:
-        print(f"Error: Case {case_id} is currently in status '{old_status.upper()}' (not a closed terminal state). Use --transition instead.")
-        sys.exit(1)
+        old_status = case.get("status", "").lower().strip()
+        if old_status not in ["closed", "false_positive"]:
+            print(f"Error: Case {case_id} is currently in status '{old_status.upper()}' (not a closed terminal state). Use --transition instead.")
+            sys.exit(1)
 
-    clean_authorizer = authorizer.strip()
-    if not clean_authorizer:
-        print("Error: Privileged reopen REJECTED: --authorizer is required to identify the approving lead/manager.")
-        sys.exit(1)
+        clean_authorizer = authorizer.strip()
+        if not clean_authorizer:
+            print("Error: Privileged reopen REJECTED: --authorizer is required to identify the approving lead/manager.")
+            sys.exit(1)
 
-    clean_justification = justification.strip()
-    if len(clean_justification) < 10:
-        print("Error: Privileged reopen REJECTED: --justification must provide substantive operational reasoning (min 10 characters).")
-        sys.exit(1)
+        # Authenticated Authorizer Governance Role Assertion
+        has_authorized_role = any(role in clean_authorizer.lower() for role in AUTHORIZED_REOPEN_ROLES)
+        if not has_authorized_role:
+            print(f"Error: Privileged reopen REJECTED: Authorizer '{clean_authorizer}' lacks designated governance authority.")
+            print(f"Required authorized roles: {[r.title() for r in AUTHORIZED_REOPEN_ROLES]}")
+            sys.exit(1)
 
-    clean_target = target_status.lower().strip()
-    if clean_target not in ["open", "investigating"]:
-        print(f"Error: Invalid reopen target status '{clean_target}'. Must be 'open' or 'investigating'.")
-        sys.exit(1)
+        clean_justification = justification.strip()
+        if len(clean_justification) < 10:
+            print("Error: Privileged reopen REJECTED: --justification must provide substantive operational reasoning (min 10 characters).")
+            sys.exit(1)
 
-    # Compute deterministic SHA-256 seal of the prior case state
-    prior_state_canonical = json.dumps(case, sort_keys=True)
-    prior_state_sha256 = hashlib.sha256(prior_state_canonical.encode("utf-8")).hexdigest()
+        clean_target = target_status.lower().strip()
+        if clean_target not in ["open", "investigating"]:
+            print(f"Error: Invalid reopen target status '{clean_target}'. Must be 'open' or 'investigating'.")
+            sys.exit(1)
 
-    timestamp = get_utc_now()
-    case["status"] = clean_target
-    case["closed_at"] = None
+        # Compute deterministic SHA-256 seal of the prior case state
+        prior_state_canonical = json.dumps(case, sort_keys=True)
+        prior_state_sha256 = hashlib.sha256(prior_state_canonical.encode("utf-8")).hexdigest()
 
-    if "reopen_records" not in case:
-        case["reopen_records"] = []
+        timestamp = get_utc_now()
+        case["status"] = clean_target
+        case["closed_at"] = None
 
-    reopen_entry = {
-        "reopened_at": timestamp,
-        "authorizer": clean_authorizer,
-        "justification": clean_justification,
-        "prior_status": old_status,
-        "prior_state_sha256": prior_state_sha256
-    }
-    case["reopen_records"].append(reopen_entry)
+        if "reopen_records" not in case:
+            case["reopen_records"] = []
 
-    timeline_event = {
-        "timestamp": timestamp,
-        "event": f"PRIVILEGED REOPEN AUTHORIZED by {clean_authorizer} (Transitioned: {old_status.upper()} -> {clean_target.upper()}). Justification: {clean_justification} [Prior State Seal: {prior_state_sha256[:16]}...]",
-        "authorizer": clean_authorizer,
-        "justification": clean_justification
-    }
-    case["timeline"].append(timeline_event)
+        reopen_entry = {
+            "reopened_at": timestamp,
+            "authorizer": clean_authorizer,
+            "justification": clean_justification,
+            "prior_status": old_status,
+            "prior_state_sha256": prior_state_sha256
+        }
+        case["reopen_records"].append(reopen_entry)
 
-    atomic_save_case(case_id, case)
+        timeline_event = {
+            "timestamp": timestamp,
+            "event": f"PRIVILEGED REOPEN AUTHORIZED by {clean_authorizer} (Transitioned: {old_status.upper()} -> {clean_target.upper()}). Justification: {clean_justification} [Prior State Seal: {prior_state_sha256[:16]}...]",
+            "authorizer": clean_authorizer,
+            "justification": clean_justification
+        }
+        case["timeline"].append(timeline_event)
+
+        atomic_save_case(case_id, case)
+        print(f"[+] Case {case_id} REOPENED to status {clean_target.upper()} under authority of '{clean_authorizer}'.")
+        print(f"    Cryptographic Prior State Seal: {prior_state_sha256}")
+        return case
     print(f"[+] Case {case_id} REOPENED to status {clean_target.upper()} under authority of '{clean_authorizer}'.")
     print(f"    Cryptographic Prior State Seal: {prior_state_sha256}")
     return case

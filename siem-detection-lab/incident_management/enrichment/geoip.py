@@ -63,6 +63,10 @@ IANA_BOGON_NETWORKS = [
 class GeoIPCache:
     """Thread-safe, bounded LRU cache with TTL expiration for GeoIP enrichment."""
     def __init__(self, max_size: int = 1000, ttl_seconds: int = 86400):
+        if max_size <= 0:
+            raise ValueError(f"max_size must be a positive integer greater than zero, got {max_size}")
+        if ttl_seconds <= 0:
+            raise ValueError(f"ttl_seconds must be a positive integer greater than zero, got {ttl_seconds}")
         self.max_size = max_size
         self.ttl_seconds = ttl_seconds
         self._cache = OrderedDict()
@@ -77,7 +81,8 @@ class GeoIPCache:
                 del self._cache[ip]
                 return None
             self._cache.move_to_end(ip)
-            return data
+            # Defensive copy: Prevents external caller mutation of internal cache records
+            return data.copy()
 
     def set(self, ip: str, data: dict):
         with self._lock:
@@ -85,7 +90,7 @@ class GeoIPCache:
                 del self._cache[ip]
             elif len(self._cache) >= self.max_size:
                 self._cache.popitem(last=False) # Evict oldest LRU entry
-            self._cache[ip] = (data, time.time())
+            self._cache[ip] = (data.copy(), time.time())
 
     def clear(self):
         with self._lock:
@@ -104,7 +109,7 @@ class SingleFlight:
         self._lock = threading.Lock()
         self._calls = {} # key -> (threading.Event, [result, exception])
 
-    def do(self, key: str, fn):
+    def do(self, key: str, fn, timeout: float = 10.0):
         with self._lock:
             if key in self._calls:
                 event, box = self._calls[key]
@@ -116,7 +121,9 @@ class SingleFlight:
                 leader = True
 
         if not leader:
-            event.wait()
+            # Bounded wait for leader execution to prevent indefinite caller hangs
+            if not event.wait(timeout=timeout):
+                raise TimeoutError(f"SingleFlight timed out after {timeout}s waiting for leader completion on key '{key}'")
             if box[1] is not None:
                 raise box[1]
             return box[0]
