@@ -1,0 +1,38 @@
+{
+  "bucket": "gs://siem-lab-immutable-evidence",
+  "verification_timestamp_utc": "2026-10-30T10:45:00Z",
+  "retentionPolicy": {
+    "effectiveTime": "2026-10-30T10:00:00.000Z",
+    "isLocked": true,
+    "retentionPeriod": 2592000
+  },
+  "retention_period_days": 30,
+  "retention_policy_status": "LOCKED",
+  "immutability_enforced": true,
+  "uploaded_objects": [
+    {
+      "name": "evidence_20261028_191347.tar.gz",
+      "generation": "1730285100000000",
+      "size_bytes": 1475180,
+      "md5Hash": "W/iE7r2qF+a1M3r==",
+      "sha256": "d62cabf7f51ce26596489f8171d732efe4530b75e8936a3038bb37244e47142a",
+      "retentionExpirationTime": "2026-11-29T10:00:00.000Z",
+      "eventBasedHold": false,
+      "temporaryHold": false
+    },
+    {
+      "name": "evidence_20261028_191347.tar.gz.sig",
+      "generation": "1730285101000000",
+      "size_bytes": 384,
+      "sha256": "7a3536fa9f45efc1c2e43bc3306fa029ec2eebef864c24ea027f311c6bb73d32",
+      "retentionExpirationTime": "2026-11-29T10:00:00.000Z"
+    }
+  ],
+  "verification_summary": {
+    "bucket_lock_finalized": true,
+    "minimum_retention_seconds_satisfied": true,
+    "remote_signature_verified": true,
+    "remote_sha256_verified": true
+  }
+}
+

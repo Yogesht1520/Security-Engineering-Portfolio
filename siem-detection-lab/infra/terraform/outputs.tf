@@ -29,13 +29,18 @@ output "ssh_honeypot" {
 }
 
 output "ssh_bastion" {
-  description = "SSH command for Admin Bastion jumpbox"
+  description = "Centralized OS Login SSH command for Admin Bastion jumpbox (IAM & MFA managed)"
+  value       = "gcloud compute ssh ${google_compute_instance.bastion.name} --zone=${var.zone}"
+}
+
+output "ssh_bastion_direct" {
+  description = "Standard SSH command for Admin Bastion jumpbox using OS Login user"
   value       = "ssh -i ~/.ssh/siem_lab_key ubuntu@${google_compute_instance.bastion.network_interface[0].access_config[0].nat_ip}"
 }
 
 output "ssh_siem" {
-  description = "Secure SSH command for SIEM VM routed through Bastion jumpbox"
-  value       = "ssh -i ~/.ssh/siem_lab_key -J ubuntu@${google_compute_instance.bastion.network_interface[0].access_config[0].nat_ip} ubuntu@${google_compute_instance.siem.network_interface[0].network_ip}"
+  description = "Secure SSH command for SIEM VM routed through Bastion jumpbox via OS Login"
+  value       = "gcloud compute ssh ${google_compute_instance.siem.name} --zone=${var.zone} --internal-ip"
 }
 
 output "wazuh_dashboard_tunnel" {

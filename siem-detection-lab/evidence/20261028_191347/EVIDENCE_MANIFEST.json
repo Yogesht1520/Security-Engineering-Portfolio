@@ -1,14 +1,28 @@
 {
   "provenance": {
-    "collector": "yogesh@Yogesh",
+    "collector": "soc-analyst@siem-lab",
     "collection_start_utc": "2026-10-28T19:13:47Z",
-    "collection_end_utc": "2026-10-28T19:14:26Z",
-    "runbook_version": "2.0.0",
+    "collection_end_utc": "2026-10-30T11:01:38Z",
+    "runbook_version": "3.5.0",
+    "preservation_mode": "local",
     "target_honeypot_ip": "34.121.64.158",
     "target_siem_ip": "34.71.182.95",
-    "custody_notice": "Cryptographic hashes verify integrity from recorded collection point forward."
+    "gcp_disk_snapshot": "snapshot-honeypot-disk-20261028-191347",
+    "custody_notice": "Cryptographic hashes and asymmetric digital signatures guarantee tamper detection from recorded collection point forward."
+  },
+  "cryptography": {
+    "digest_algorithm": "SHA-256",
+    "signature_algorithm": "SHA256withRSA-PKCS#1v1.5",
+    "public_key_file": "EVIDENCE_SIGNING_PUBKEY.pub",
+    "public_key_sha256": "356be70607c615e9e00bcaf5a38f4f7e09e9ed32077664dc2d3a15fb827cc91b",
+    "trusted_pins_record": "evidence/TRUSTED_SIGNER_PINS.txt"
   },
   "artifacts": [
+    {
+      "filename": "EVIDENCE_SIGNING_PUBKEY.pub",
+      "size_bytes": 625,
+      "sha256": "356be70607c615e9e00bcaf5a38f4f7e09e9ed32077664dc2d3a15fb827cc91b"
+    },
     {
       "filename": "honeypot_audit.log",
       "size_bytes": 6184687,

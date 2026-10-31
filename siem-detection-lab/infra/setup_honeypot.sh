@@ -144,13 +144,18 @@ if ! (
   auditctl -s | grep -q "enabled 1"
 ); then
   echo "  [!] ERROR: Candidate audit rules failed activation. Initiating automated rollback..." >&2
-  rm -f /etc/audit/rules.d/siem-lab.rules
-  cp -r "$AUDIT_BACKUP_DIR"/* /etc/audit/
-  augenrules --load 2>/dev/null || true
-  if [ -s "${AUDIT_BACKUP_DIR}/active_rules_pre.txt" ]; then
-    auditctl -R "${AUDIT_BACKUP_DIR}/active_rules_pre.txt" 2>/dev/null || true
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [ -f "${SCRIPT_DIR}/rollback_auditd.sh" ]; then
+    bash "${SCRIPT_DIR}/rollback_auditd.sh" "$AUDIT_BACKUP_DIR" "/etc/audit/rules.d/siem-lab.rules"
+  else
+    rm -f /etc/audit/rules.d/siem-lab.rules
+    cp -r "$AUDIT_BACKUP_DIR"/* /etc/audit/
+    augenrules --load 2>/dev/null || true
+    if [ -s "${AUDIT_BACKUP_DIR}/active_rules_pre.txt" ]; then
+      auditctl -R "${AUDIT_BACKUP_DIR}/active_rules_pre.txt" 2>/dev/null || true
+    fi
+    systemctl restart auditd 2>/dev/null || true
   fi
-  systemctl restart auditd 2>/dev/null || true
   echo "  [✓] Rollback complete: candidate file purged, prior audit configuration and kernel policy restored." >&2
   exit 1
 fi

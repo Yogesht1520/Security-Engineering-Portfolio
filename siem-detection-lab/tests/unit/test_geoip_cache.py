@@ -11,12 +11,48 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from incident_management.enrichment.geoip import GeoIPCache
+from incident_management.enrichment.geoip import GeoIPCache, SingleFlight
+
+def test_single_flight_coalescing():
+    print("[*] Testing Single-Flight duplicate request coalescing...")
+    sf = SingleFlight()
+    execution_count = 0
+    lock = threading.Lock()
+
+    def slow_external_fetch():
+        nonlocal execution_count
+        with lock:
+            execution_count += 1
+        time.sleep(0.15)
+        return {"data": "unique_network_response"}
+
+    results = []
+    threads = []
+
+    def caller():
+        res = sf.do("203.0.113.55", slow_external_fetch)
+        results.append(res)
+
+    # Launch 10 simultaneous threads requesting the same uncached key
+    for _ in range(10):
+        t = threading.Thread(target=caller)
+        threads.append(t)
+        t.start()
+
+    for t in threads:
+        t.join()
+
+    assert len(results) == 10, f"Expected 10 results, got {len(results)}"
+    assert all(r == {"data": "unique_network_response"} for r in results), "Not all callers received identical payload"
+    assert execution_count == 1, f"CRITICAL: Expected exactly 1 network execution, got {execution_count}!"
+    print(f"  [✓] Single-Flight coalesced 10 concurrent requests into exactly {execution_count} execution.")
 
 def test_bounded_lru_and_ttl():
     print("=" * 65)
     print("      GeoIP Cache Bounded LRU, Thread Safety & TTL Suite      ")
     print("=" * 65)
+
+    test_single_flight_coalescing()
 
     # 1. Bounded Size (LRU eviction)
     cache = GeoIPCache(max_size=3, ttl_seconds=5)

@@ -1,0 +1,21 @@
+
+[1m================================================================[0m
+[1m   Auditd Bootstrap Transactional Rollback Test Suite          [0m
+[1m   Execution Mode: Simulated Sandbox[0m
+[1m================================================================[0m
+
+[0;36m[*] Injecting Stage 1 Failure: Malformed Audit Rule Syntax...[0m
+  [0;32m[PASS] Stage 1: Syntax Corruption Trapped & Staged File Purged[0m
+         Invalid candidate rejected, corrupt file purged from rules.d, baseline restored
+
+[0;36m[*] Injecting Stage 2 Failure: Service Restart Failure...[0m
+  [0;32m[PASS] Stage 2: Service Restart Failure Trapped & Rollback Executed[0m
+         Simulated systemctl restart failure triggered rollback; original config restored
+
+[0;36m[*] Injecting Stage 3 Failure: Kernel Audit Subsystem Status Assertion...[0m
+  [0;32m[PASS] Stage 3: Kernel Policy Assertion Failure Trapped & Kernel Rules Restored[0m
+         Auditctl check failed closed, candidate purged, active kernel policy restored
+
+----------------------------------------------------------------
+[0;32m[1mAuditd Rollback Suite: 3/3 Passed [ALL PASS][0m
+

@@ -98,6 +98,45 @@ class GeoIPCache:
 # Global bounded, thread-safe cache instance (1000 entries max, 24-hour TTL)
 _GEOIP_CACHE = GeoIPCache(max_size=1000, ttl_seconds=86400)
 
+class SingleFlight:
+    """Coalesces duplicate in-flight requests for the same key into a single execution."""
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._calls = {} # key -> (threading.Event, [result, exception])
+
+    def do(self, key: str, fn):
+        with self._lock:
+            if key in self._calls:
+                event, box = self._calls[key]
+                leader = False
+            else:
+                event = threading.Event()
+                box = [None, None]
+                self._calls[key] = (event, box)
+                leader = True
+
+        if not leader:
+            event.wait()
+            if box[1] is not None:
+                raise box[1]
+            return box[0]
+
+        try:
+            res = fn()
+            box[0] = res
+            return res
+        except Exception as exc:
+            box[1] = exc
+            raise exc
+        finally:
+            with self._lock:
+                event.set()
+                if key in self._calls:
+                    del self._calls[key]
+
+# Global request coalescing coordinator
+_SINGLE_FLIGHT = SingleFlight()
+
 def is_bogon_or_special(ip_obj: ipaddress.IPv4Address | ipaddress.IPv6Address) -> tuple[bool, str]:
     """Evaluates whether an IP address belongs to any IANA special-purpose or bogon block."""
     if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_reserved or ip_obj.is_multicast:
@@ -140,9 +179,14 @@ def lookup_ip(ip_address: str) -> dict:
         _GEOIP_CACHE.set(clean_ip, result)
         return result
 
-    # 3. Encrypted HTTPS external enrichment for public addresses
-    url = f"https://ip-api.com/json/{clean_ip}?fields=status,message,country,city,regionName,isp,as,query"
-    try:
+    # 3. Encrypted HTTPS external enrichment for public addresses with Single-Flight coordination
+    def _execute_http_lookup():
+        # Double check cache within single-flight execution
+        cached_inner = _GEOIP_CACHE.get(clean_ip)
+        if cached_inner is not None:
+            return cached_inner
+
+        url = f"https://ip-api.com/json/{clean_ip}?fields=status,message,country,city,regionName,isp,as,query"
         req = urllib.request.Request(
             url,
             headers={"User-Agent": "SIEM-Lab-Enrichment/2.0 (Security Engineering Lab)"}
@@ -150,7 +194,7 @@ def lookup_ip(ip_address: str) -> dict:
         with urllib.request.urlopen(req, timeout=5) as response:
             data = json.loads(response.read().decode())
             if data.get("status") == "success":
-                result = {
+                res = {
                     "ip": clean_ip,
                     "status": "success",
                     "country": data.get("country", "Unknown"),
@@ -159,14 +203,17 @@ def lookup_ip(ip_address: str) -> dict:
                     "isp": data.get("isp", "Unknown"),
                     "asn": data.get("as", "Unknown")
                 }
-                _GEOIP_CACHE.set(clean_ip, result)
-                return result
+                _GEOIP_CACHE.set(clean_ip, res)
+                return res
             else:
                 return {
                     "ip": clean_ip,
                     "status": "fail",
                     "message": data.get("message", "Lookup failed")
                 }
+
+    try:
+        return _SINGLE_FLIGHT.do(clean_ip, _execute_http_lookup)
     except Exception as e:
         return {
             "ip": clean_ip,

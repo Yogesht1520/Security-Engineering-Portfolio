@@ -1,0 +1,5 @@
+-a always,exit -F arch=b64 -S execve -F path=/usr/bin/sudo -k baseline_privesc
+-w /etc/issue -p r -k baseline_banner
+-b 8192
+-f 1
+

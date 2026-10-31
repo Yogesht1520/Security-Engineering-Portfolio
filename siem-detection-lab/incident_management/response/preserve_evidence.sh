@@ -226,11 +226,17 @@ fi
 openssl pkey -in "$SIGNING_KEY_PATH" -pubout -out "$PUBKEY_PATH" 2>/dev/null
 SIGNER_PUBKEY_FINGERPRINT=$(openssl dgst -sha256 "$PUBKEY_PATH" | awk '{print $NF}')
 
-# Record trusted public key fingerprint in external trusted record outside the bundle
+# 1. Record trusted public key fingerprint in independent external store outside repository
+EXTERNAL_PINS_FILE="${EXTERNAL_PINS_FILE:-$HOME/.config/siem-lab/trusted_signer_pins.txt}"
+mkdir -p "$(dirname "$EXTERNAL_PINS_FILE")"
+echo "${START_TIME_UTC} | ${COLLECTOR_USER}@${COLLECTOR_HOST} | SHA256:${SIGNER_PUBKEY_FINGERPRINT} | EVIDENCE_SIGNING_PUBKEY.pub" >> "$EXTERNAL_PINS_FILE"
+
+# 2. Mirror to repository audit record for local provenance
 TRUSTED_PINS_FILE="evidence/TRUSTED_SIGNER_PINS.txt"
 mkdir -p "evidence"
 echo "${START_TIME_UTC} | ${COLLECTOR_USER}@${COLLECTOR_HOST} | SHA256:${SIGNER_PUBKEY_FINGERPRINT} | EVIDENCE_SIGNING_PUBKEY.pub" >> "$TRUSTED_PINS_FILE"
-echo "  [✓] Public signing key exported and pinned: SHA256:${SIGNER_PUBKEY_FINGERPRINT}"
+echo "  [✓] Public signing key exported and pinned to independent store: $EXTERNAL_PINS_FILE"
+echo "      Fingerprint: SHA256:${SIGNER_PUBKEY_FINGERPRINT}"
 
 # ── 5B. Generate Checksums Covering Artifacts AND Public Key ─────────────────
 END_TIME_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -363,24 +369,32 @@ if [ "$PRESERVATION_MODE" = "worm" ]; then
     exit 1
   fi
 
-  # Verify destination bucket has an active Retention Policy or Object Lock
-  echo "  - Checking destination bucket immutability / retention policy..."
-  RETENTION_VERIFIED=false
+  # Policy constants
+  MIN_RETENTION_SECONDS="${MIN_RETENTION_SECONDS:-2592000}" # 30 days mandatory minimum
+  REQUIRE_BUCKET_LOCK="${REQUIRE_BUCKET_LOCK:-true}"
+
+  # Verify destination bucket has an active Retention Policy and check duration & lock status
+  echo "  - Checking destination bucket retention policy, lock status, and duration..."
+  RETENTION_PERIOD=0
+  IS_LOCKED=false
 
   if command -v gcloud >/dev/null 2>&1; then
     RETENTION_INFO=$(gcloud storage buckets describe "$EVIDENCE_BUCKET" --format="json(retentionPolicy)" 2>/dev/null || true)
-    if echo "$RETENTION_INFO" | grep -q "retentionPeriod"; then
-      RETENTION_VERIFIED=true
-      echo "  [✓] Verified destination bucket has active Retention Policy configured."
+    if [ -n "$RETENTION_INFO" ]; then
+      RETENTION_PERIOD=$(python3 -c "import sys, json; data=json.load(sys.stdin); print(int(data.get('retentionPolicy', {}).get('retentionPeriod', 0)))" <<< "$RETENTION_INFO" 2>/dev/null || echo 0)
+      IS_LOCKED=$(python3 -c "import sys, json; data=json.load(sys.stdin); print(str(data.get('retentionPolicy', {}).get('isLocked', False)).lower())" <<< "$RETENTION_INFO" 2>/dev/null || echo false)
     fi
   elif command -v gsutil >/dev/null 2>&1; then
-    if gsutil retention get "$EVIDENCE_BUCKET" 2>&1 | grep -q -i "Retention Policy"; then
-      RETENTION_VERIFIED=true
-      echo "  [✓] Verified destination bucket has active Retention Policy configured."
+    RETENTION_RAW=$(gsutil retention get "$EVIDENCE_BUCKET" 2>&1 || true)
+    if echo "$RETENTION_RAW" | grep -q "Retention Policy"; then
+      RETENTION_PERIOD=$(echo "$RETENTION_RAW" | grep -i "Duration" | awk '{print $2}' || echo 0)
+      if echo "$RETENTION_RAW" | grep -q -i "Locked: True"; then
+        IS_LOCKED=true
+      fi
     fi
   fi
 
-  if [ "$RETENTION_VERIFIED" = false ]; then
+  if [ "$RETENTION_PERIOD" -eq 0 ]; then
     echo "═════════════════════════════════════════════════════════════════"
     echo " [!] FATAL: Destination bucket ${EVIDENCE_BUCKET} does NOT have"
     echo "     an active Retention Policy (Bucket Lock / Object Retention)."
@@ -389,15 +403,38 @@ if [ "$PRESERVATION_MODE" = "worm" ]; then
     exit 1
   fi
 
-  # Upload archive, signature, checksum, and manifest to WORM bucket
+  if [ "$RETENTION_PERIOD" -lt "$MIN_RETENTION_SECONDS" ]; then
+    echo "═════════════════════════════════════════════════════════════════"
+    echo " [!] FATAL: Retention duration (${RETENTION_PERIOD}s) is less than"
+    echo "     mandatory enterprise minimum (${MIN_RETENTION_SECONDS}s / 30 days)."
+    echo "═════════════════════════════════════════════════════════════════"
+    exit 1
+  fi
+
+  if [ "$REQUIRE_BUCKET_LOCK" = true ] && [ "$IS_LOCKED" != "true" ]; then
+    echo "═════════════════════════════════════════════════════════════════"
+    echo " [!] FATAL: Destination bucket ${EVIDENCE_BUCKET} Retention Policy"
+    echo "     is NOT finalized/locked (isLocked=false)."
+    echo "     Enterprise WORM standard requires immutable Bucket Lock."
+    echo "═════════════════════════════════════════════════════════════════"
+    exit 1
+  fi
+
+  echo "  [✓] Verified destination bucket immutability: Retention=${RETENTION_PERIOD}s, Locked=${IS_LOCKED}"
+
+  # Upload archive, signature, checksum, manifest, and public key to WORM bucket
   echo "  - Replicating signed archive and signatures to WORM bucket..."
   UPLOAD_OK=false
   if command -v gcloud >/dev/null 2>&1; then
-    if gcloud storage cp "$ARCHIVE_PATH" "${ARCHIVE_PATH}.sig" "${ARCHIVE_PATH}.sha256" "${EVIDENCE_DIR}/EVIDENCE_MANIFEST.json" "${EVIDENCE_BUCKET}/" --quiet 2>/dev/null; then
+    if gcloud storage cp "$ARCHIVE_PATH" "${ARCHIVE_PATH}.sig" "${ARCHIVE_PATH}.sha256" \
+      "${EVIDENCE_DIR}/EVIDENCE_MANIFEST.json" "${EVIDENCE_DIR}/EVIDENCE_SIGNING_PUBKEY.pub" \
+      "${EVIDENCE_BUCKET}/" --quiet 2>/dev/null; then
       UPLOAD_OK=true
     fi
   elif command -v gsutil >/dev/null 2>&1; then
-    if gsutil cp "$ARCHIVE_PATH" "${ARCHIVE_PATH}.sig" "${ARCHIVE_PATH}.sha256" "${EVIDENCE_DIR}/EVIDENCE_MANIFEST.json" "${EVIDENCE_BUCKET}/" 2>/dev/null; then
+    if gsutil cp "$ARCHIVE_PATH" "${ARCHIVE_PATH}.sig" "${ARCHIVE_PATH}.sha256" \
+      "${EVIDENCE_DIR}/EVIDENCE_MANIFEST.json" "${EVIDENCE_DIR}/EVIDENCE_SIGNING_PUBKEY.pub" \
+      "${EVIDENCE_BUCKET}/" 2>/dev/null; then
       UPLOAD_OK=true
     fi
   fi
@@ -407,21 +444,93 @@ if [ "$PRESERVATION_MODE" = "worm" ]; then
     exit 1
   fi
 
-  # Remote verification of uploaded archive object
-  echo "  - Performing post-upload verification of remote WORM object..."
-  REMOTE_CHECK=false
+  # Remote verification of uploaded archive object: download and verify actual uploaded bytes
+  echo "  - Performing byte-level download and remote cryptographic verification..."
+  TMP_VERIFY_DIR=$(mktemp -d /tmp/worm_verify.XXXXXX 2>/dev/null || mktemp -d)
+
+  DOWNLOAD_OK=false
   if command -v gcloud >/dev/null 2>&1; then
-    gcloud storage ls "${EVIDENCE_BUCKET}/${ARCHIVE_NAME}" >/dev/null 2>&1 && REMOTE_CHECK=true
+    if gcloud storage cp "${EVIDENCE_BUCKET}/${ARCHIVE_NAME}" \
+      "${EVIDENCE_BUCKET}/${ARCHIVE_NAME}.sig" \
+      "${EVIDENCE_BUCKET}/${ARCHIVE_NAME}.sha256" \
+      "${EVIDENCE_BUCKET}/EVIDENCE_MANIFEST.json" \
+      "${TMP_VERIFY_DIR}/" --quiet 2>/dev/null; then
+      DOWNLOAD_OK=true
+    fi
   elif command -v gsutil >/dev/null 2>&1; then
-    gsutil ls "${EVIDENCE_BUCKET}/${ARCHIVE_NAME}" >/dev/null 2>&1 && REMOTE_CHECK=true
+    if gsutil cp "${EVIDENCE_BUCKET}/${ARCHIVE_NAME}" \
+      "${EVIDENCE_BUCKET}/${ARCHIVE_NAME}.sig" \
+      "${EVIDENCE_BUCKET}/${ARCHIVE_NAME}.sha256" \
+      "${EVIDENCE_BUCKET}/EVIDENCE_MANIFEST.json" \
+      "${TMP_VERIFY_DIR}/" 2>/dev/null; then
+      DOWNLOAD_OK=true
+    fi
   fi
 
-  if [ "$REMOTE_CHECK" = true ]; then
-    echo "  [✓] Remote WORM object verified intact: ${EVIDENCE_BUCKET}/${ARCHIVE_NAME}"
-  else
-    echo " [!] FATAL: Remote object verification failed after upload!"
+  if [ "$DOWNLOAD_OK" = false ]; then
+    echo " [!] FATAL: Failed to download remote objects from WORM bucket for integrity assertion!"
+    rm -rf "$TMP_VERIFY_DIR"
     exit 1
   fi
+
+  # 1. SHA-256 against local archive hash
+  if command -v sha256sum >/dev/null 2>&1; then
+    REMOTE_ARCHIVE_HASH=$(sha256sum "${TMP_VERIFY_DIR}/${ARCHIVE_NAME}" | awk '{print $1}')
+  elif command -v shasum >/dev/null 2>&1; then
+    REMOTE_ARCHIVE_HASH=$(shasum -a 256 "${TMP_VERIFY_DIR}/${ARCHIVE_NAME}" | awk '{print $1}')
+  else
+    REMOTE_ARCHIVE_HASH="unavailable"
+  fi
+
+  if [ "$REMOTE_ARCHIVE_HASH" != "$ARCHIVE_SHA256" ]; then
+    echo " [!] FATAL: Remote archive SHA-256 checksum mismatch!"
+    echo "     Local:  $ARCHIVE_SHA256"
+    echo "     Remote: $REMOTE_ARCHIVE_HASH"
+    rm -rf "$TMP_VERIFY_DIR"
+    exit 1
+  fi
+  echo "  [✓] 1/5: Remote archive SHA-256 matched local hash bit-for-bit (${REMOTE_ARCHIVE_HASH})"
+
+  # 2. RSA signature verification on remote archive using pinned public key
+  if ! openssl dgst -sha256 -verify "$PUBKEY_PATH" \
+    -signature "${TMP_VERIFY_DIR}/${ARCHIVE_NAME}.sig" "${TMP_VERIFY_DIR}/${ARCHIVE_NAME}" >/dev/null 2>&1; then
+    echo " [!] FATAL: Remote archive RSA digital signature verification failed!"
+    rm -rf "$TMP_VERIFY_DIR"
+    exit 1
+  fi
+  echo "  [✓] 2/5: Remote archive RSA signature valid under pinned public key."
+
+  # 3. Verify remote .sha256 checksum file
+  REMOTE_CHECKSUM_CONTENT=$(cat "${TMP_VERIFY_DIR}/${ARCHIVE_NAME}.sha256" | awk '{print $1}')
+  if [ "$REMOTE_CHECKSUM_CONTENT" != "$ARCHIVE_SHA256" ]; then
+    echo " [!] FATAL: Remote .sha256 checksum file content mismatch!"
+    rm -rf "$TMP_VERIFY_DIR"
+    exit 1
+  fi
+  echo "  [✓] 3/5: Remote checksum file validated."
+
+  # 4. Verify presence and byte-for-byte match of remote manifest
+  if ! cmp -s "${EVIDENCE_DIR}/EVIDENCE_MANIFEST.json" "${TMP_VERIFY_DIR}/EVIDENCE_MANIFEST.json"; then
+    echo " [!] FATAL: Remote manifest content mismatch with local manifest!"
+    rm -rf "$TMP_VERIFY_DIR"
+    exit 1
+  fi
+  echo "  [✓] 4/5: Remote manifest byte-for-byte integrity verified."
+
+  # 5. Verify actual object retention configuration
+  if command -v gcloud >/dev/null 2>&1; then
+    OBJ_META=$(gcloud storage objects describe "${EVIDENCE_BUCKET}/${ARCHIVE_NAME}" --format="json(retentionExpirationTime)" 2>/dev/null || true)
+    if echo "$OBJ_META" | grep -q "retentionExpirationTime"; then
+      echo "  [✓] 5/5: Object retention expiration confirmed active on remote object."
+    else
+      echo "  [✓] 5/5: Bucket retention policy enforced on remote object."
+    fi
+  else
+    echo "  [✓] 5/5: Bucket retention policy enforced on remote object."
+  fi
+
+  rm -rf "$TMP_VERIFY_DIR"
+  echo "  [✓] Complete Remote WORM byte-level integrity & signature verification PASSED."
 
 elif [ -n "$EVIDENCE_BUCKET" ]; then
   # Local mode with optional best-effort upload

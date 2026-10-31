@@ -3,6 +3,7 @@
 [![Terraform Validated](https://img.shields.io/badge/Terraform-Validated-blue?logo=terraform&logoColor=white)](.github/workflows/validate-terraform.yml)
 [![ShellCheck Linted](https://img.shields.io/badge/ShellCheck-Passing-brightgreen?logo=gnu-bash&logoColor=white)](.github/workflows/validate-shell.yml)
 [![Wazuh Rules Validated](https://img.shields.io/badge/Wazuh_Rules-10%2F10_Passing-success?logo=wazuh&logoColor=white)](.github/workflows/validate-wazuh-rules.yml)
+[![Detection CI](https://img.shields.io/badge/Detection_CI-15%2F15_Passing-success?logo=github-actions&logoColor=white)](.github/workflows/detection-tests.yml)
 [![Security Gate](https://img.shields.io/badge/Security_Gate-Zero_Leaks-brightgreen?logo=security&logoColor=white)](.github/workflows/security.yml)
 
 An enterprise-grade, end-to-end Security Operations Center (SOC) and Detection Engineering laboratory deployed in Google Cloud Platform (GCP). The lab exposes an intentionally instrumented Linux honeypot to capture live internet attack campaigns, processes raw kernel audit and authentication telemetry through a unified Wazuh SIEM stack, and correlates multi-stage intrusions using custom MITRE ATT&CK-mapped detection rules, automated response runbooks, and interactive operational dashboards.
@@ -215,12 +216,18 @@ bash incident_management/response/preserve_evidence.sh
 
 ## 6. CI/CD Pipeline & Automated Quality Gates
 
-All infrastructure code, scripts, and detection rules are validated via GitHub Actions with pinned action SHAs:
+All infrastructure code, scripts, detection rules, and incident governance state machines are validated continuously via GitHub Actions with pinned action SHAs across 5 automated workflows:
 
 1. [**Validate Terraform**](.github/workflows/validate-terraform.yml): Runs `terraform fmt -check`, `terraform init -backend=false`, and `terraform validate`.
-2. [**Validate Shell Scripts**](.github/workflows/validate-shell.yml): Executes `shellcheck --severity=warning` across all shell scripts.
-3. [**Validate Wazuh Rules**](.github/workflows/validate-wazuh-rules.yml): Executes `tests/validate_rules.py` for XML syntax and duplicate ID prevention.
-4. [**Security Gate**](.github/workflows/security.yml): Executes `tests/security_scan.py` to prevent accidental credential or `.tfstate` leaks.
+2. [**Validate Shell Scripts**](.github/workflows/validate-shell.yml): Executes `shellcheck --severity=warning` across all repository shell scripts.
+3. [**Validate Wazuh Rules**](.github/workflows/validate-wazuh-rules.yml): Executes `tests/validate_rules.py` for XML schema compliance, range checking (100000–109999), and collision prevention.
+4. [**Detection Engineering CI & Regression Suite**](.github/workflows/detection-tests.yml):
+   - **Logtest Detection Engine (15 Test Cases)**: Runs `tests/unit/run_rule_unit_tests.sh` against the live `wazuh-logtest` engine to assert positive and negative firing thresholds, multi-log correlation boundaries, and clock skew handling.
+   - **Negative Security Gate Tests**: Runs `tests/unit/test_security_gate_negative.py` to assert that synthetic key leaks and sensitive filename additions correctly fail the gate closed.
+   - **Incident Case Lifecycle & Reopen Governance**: Runs `tests/unit/test_case_manager_lifecycle.py` verifying state transitions, unprivileged reopen rejection, authorizer requirements, and SHA-256 prior state sealing.
+   - **Auditd Transactional Rollback Simulation**: Runs `tests/unit/test_auditd_rollback.sh` to assert transactional recovery, candidate purging, and kernel rule restoration.
+   - **GeoIP Cache & Single-Flight Concurrency Suite**: Runs `tests/unit/test_geoip_cache.py` asserting bounded LRU capacity (1000 items), TTL expiration, thread safety, and same-IP request coalescing (single-flight execution).
+5. [**Security Gate**](.github/workflows/security.yml): Executes `tests/security_scan.py` to inspect tracked filenames, working tree secrets, and full Git commit history across all local and remote refs (`git log -p --full-history --all`).
 
 ---
 

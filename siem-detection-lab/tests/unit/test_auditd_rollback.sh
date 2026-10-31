@@ -87,14 +87,15 @@ if [ "$INTEGRATION_MODE" = true ]; then
   DEPLOY_FAILED=false
   if ! (augenrules --load 2>/dev/null && auditctl -s | grep -q "enabled 1"); then
     DEPLOY_FAILED=true
-    echo "  [✓] Corrupt rule correctly failed validation. Executing live rollback..."
-    rm -f /etc/audit/rules.d/siem-lab.rules
-    cp -r "$INT_BACKUP"/audit/* /etc/audit/
-    augenrules --load 2>/dev/null || true
-    if [ -s "${INT_BACKUP}/active_rules_pre.txt" ]; then
-      auditctl -R "${INT_BACKUP}/active_rules_pre.txt" 2>/dev/null || true
+    echo "  [✓] Corrupt rule correctly failed validation. Executing shared production rollback engine (infra/rollback_auditd.sh)..."
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PROD_ROLLBACK="${SCRIPT_DIR}/../../infra/rollback_auditd.sh"
+    if [ -f "$PROD_ROLLBACK" ]; then
+      bash "$PROD_ROLLBACK" "$INT_BACKUP" "/etc/audit/rules.d/siem-lab.rules"
+    else
+      echo "  [!] ERROR: Production rollback engine $PROD_ROLLBACK not found!" >&2
+      exit 1
     fi
-    systemctl restart auditd 2>/dev/null || true
   fi
   
   # Assert live recovery

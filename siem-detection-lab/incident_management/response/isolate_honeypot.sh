@@ -195,6 +195,33 @@ restore_host() {
       sudo iptables-save > /etc/iptables/rules.v4
       echo \"  [✓] Host iptables baseline reconstructed with strict egress controls and saved.\"
     fi
+
+    # ── Post-Restoration Idempotency & Rule Verification ─────────────────────
+    echo \"  [*] Performing post-restoration assertion on active iptables chains...\"
+    
+    # 1. Assert Metadata Block Rule exists
+    if ! sudo iptables -C OUTPUT -d 169.254.169.254/32 -p tcp -j REJECT --reject-with tcp-reset 2>/dev/null; then
+      echo \"  [!] FATAL: Post-restoration check failed: Metadata block (169.254.169.254) missing!\" >&2
+      exit 1
+    fi
+    
+    # 2. Assert SIEM Manager Telemetry Egress rules exist
+    if ! sudo iptables -C OUTPUT -p tcp -d 10.0.20.2 --dport 1514 -j ACCEPT 2>/dev/null; then
+      echo \"  [!] FATAL: Post-restoration check failed: SIEM port 1514 egress missing!\" >&2
+      exit 1
+    fi
+    if ! sudo iptables -C OUTPUT -p tcp -d 10.0.20.2 --dport 1515 -j ACCEPT 2>/dev/null; then
+      echo \"  [!] FATAL: Post-restoration check failed: SIEM port 1515 egress missing!\" >&2
+      exit 1
+    fi
+    
+    # 3. Assert Port 22 Ingress Honeypot Target exists
+    if ! sudo iptables -C INPUT -p tcp --dport 22 -j ACCEPT 2>/dev/null; then
+      echo \"  [!] FATAL: Post-restoration check failed: SSH port 22 ingress missing!\" >&2
+      exit 1
+    fi
+    
+    echo \"  [✓] Post-restoration verification PASSED: Idempotent rule state confirmed active.\"
   '"
 }
 

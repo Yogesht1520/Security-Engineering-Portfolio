@@ -140,9 +140,9 @@ resource "google_compute_firewall" "bastion_allow_ssh_mgmt" {
     ports    = ["22"]
   }
 
-  source_ranges = [var.your_public_ip]
+  source_ranges = [var.your_public_ip, "35.235.240.0/20"]
   target_tags   = ["bastion"]
-  description   = "BASTION: SSH restricted to management workstation IP"
+  description   = "BASTION: SSH restricted to management workstation IP and Google Cloud IAP"
 }
 
 # ── Honeypot: Explicit block for GCP Metadata Server (169.254.169.254) ────────
@@ -323,7 +323,6 @@ resource "google_compute_instance" "siem" {
   }
 
   metadata = {
-    ssh-keys               = "ubuntu:${local.ssh_public_key}"
     enable-oslogin         = "TRUE"
     block-project-ssh-keys = "TRUE"
   }
@@ -355,7 +354,6 @@ resource "google_compute_instance" "bastion" {
   }
 
   metadata = {
-    ssh-keys               = "ubuntu:${local.ssh_public_key}"
     enable-oslogin         = "TRUE"
     block-project-ssh-keys = "TRUE"
   }
