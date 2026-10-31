@@ -1,0 +1,37 @@
+name: Validate Wazuh Rules
+
+on:
+  push:
+    paths:
+      - 'siem-detection-lab/wazuh/custom_rules/**'
+      - 'siem-detection-lab/tests/validate_rules.py'
+      - '.github/workflows/siem-validate-wazuh-rules.yml'
+  pull_request:
+    paths:
+      - 'siem-detection-lab/wazuh/custom_rules/**'
+      - 'siem-detection-lab/tests/validate_rules.py'
+      - '.github/workflows/siem-validate-wazuh-rules.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-rules:
+    name: Wazuh Rule Linter & Static Quality Gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: siem-detection-lab
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run Rule Syntax & Collision Validation
+        run: python tests/validate_rules.py

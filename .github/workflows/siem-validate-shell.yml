@@ -1,0 +1,32 @@
+name: Validate Shell Scripts
+
+on:
+  push:
+    paths:
+      - 'siem-detection-lab/**/*.sh'
+      - '.github/workflows/siem-validate-shell.yml'
+  pull_request:
+    paths:
+      - 'siem-detection-lab/**/*.sh'
+      - '.github/workflows/siem-validate-shell.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    name: Lint Shell Scripts
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: siem-detection-lab
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run ShellCheck
+        run: |
+          echo "Scanning all SIEM lab shell scripts..."
+          find . -name "*.sh" -not -path "./.terraform/*" -not -path "./infra/terraform/*" -print0 | xargs -0 shellcheck --severity=warning

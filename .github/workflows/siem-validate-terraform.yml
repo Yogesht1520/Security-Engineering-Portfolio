@@ -1,0 +1,41 @@
+name: Validate Terraform
+
+on:
+  push:
+    paths:
+      - 'siem-detection-lab/infra/terraform/**'
+      - '.github/workflows/siem-validate-terraform.yml'
+  pull_request:
+    paths:
+      - 'siem-detection-lab/infra/terraform/**'
+      - '.github/workflows/siem-validate-terraform.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Terraform Format & Validate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: siem-detection-lab/infra/terraform
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.7
+
+      - name: Check Formatting
+        run: terraform fmt -check -diff
+
+      - name: Initialize (No Backend)
+        run: terraform init -backend=false
+
+      - name: Validate Syntax & Schema
+        run: terraform validate

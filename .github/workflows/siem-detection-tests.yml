@@ -1,0 +1,53 @@
+name: Detection Engineering CI & Regression Suite
+
+on:
+  push:
+    paths:
+      - 'siem-detection-lab/**'
+      - '.github/workflows/siem-detection-tests.yml'
+  pull_request:
+    paths:
+      - 'siem-detection-lab/**'
+      - '.github/workflows/siem-detection-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-and-governance-gates:
+    name: Detection & Governance Quality Gates
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: siem-detection-lab
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Test Dependencies
+        run: pip install jsonschema cryptography
+
+      - name: 1. Validate Wazuh Rules XML Syntax & ID Ranges
+        run: python tests/validate_rules.py
+
+      - name: 2. Run Security Gate Negative Failure Assertions
+        run: python tests/unit/test_security_gate_negative.py
+
+      - name: 3. Run Incident Case Lifecycle & Privileged Reopen Assertions
+        run: python tests/unit/test_case_manager_lifecycle.py
+
+      - name: 4. Run Auditd Transactional Rollback Simulation
+        run: bash tests/unit/test_auditd_rollback.sh
+
+      - name: 5. Run GeoIP Single-Flight Coalescing & LRU Cache Tests
+        run: python tests/unit/test_geoip_cache.py
+
+      - name: 6. Execute Detection Rule Unit Tests (15/15)
+        run: bash tests/unit/run_rule_unit_tests.sh
