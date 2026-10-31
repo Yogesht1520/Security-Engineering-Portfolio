@@ -30,3 +30,4 @@ jobs:
         run: |
           echo "Scanning all SIEM lab shell scripts..."
           find . -name "*.sh" -not -path "./.terraform/*" -not -path "./infra/terraform/*" -print0 | xargs -0 shellcheck --severity=warning
+

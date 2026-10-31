@@ -51,3 +51,4 @@ jobs:
 
       - name: 6. Execute Detection Rule Unit Tests (15/15)
         run: bash tests/unit/run_rule_unit_tests.sh
+

@@ -39,3 +39,4 @@ jobs:
 
       - name: Validate Syntax & Schema
         run: terraform validate
+

@@ -35,3 +35,4 @@ jobs:
 
       - name: Run Rule Syntax & Collision Validation
         run: python tests/validate_rules.py
+
