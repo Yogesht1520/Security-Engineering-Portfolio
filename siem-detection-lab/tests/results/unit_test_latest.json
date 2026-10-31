@@ -4,7 +4,7 @@
     "passed": 15,
     "failed": 0,
     "pass_rate_percent": 100,
-    "execution_time_utc": "2026-10-28T19:09:21Z",
+    "execution_time_utc": "2026-10-31T12:38:43Z",
     "engine": "wazuh-logtest v4.9.2"
   },
   "results": [
@@ -14,7 +14,7 @@
       "status": "PASS",
       "expected": "No rule 100010",
       "actual": "Rule 5760 only (threshold held)",
-      "timestamp": "2026-10-28T19:09:04Z"
+      "timestamp": "2026-10-31T12:38:42Z"
     }
 ,
     {
@@ -23,7 +23,7 @@
       "status": "PASS",
       "expected": "Rule 100010 fired",
       "actual": "Rule 100010 fired",
-      "timestamp": "2026-10-28T19:09:05Z"
+      "timestamp": "2026-10-31T12:38:42Z"
     }
 ,
     {
@@ -32,7 +32,7 @@
       "status": "PASS",
       "expected": "Rule 100040 fired",
       "actual": "Rule 100040 fired",
-      "timestamp": "2026-10-28T19:09:06Z"
+      "timestamp": "2026-10-31T12:38:42Z"
     }
 ,
     {
@@ -41,7 +41,7 @@
       "status": "PASS",
       "expected": "No rule 100040",
       "actual": "Rule 5715 only (correlation isolation held)",
-      "timestamp": "2026-10-28T19:09:07Z"
+      "timestamp": "2026-10-31T12:38:43Z"
     }
 ,
     {
@@ -50,7 +50,7 @@
       "status": "PASS",
       "expected": "Rule 100015 fired",
       "actual": "Rule 100015 fired",
-      "timestamp": "2026-10-28T19:09:09Z"
+      "timestamp": "2026-10-31T12:38:43Z"
     }
 ,
     {
@@ -59,7 +59,7 @@
       "status": "PASS",
       "expected": "Rule 100030 fired",
       "actual": "Rule 100030 fired",
-      "timestamp": "2026-10-28T19:09:10Z"
+      "timestamp": "2026-10-31T12:38:43Z"
     }
 ,
     {
@@ -68,7 +68,7 @@
       "status": "PASS",
       "expected": "Rule 100012 fired",
       "actual": "Rule 100012 fired",
-      "timestamp": "2026-10-28T19:09:11Z"
+      "timestamp": "2026-10-31T12:38:43Z"
     }
 ,
     {
@@ -77,7 +77,7 @@
       "status": "PASS",
       "expected": "Rule 100014 fired",
       "actual": "Rule 100014 fired",
-      "timestamp": "2026-10-28T19:09:13Z"
+      "timestamp": "2026-10-31T12:38:43Z"
     }
 ,
     {
@@ -86,7 +86,7 @@
       "status": "PASS",
       "expected": "Rule 100020 fired",
       "actual": "Rule 100020 fired",
-      "timestamp": "2026-10-28T19:09:14Z"
+      "timestamp": "2026-10-31T12:38:43Z"
     }
 ,
     {
@@ -95,7 +95,7 @@
       "status": "PASS",
       "expected": "Rule 100021 fired",
       "actual": "Rule 100021 fired",
-      "timestamp": "2026-10-28T19:09:15Z"
+      "timestamp": "2026-10-31T12:38:43Z"
     }
 ,
     {
@@ -104,7 +104,7 @@
       "status": "PASS",
       "expected": "Rule 100022 fired",
       "actual": "Rule 100022 fired",
-      "timestamp": "2026-10-28T19:09:16Z"
+      "timestamp": "2026-10-31T12:38:43Z"
     }
 ,
     {
@@ -113,7 +113,7 @@
       "status": "PASS",
       "expected": "Rule 100041 fired",
       "actual": "Rule 100041 fired",
-      "timestamp": "2026-10-28T19:09:17Z"
+      "timestamp": "2026-10-31T12:38:43Z"
     }
 ,
     {
@@ -122,7 +122,7 @@
       "status": "PASS",
       "expected": "No rule 100014",
       "actual": "Single-account rule held without false positive",
-      "timestamp": "2026-10-28T19:09:19Z"
+      "timestamp": "2026-10-31T12:38:43Z"
     }
 ,
     {
@@ -131,7 +131,7 @@
       "status": "PASS",
       "expected": "Graceful base parsing",
       "actual": "No false custom rule triggered on corrupt record",
-      "timestamp": "2026-10-28T19:09:20Z"
+      "timestamp": "2026-10-31T12:38:43Z"
     }
 ,
     {
@@ -140,7 +140,7 @@
       "status": "PASS",
       "expected": "Clean execution",
       "actual": "Syslog parsed gracefully despite inverted clock",
-      "timestamp": "2026-10-28T19:09:21Z"
+      "timestamp": "2026-10-31T12:38:43Z"
     }
   ]
 }

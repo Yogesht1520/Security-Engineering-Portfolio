@@ -41,6 +41,7 @@ if [ "$MODE" = "inject-only" ] || [ "$MODE" = "event-generation-only" ]; then
 fi
 
 TEST_RUN_ID="RUN-$(date +%s)-$RANDOM"
+# shellcheck disable=SC2034
 TIMESTAMP_START=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 ALERTS_JSON="/var/ossec/logs/alerts/alerts.json"
 RESULTS_DIR="tests/results"
@@ -158,7 +159,7 @@ echo -e "----------------------------------------------------------------\n"
 echo -e "${CYAN}[*] Executing TC-01: SSH Burst Brute Force...${NC}"
 SRC_IP_TC01="192.0.2.$((RANDOM % 200 + 10))"
 TOKEN_TC01="tok_${TEST_RUN_ID: -6}"
-for i in {1..8}; do
+for _ in {1..8}; do
   logger -p auth.info -t sshd "Failed password for invalid user admin_${TOKEN_TC01} from ${SRC_IP_TC01} port 51234 ssh2"
   sleep 0.1
 done
@@ -192,7 +193,7 @@ report_test "TC-04" "Suspicious Living-Off-The-Land Tool (Rule 100030)" "100030"
 # ── Test 5: Authentication Success After Brute Force (Rule 100040) ───────────
 echo -e "${CYAN}[*] Executing TC-05: Success After Burst Brute Force...${NC}"
 SRC_IP_TC05="198.51.100.$((RANDOM % 200 + 10))"
-for i in {1..8}; do
+for _ in {1..8}; do
   logger -p auth.info -t sshd "Failed password for invalid user root from ${SRC_IP_TC05} port 52345 ssh2"
   sleep 0.1
 done

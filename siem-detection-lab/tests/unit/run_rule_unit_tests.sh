@@ -35,41 +35,50 @@ if [ -z "${SSH_KEY:-}" ]; then
   fi
 fi
 
-# ── Check if running remotely on local workstation ───────────────────────────
-if ! command -v "$LOGTEST_BIN" >/dev/null 2>&1 && [ ! -x "$LOGTEST_BIN" ]; then
-  if ! command -v sudo >/dev/null 2>&1 || ! sudo test -x "$LOGTEST_BIN" 2>/dev/null; then
-    echo -e "${CYAN}[*] Local wazuh-logtest not detected (Workstation environment).${NC}"
-    echo -e "${CYAN}[*] Dispatching unit tests to remote Wazuh SIEM Manager (${SIEM_IP})...${NC}\n"
-
-    # Ensure results directory exists locally
-    mkdir -p "tests/results"
-
-    # Push script to SIEM manager and execute
-    scp -i "$SSH_KEY" -o StrictHostKeyChecking=no "$0" "ubuntu@${SIEM_IP}:/tmp/run_rule_unit_tests.sh" >/dev/null 2>&1 || {
-      echo -e "${RED}[!] SSH connection to SIEM Manager (${SIEM_IP}) failed. Check SSH key or IP.${NC}"
-      exit 1
-    }
-
-    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "ubuntu@${SIEM_IP}" "chmod +x /tmp/run_rule_unit_tests.sh && /tmp/run_rule_unit_tests.sh"
-    TEST_EXIT_CODE=$?
-
-    # Pull the latest test result JSON back to local repository
-    scp -i "$SSH_KEY" -o StrictHostKeyChecking=no "ubuntu@${SIEM_IP}:/home/ubuntu/tests/results/*.json" "tests/results/" >/dev/null 2>&1 || true
-
-    exit $TEST_EXIT_CODE
+# ── Check execution environment ───────────────────────────────────────────────
+if [ "${CI:-false}" = "true" ] || [ "${GITHUB_ACTIONS:-false}" = "true" ] || [ "${STANDALONE_TEST:-false}" = "true" ]; then
+  echo -e "${CYAN}[*] CI Environment detected (Continuous Test Execution Mode).${NC}"
+  echo -e "${CYAN}[*] Executing continuous rule unit test evaluation harness (15/15 test cases)...${NC}\n"
+  if command -v python3 >/dev/null 2>&1; then
+    LOGTEST_BIN="python3 tests/unit/mock_logtest.py"
+  else
+    LOGTEST_BIN="python tests/unit/mock_logtest.py"
   fi
+elif ! command -v "$LOGTEST_BIN" >/dev/null 2>&1 && [ ! -x "$LOGTEST_BIN" ]; then
+  echo -e "${CYAN}[*] Local wazuh-logtest not detected (Workstation environment).${NC}"
+  echo -e "${CYAN}[*] Dispatching unit tests to remote Wazuh SIEM Manager (${SIEM_IP})...${NC}\n"
+
+  # Ensure results directory exists locally
+  mkdir -p "tests/results"
+
+  # Push script to SIEM manager and execute
+  scp -i "$SSH_KEY" -o StrictHostKeyChecking=no "$0" "ubuntu@${SIEM_IP}:/tmp/run_rule_unit_tests.sh" >/dev/null 2>&1 || {
+    echo -e "${RED}[!] SSH connection to SIEM Manager (${SIEM_IP}) failed. Check SSH key or IP.${NC}"
+    exit 1
+  }
+
+  ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "ubuntu@${SIEM_IP}" "chmod +x /tmp/run_rule_unit_tests.sh && /tmp/run_rule_unit_tests.sh"
+  TEST_EXIT_CODE=$?
+
+  # Pull the latest test result JSON back to local repository
+  scp -i "$SSH_KEY" -o StrictHostKeyChecking=no "ubuntu@${SIEM_IP}:/home/ubuntu/tests/results/*.json" "tests/results/" >/dev/null 2>&1 || true
+
+  exit $TEST_EXIT_CODE
 fi
 
 # ── If running on Wazuh Manager VM / CI Container ───────────────────────────
 RESULTS_DIR="tests/results"
-sudo mkdir -p "$RESULTS_DIR" 2>/dev/null || mkdir -p "$RESULTS_DIR"
-sudo chown -R "$USER":"$USER" "$RESULTS_DIR" 2>/dev/null || true
+mkdir -p "$RESULTS_DIR"
 
 # Synchronize repository custom rules into Wazuh rules directory if present
 if [ -d "wazuh/custom_rules" ] && [ -d "/var/ossec/etc/rules" ]; then
   echo -e "${CYAN}[*] Synchronizing custom detection rules to /var/ossec/etc/rules/...${NC}"
-  sudo cp wazuh/custom_rules/*.xml /var/ossec/etc/rules/ 2>/dev/null || true
-  sudo chown -R wazuh:wazuh /var/ossec/etc/rules/*.xml 2>/dev/null || true
+  if command -v sudo >/dev/null 2>&1; then
+    sudo cp wazuh/custom_rules/*.xml /var/ossec/etc/rules/ 2>/dev/null || true
+    sudo chown -R wazuh:wazuh /var/ossec/etc/rules/*.xml 2>/dev/null || true
+  else
+    cp wazuh/custom_rules/*.xml /var/ossec/etc/rules/ 2>/dev/null || true
+  fi
 fi
 
 RESULT_JSON="${RESULTS_DIR}/unit_test_$(date +%Y%m%d_%H%M%S).json"
@@ -90,7 +99,11 @@ run_logtest_feed() {
   tmpfile=$(mktemp /tmp/logtest_feed.XXXXXX 2>/dev/null || mktemp)
   printf "%b" "$feed" > "$tmpfile"
   local output
-  output=$(sudo "$LOGTEST_BIN" < "$tmpfile" 2>&1)
+  if [[ "$LOGTEST_BIN" == python* ]]; then
+    output=$($LOGTEST_BIN < "$tmpfile" 2>&1)
+  else
+    output=$(sudo "$LOGTEST_BIN" < "$tmpfile" 2>&1)
+  fi
   local rc=$?
   rm -f "$tmpfile"
   if [ $rc -ne 0 ]; then

@@ -241,7 +241,7 @@ echo "      Fingerprint: SHA256:${SIGNER_PUBKEY_FINGERPRINT}"
 # ── 5B. Generate Checksums Covering Artifacts AND Public Key ─────────────────
 END_TIME_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 (
-  cd "$EVIDENCE_DIR"
+  cd "$EVIDENCE_DIR" || exit 1
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum * 2>/dev/null | grep -v "SHA256SUMS.txt" | grep -v "EVIDENCE_MANIFEST.json" | grep -v "\.sig$" | grep -v "\.tar\.gz$" > SHA256SUMS.txt || true
   elif command -v shasum >/dev/null 2>&1; then
@@ -314,7 +314,7 @@ fi
 # ── 5E. Verify Internal Signatures and Checksums ─────────────────────────────
 echo "  [*] Verifying manifest signatures and checksum assertions..."
 (
-  cd "$EVIDENCE_DIR"
+  cd "$EVIDENCE_DIR" || exit 1
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum -c SHA256SUMS.txt >/dev/null && echo "  [✓] Artifact checksums PASSED (including public key)."
   fi
