@@ -3,11 +3,11 @@ name: Validate Terraform
 on:
   push:
     paths:
-      - 'siem-detection-lab/infra/terraform/**'
+      - 'siem-detection-lab/**'
       - '.github/workflows/siem-validate-terraform.yml'
   pull_request:
     paths:
-      - 'siem-detection-lab/infra/terraform/**'
+      - 'siem-detection-lab/**'
       - '.github/workflows/siem-validate-terraform.yml'
   workflow_dispatch:
 

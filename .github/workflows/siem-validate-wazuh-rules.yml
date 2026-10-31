@@ -3,13 +3,11 @@ name: Validate Wazuh Rules
 on:
   push:
     paths:
-      - 'siem-detection-lab/wazuh/custom_rules/**'
-      - 'siem-detection-lab/tests/validate_rules.py'
+      - 'siem-detection-lab/**'
       - '.github/workflows/siem-validate-wazuh-rules.yml'
   pull_request:
     paths:
-      - 'siem-detection-lab/wazuh/custom_rules/**'
-      - 'siem-detection-lab/tests/validate_rules.py'
+      - 'siem-detection-lab/**'
       - '.github/workflows/siem-validate-wazuh-rules.yml'
   workflow_dispatch:
 

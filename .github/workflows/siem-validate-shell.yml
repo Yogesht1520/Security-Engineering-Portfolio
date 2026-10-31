@@ -3,11 +3,11 @@ name: Validate Shell Scripts
 on:
   push:
     paths:
-      - 'siem-detection-lab/**/*.sh'
+      - 'siem-detection-lab/**'
       - '.github/workflows/siem-validate-shell.yml'
   pull_request:
     paths:
-      - 'siem-detection-lab/**/*.sh'
+      - 'siem-detection-lab/**'
       - '.github/workflows/siem-validate-shell.yml'
   workflow_dispatch:
 
