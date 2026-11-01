@@ -80,37 +80,73 @@ echo "-a invalid_action_flag -S execve -k broken" > "$CANDIDATE_CORRUPT"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROD_ROLLBACK="${SCRIPT_DIR}/../../infra/rollback_auditd.sh"
 
-# Exit Trap: Guarantees full host state restoration and propagates recovery errors
-CLEANUP_FAILED=0
+# State Tracking & Idempotency Controls
+ROLLBACK_ALREADY_RUN=false
+CLEANUP_ALREADY_RUN=false
+ROLLBACK_FAILED_STATE=0
+
+# Exit Trap: Guarantees idempotent, single-execution host state restoration
 cleanup_live_host() {
-  echo -e "\n${CYAN}[*] Running guaranteed live host exit trap cleanup...${NC}"
+  if [ "$CLEANUP_ALREADY_RUN" = true ]; then
+    return 0
+  fi
+  CLEANUP_ALREADY_RUN=true
+
+  echo -e "\n${CYAN}[*] Running guaranteed live host exit trap cleanup (idempotent, single execution)...${NC}"
   rm -f "$CANDIDATE_CORRUPT"
 
   # Restore pre-existing candidate file if it was present before test; otherwise unlink candidate
   if [ "$PRE_EXISTED_SIEM_RULES" = true ] && [ -f "${INT_BACKUP}/pre_existing_siem-lab.rules" ]; then
-    cp "${INT_BACKUP}/pre_existing_siem-lab.rules" "$CANDIDATE_DEST"
+    cp "${INT_BACKUP}/pre_existing_siem-lab.rules" "$CANDIDATE_DEST" 2>/dev/null || true
     echo "  [✓] Restored pre-existing candidate file state to $CANDIDATE_DEST"
   else
     rm -f "$CANDIDATE_DEST"
   fi
 
-  if [ -d "$INT_BACKUP" ]; then
+  # If rollback has NOT yet executed (e.g. premature failure or signal interruption), execute deferred rollback
+  if [ "$ROLLBACK_ALREADY_RUN" = false ] && [ -d "$INT_BACKUP" ]; then
+    echo "  [*] Executing deferred emergency rollback in exit trap..."
     if [ -f "$PROD_ROLLBACK" ]; then
       if ! bash "$PROD_ROLLBACK" "$INT_BACKUP" "$CANDIDATE_DEST"; then
-        echo -e "${RED}[!] FATAL: Rollback engine failed during exit trap cleanup!${NC}" >&2
-        CLEANUP_FAILED=1
+        echo -e "${RED}[!] FATAL: Deferred emergency rollback failed during exit trap!${NC}" >&2
+        ROLLBACK_FAILED_STATE=1
+      else
+        ROLLBACK_ALREADY_RUN=true
       fi
-    fi
-    # SAFETY: Never delete recovery material if rollback or parity check failed
-    if [ "$CLEANUP_FAILED" -eq 0 ]; then
-      rm -rf "$INT_BACKUP"
     else
-      echo -e "${RED}[!] PRESERVING RECOVERY BACKUP AT: ${INT_BACKUP}${NC}" >&2
-      echo -e "${RED}[!] Do not remove. Use this directory to manually restore host audit baseline.${NC}" >&2
+      echo -e "${RED}[!] FATAL: Production rollback engine $PROD_ROLLBACK not found!${NC}" >&2
+      ROLLBACK_FAILED_STATE=1
     fi
   fi
 
-  if [ "$CLEANUP_FAILED" -ne 0 ]; then
+  # Verify post-restoration filesystem and kernel parity before concluding cleanup
+  if [ -d "$INT_BACKUP" ]; then
+    local post_rules
+    post_rules=$(auditctl -l 2>/dev/null || true)
+    local pre_rules
+    pre_rules=$(cat "${INT_BACKUP}/active_rules_pre.txt" 2>/dev/null || true)
+    if [ "$post_rules" != "$pre_rules" ]; then
+      echo -e "${RED}[!] PARITY CHECK FAILURE: Kernel rules mismatch after cleanup!${NC}" >&2
+      ROLLBACK_FAILED_STATE=1
+    fi
+    if [ -d "${INT_BACKUP}/audit" ] && [ -d /etc/audit ]; then
+      if ! diff -r "${INT_BACKUP}/audit" /etc/audit >/dev/null 2>&1; then
+        echo -e "${RED}[!] PARITY CHECK FAILURE: /etc/audit filesystem mismatch after cleanup!${NC}" >&2
+        ROLLBACK_FAILED_STATE=1
+      fi
+    fi
+  fi
+
+  # SAFETY: Never delete recovery material if rollback or parity check failed
+  if [ "$ROLLBACK_FAILED_STATE" -eq 0 ]; then
+    rm -rf "$INT_BACKUP"
+    echo "  [✓] Host cleanup complete: baseline verified, temporary test backup pruned."
+  else
+    echo -e "${RED}[!] PRESERVING RECOVERY BACKUP AT: ${INT_BACKUP}${NC}" >&2
+    echo -e "${RED}[!] Do not remove. Use this directory to manually restore host audit baseline.${NC}" >&2
+  fi
+
+  if [ "$ROLLBACK_FAILED_STATE" -ne 0 ]; then
     echo -e "${RED}[!] Host recovery failed during trap execution! Propagating non-zero exit code.${NC}" >&2
     exit 1
   fi
@@ -118,9 +154,9 @@ cleanup_live_host() {
 
 handle_signal() {
   local sig="$1"
-  echo -e "\n${RED}[!] Caught signal SIG${sig}. Running host cleanup and terminating with signal exit code...${NC}" >&2
+  echo -e "\n${RED}[!] Caught signal SIG${sig}. Running guaranteed single host cleanup...${NC}" >&2
   cleanup_live_host
-  trap - "$sig"
+  trap - EXIT "$sig"
   kill -s "$sig" "$$"
 }
 trap cleanup_live_host EXIT
@@ -135,30 +171,41 @@ DEPLOY_FAILED=false
 if ! (augenrules --load 2>/dev/null && auditctl -s 2>/dev/null | grep -q "enabled 1"); then
   DEPLOY_FAILED=true
   echo "  [✓] Corrupt rule correctly failed validation. Executing shared production rollback engine (infra/rollback_auditd.sh)..."
-  if [ -f "$PROD_ROLLBACK" ]; then
-    if ! bash "$PROD_ROLLBACK" "$INT_BACKUP" "$CANDIDATE_DEST"; then
-      echo -e "${RED}[!] FATAL: Production rollback engine failed during recovery!${NC}" >&2
-      DEPLOY_FAILED=false
-      CLEANUP_FAILED=1
+  if [ "$ROLLBACK_ALREADY_RUN" = false ]; then
+    if [ -f "$PROD_ROLLBACK" ]; then
+      if bash "$PROD_ROLLBACK" "$INT_BACKUP" "$CANDIDATE_DEST"; then
+        ROLLBACK_ALREADY_RUN=true
+        echo "  [✓] Rollback executed successfully."
+      else
+        echo -e "${RED}[!] FATAL: Production rollback engine failed during recovery!${NC}" >&2
+        DEPLOY_FAILED=false
+        ROLLBACK_ALREADY_RUN=true
+        ROLLBACK_FAILED_STATE=1
+      fi
+    else
+      echo -e "${RED}[!] FATAL: Production rollback engine $PROD_ROLLBACK not found!${NC}" >&2
+      ROLLBACK_FAILED_STATE=1
+      exit 1
     fi
-  else
-    echo -e "${RED}[!] FATAL: Production rollback engine $PROD_ROLLBACK not found!${NC}" >&2
-    CLEANUP_FAILED=1
-    exit 1
   fi
 else
   # Safety: Even if candidate was unexpectedly accepted, trigger rollback to avoid leaving host modified
   echo "  [!] UNEXPECTED: Corrupt rule was accepted by parser. Triggering forced rollback..." >&2
-  if [ -f "$PROD_ROLLBACK" ]; then
-    if ! bash "$PROD_ROLLBACK" "$INT_BACKUP" "$CANDIDATE_DEST"; then
-      echo -e "${RED}[!] FATAL: Production rollback engine failed during unexpected accept recovery!${NC}" >&2
-      DEPLOY_FAILED=false
-      CLEANUP_FAILED=1
+  if [ "$ROLLBACK_ALREADY_RUN" = false ]; then
+    if [ -f "$PROD_ROLLBACK" ]; then
+      if bash "$PROD_ROLLBACK" "$INT_BACKUP" "$CANDIDATE_DEST"; then
+        ROLLBACK_ALREADY_RUN=true
+      else
+        echo -e "${RED}[!] FATAL: Production rollback engine failed during unexpected accept recovery!${NC}" >&2
+        DEPLOY_FAILED=false
+        ROLLBACK_ALREADY_RUN=true
+        ROLLBACK_FAILED_STATE=1
+      fi
+    else
+      echo -e "${RED}[!] FATAL: Production rollback engine $PROD_ROLLBACK not found!${NC}" >&2
+      ROLLBACK_FAILED_STATE=1
+      exit 1
     fi
-  else
-    echo -e "${RED}[!] FATAL: Production rollback engine $PROD_ROLLBACK not found!${NC}" >&2
-    CLEANUP_FAILED=1
-    exit 1
   fi
 fi
 
@@ -172,7 +219,7 @@ if [ -d "${INT_BACKUP}/audit" ]; then
   fi
 fi
 
-if [ "$DEPLOY_FAILED" = true ] && [ "$CURRENT_RULES" = "$PRE_RULES" ] && [ "$FS_PARITY" = true ] && [ "$CLEANUP_FAILED" -eq 0 ]; then
+if [ "$DEPLOY_FAILED" = true ] && [ "$CURRENT_RULES" = "$PRE_RULES" ] && [ "$FS_PARITY" = true ] && [ "$ROLLBACK_FAILED_STATE" -eq 0 ]; then
   echo -e "\n${GREEN}[PASS] Live VM Integration: Full Filesystem & Kernel Audit Parity Verified${NC}"
   echo "       Corrupt candidate purged, /etc/audit/ restored bit-for-bit, active kernel policy identical"
   echo -e "\n================================================================"

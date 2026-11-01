@@ -32,6 +32,8 @@ import re
 import subprocess
 import datetime
 from pathlib import Path
+from dataclasses import dataclass
+from typing import Dict, Any, Optional
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 EVIDENCE_DIR = REPO_ROOT / "evidence"
@@ -113,6 +115,176 @@ def extract_structured_serial_identities(console_output: str) -> set:
         identities.add(m.group(1).strip().lower())
 
     return identities
+
+@dataclass(frozen=True)
+class SerialAcquisitionRecord:
+    """Represents a cryptographically validated, unambiguous out-of-band serial acquisition record.
+    Binds hostname, public key, fingerprint, and acquisition context together.
+    """
+    hostname: str
+    pubkey: str
+    fingerprint: str
+    key_type: str
+    acquisition_context: Dict[str, Any]
+
+    def validate(self, expected_hostname: Optional[str] = None, expected_key: Optional[str] = None, expected_fp: Optional[str] = None):
+        """Validates internal consistency and identity binding."""
+        if not self.hostname:
+            raise ValueError("Serial acquisition record lacks bound hostname!")
+        if expected_hostname and self.hostname.lower() != expected_hostname.strip().lower():
+            raise ValueError(f"Identity binding mismatch: Record bound to '{self.hostname}', expected '{expected_hostname}'!")
+
+        if self.key_type != "ssh-ed25519":
+            raise ValueError(f"Unsupported key type '{self.key_type}' bound in record for {self.hostname}!")
+
+        key_bytes = base64.b64decode(self.pubkey)
+        if len(key_bytes) < 32:
+            raise ValueError(f"Invalid public key bytes length ({len(key_bytes)}) for {self.hostname}!")
+
+        calc_fp = calculate_openssh_fingerprint(self.pubkey)
+        if calc_fp != self.fingerprint:
+            raise ValueError(
+                f"Record self-consistency error for {self.hostname}: Calculated {calc_fp} != Claimed {self.fingerprint}"
+            )
+
+        if expected_key and self.pubkey != expected_key:
+            raise ValueError(f"Public key mismatch in serial record for {self.hostname}!\nExpected: {expected_key}\nFound:    {self.pubkey}")
+        if expected_fp and self.fingerprint != expected_fp:
+            raise ValueError(f"Fingerprint mismatch in serial record for {self.hostname}!\nExpected: {expected_fp}\nFound:    {self.fingerprint}")
+
+def parse_live_serial_record(console_output: str, target_host: str, zone: str, project_id: str) -> SerialAcquisitionRecord:
+    """Parses live virtual serial port output into a structured SerialAcquisitionRecord.
+    Binds hostname, public key, fingerprint, and acquisition context together.
+    Rejects stream if attributes cannot be associated unambiguously.
+    """
+    target_norm = target_host.strip().lower()
+
+    # 1. Structured identity declarations
+    extracted_identities = extract_structured_serial_identities(console_output)
+    if target_norm not in extracted_identities:
+        raise ValueError(
+            f"UNAMBIGUOUS IDENTITY BINDING FAILURE: Serial stream does not contain structured declaration for target host '{target_host}'! "
+            f"Detected identities: {sorted(extracted_identities) if extracted_identities else 'None'}"
+        )
+
+    # 2. Strict Live Record Parsing: Key and fingerprint must be parsed within the same record block
+    record_pattern = (
+        r"HostKey:\s+(?P<key_type>ssh-ed25519)\s+(?P<key>[A-Za-z0-9+/=]+)"
+        r"(?:\s+(?:[A-Za-z0-9_.-]+@)?(?P<bound_host>[A-Za-z0-9_.-]+))?[^\n]*\n"
+        r"[^\n]*?HostKey Fingerprint:\s+\(?(?P<fp>SHA256:[A-Za-z0-9+/=]+)\)?"
+    )
+    all_records = list(re.finditer(record_pattern, console_output))
+    if not all_records:
+        raise ValueError(f"Live virtual serial port 1 on {target_host} did NOT contain a coherent HostKey + Fingerprint record block!")
+
+    # 3. Reject ambiguous or conflicting records across the serial stream
+    distinct_pairs = {(m.group("key"), m.group("fp"), m.group("bound_host")) for m in all_records}
+    if len({(p[0], p[1]) for p in distinct_pairs}) > 1:
+        raise ValueError(f"AMBIGUOUS SERIAL RECORDS: Detected conflicting key/fingerprint records on {target_host}: {distinct_pairs}")
+
+    m = all_records[0]
+    live_key = m.group("key")
+    live_fp = m.group("fp")
+    key_type = m.group("key_type")
+    bound_host = m.group("bound_host")
+
+    if bound_host:
+        bound_norm = bound_host.split(".")[0].strip().lower()
+        if bound_norm != target_norm:
+            raise ValueError(
+                f"UNAMBIGUOUS IDENTITY BINDING FAILURE: Key comment host '{bound_norm}' != target host '{target_norm}'!"
+            )
+
+    context = {
+        "source": "live_virtual_serial_port_1",
+        "zone": zone,
+        "project_id": project_id,
+        "bound_host_declaration": bound_host or target_norm,
+        "verified_identities": sorted(extracted_identities)
+    }
+
+    record = SerialAcquisitionRecord(
+        hostname=target_norm,
+        pubkey=live_key,
+        fingerprint=live_fp,
+        key_type=key_type,
+        acquisition_context=context
+    )
+    record.validate()
+    return record
+
+def parse_offline_acquisition_block(block: str, valid_hosts: set) -> SerialAcquisitionRecord:
+    """Parses an offline serial acquisition block into a structured SerialAcquisitionRecord.
+    Binds hostname, public key, fingerprint, and acquisition context together.
+    Rejects block if attributes cannot be associated unambiguously.
+    """
+    lines = [line.strip() for line in block.splitlines() if line.strip()]
+    if not lines:
+        raise ValueError("Empty acquisition record block!")
+
+    header_line = lines[0]
+    header_host = header_line.split()[0].strip()
+
+    if header_host not in valid_hosts:
+        raise ValueError(f"Unrecognized or invalid acquisition identity in serial log: '{header_host}'!")
+
+    context = {"source": "offline_serial_transcript"}
+    cmd_match = re.search(r"#\s*Command:\s*gcloud\s+compute\s+instances\s+get-serial-port-output\s+(\S+)\s+--zone=(\S+)\s+--port=(\d+)", block)
+    if cmd_match:
+        cmd_inst = cmd_match.group(1).strip().lower()
+        context["cmd_instance"] = cmd_inst
+        context["zone"] = cmd_match.group(2)
+        context["port"] = int(cmd_match.group(3))
+        if cmd_inst != header_host.lower():
+            raise ValueError(
+                f"UNAMBIGUOUS IDENTITY BINDING FAILURE: Header host '{header_host}' != command host '{cmd_inst}'!"
+            )
+
+    ip_match = re.search(r"#\s*Internal IP:\s*([0-9.]+)\s*\|\s*Public IP:\s*([0-9.]+)", block)
+    if ip_match:
+        context["internal_ip"] = ip_match.group(1)
+        context["public_ip"] = ip_match.group(2)
+
+    # Structured identity tokens in block
+    block_identities = extract_structured_serial_identities(block)
+    if header_host.lower() not in block_identities:
+        raise ValueError(
+            f"Structured identity mismatch in offline record block for '{header_host}'!\n"
+            f"Parsed structured identities: {sorted(block_identities) if block_identities else 'None'}."
+        )
+    context["verified_identities"] = sorted(block_identities)
+
+    # HostKey line with type, key, and optional host comment
+    key_match = re.search(r"HostKey:\s+(?P<type>ssh-ed25519)\s+(?P<key>\S+)(?:\s+(?:[A-Za-z0-9_.-]+@)?(?P<comment_host>[A-Za-z0-9_.-]+))?", block)
+    if not key_match:
+        raise ValueError(f"Serial console record for '{header_host}' missing HostKey ssh-ed25519 line!")
+
+    key_type = key_match.group("type")
+    pubkey = key_match.group("key")
+    comment_host = key_match.group("comment_host")
+    if comment_host:
+        comment_host_norm = comment_host.split(".")[0].strip().lower()
+        if comment_host_norm != header_host.lower():
+            raise ValueError(
+                f"UNAMBIGUOUS IDENTITY BINDING FAILURE: Key comment host '{comment_host_norm}' != record header host '{header_host}'!"
+            )
+        context["comment_host"] = comment_host_norm
+
+    # HostKey Fingerprint line
+    fp_match = re.search(r"HostKey Fingerprint:\s+(SHA256:\S+)", block)
+    if not fp_match:
+        raise ValueError(f"Serial console record for '{header_host}' missing HostKey Fingerprint line!")
+    fingerprint = fp_match.group(1).rstrip(")")
+
+    record = SerialAcquisitionRecord(
+        hostname=header_host,
+        pubkey=pubkey,
+        fingerprint=fingerprint,
+        key_type=key_type,
+        acquisition_context=context
+    )
+    record.validate()
+    return record
 
 def verify_host_key_pins():
     print("=" * 65)
@@ -200,51 +372,19 @@ def verify_serial_console_evidence(verified_pins, live_gcp: bool = False, projec
                 res = subprocess.run(cmd, capture_output=True, text=True, check=True)
                 console_output = res.stdout
 
-                # Strict Live Record Parsing: Key and fingerprint must be parsed within the same record block
-                record_pattern = r"HostKey:\s+ssh-ed25519\s+(?P<key>[A-Za-z0-9+/=]+)[^\n]*\n[^\n]*?HostKey Fingerprint:\s+\(?(?P<fp>SHA256:[A-Za-z0-9+/=]+)\)?"
-                all_records = list(re.finditer(record_pattern, console_output))
-                assert len(all_records) > 0, (
-                    f"Live virtual serial port 1 on {host} did NOT contain a coherent HostKey + Fingerprint record block!"
-                )
+                # Parse into structured SerialAcquisitionRecord, binding identity, keys, fingerprints, and context
+                record = parse_live_serial_record(console_output, host, zone, project_id)
+                record.validate(expected_hostname=host, expected_key=expected_key, expected_fp=expected_fp)
 
-                # Reject ambiguous or conflicting records across the serial stream
-                distinct_pairs = {(m.group("key"), m.group("fp")) for m in all_records}
-                assert len(distinct_pairs) == 1, (
-                    f"AMBIGUOUS SERIAL RECORDS: Detected {len(distinct_pairs)} differing key/fingerprint records on {host}: {distinct_pairs}"
-                )
-
-                # Validate acquisition identity: Structured identity parsing instead of loose substring matching
-                extracted_identities = extract_structured_serial_identities(console_output)
-                target_host_norm = host.strip().lower()
-                assert target_host_norm in extracted_identities, (
-                    f"Structured acquisition identity mismatch for target host '{host}'!\n"
-                    f"Parsed structured identities from serial stream: {sorted(extracted_identities) if extracted_identities else 'None'}.\n"
-                    f"Console stream must declare identity via structured HostKey comment (root@{host}), "
-                    f"systemd ('Set hostname to <{host}>'), cloud-init ('Hostname | {host}'), or login prompt."
-                )
-
-                live_key, live_fp = next(iter(distinct_pairs))
-
-                # Validate internal mathematical parity within the same live record
-                calc_live_fp = calculate_openssh_fingerprint(live_key)
-                assert calc_live_fp == live_fp, (
-                    f"Live record internal discrepancy on {host}: calculated {calc_live_fp} != claimed {live_fp}"
-                )
-
-                # Validate against pre-provisioned trusted key and fingerprint
-                assert live_key == expected_key, (
-                    f"Live public key mismatch for {host}!\nExpected: {expected_key}\nFound:    {live_key}"
-                )
-                assert live_fp == expected_fp, (
-                    f"Live fingerprint mismatch for {host}!\nExpected: {expected_fp}\nFound:    {live_fp}"
-                )
-
-                print(f"  [✓] {host:20s}: Live serial record verified (Same-record key & SHA-256 match, identity confirmed)")
+                print(f"  [✓] {host:20s}: Live serial record verified & bound (Key, Fingerprint & Context confirmed)")
             except FileNotFoundError:
                 print("  [-] FATAL: 'gcloud' CLI was not found on PATH. Live GCP serial verification failed closed.")
                 return False
             except subprocess.CalledProcessError as e:
                 print(f"  [-] FATAL: Failed to query live serial port for {host}: {e.stderr.strip()}. Failing closed.")
+                return False
+            except ValueError as e:
+                print(f"  [-] FATAL: Live serial acquisition record validation failed for {host}: {e}. Failing closed.")
                 return False
         print("[+] Live out-of-band serial port acquisition verified for all running instances.")
         return True
@@ -279,50 +419,24 @@ def verify_serial_console_evidence(verified_pins, live_gcp: bool = False, projec
         print(f"  [-] FATAL: External trust anchor {EXTERNAL_SERIAL_ANCHOR} required but not found! Failing closed.")
         return False
 
-    # 3. Independent record-by-record parsing and key+fingerprint matching
+    # 3. Independent structured record parsing, attribute binding, and key+fingerprint matching
     log_text = log_bytes.decode("utf-8", errors="replace")
     records = re.split(r"#\s*---\s*ACQUISITION RECORD \d+:\s*", log_text)
 
     valid_host_names = {entry["host"] for entry in verified_pins}
     parsed_records = {}
     for block in records[1:]:
-        header_line = block.splitlines()[0].strip()
-        host_name = header_line.split()[0].strip()
+        # Parse each block into a structured SerialAcquisitionRecord, binding identity, keys, and context
+        try:
+            record = parse_offline_acquisition_block(block, valid_host_names)
+        except ValueError as e:
+            raise AssertionError(f"Acquisition record binding failed: {e}") from e
 
-        assert host_name in valid_host_names, (
-            f"Unrecognized or invalid acquisition identity in serial log: '{host_name}'!"
-        )
+        host_name = record.hostname
         assert host_name not in parsed_records, (
             f"AMBIGUOUS / DUPLICATE RECORD: Multiple acquisition records detected for host '{host_name}'!"
         )
-
-        # Structured acquisition identity check on offline record block
-        block_identities = extract_structured_serial_identities(block)
-        assert host_name.lower() in block_identities, (
-            f"Structured identity mismatch in offline record block for '{host_name}'!\n"
-            f"Parsed structured identities: {sorted(block_identities) if block_identities else 'None'}.\n"
-            f"Expected structured host identity in record block."
-        )
-
-        key_match = re.search(r"HostKey:\s+ssh-ed25519\s+(\S+)", block)
-        fp_match = re.search(r"HostKey Fingerprint:\s+(SHA256:\S+)", block)
-
-        assert key_match, f"Serial console record for '{host_name}' missing HostKey ssh-ed25519 line!"
-        assert fp_match, f"Serial console record for '{host_name}' missing HostKey Fingerprint line!"
-
-        rec_key = key_match.group(1)
-        rec_fp = fp_match.group(1).rstrip(")")
-
-        # Validate internal parity of the parsed record
-        calc_fp = calculate_openssh_fingerprint(rec_key)
-        assert calc_fp == rec_fp, (
-            f"Record self-consistency error for {host_name}: Calculated {calc_fp} != Claimed {rec_fp}"
-        )
-
-        parsed_records[host_name] = {
-            "pubkey": rec_key,
-            "fingerprint": rec_fp
-        }
+        parsed_records[host_name] = record
 
     # Match each expected pin against its isolated parsed record
     for entry in verified_pins:
@@ -330,13 +444,8 @@ def verify_serial_console_evidence(verified_pins, live_gcp: bool = False, projec
         assert host in parsed_records, f"Serial console log contains no acquisition record for pinned host '{host}'!"
 
         rec = parsed_records[host]
-        assert rec["pubkey"] == entry["pubkey"], (
-            f"Public key mismatch in serial record for {host}!\nExpected: {entry['pubkey']}\nFound:    {rec['pubkey']}"
-        )
-        assert rec["fingerprint"] == entry["fingerprint"], (
-            f"Fingerprint mismatch in serial record for {host}!\nExpected: {entry['fingerprint']}\nFound:    {rec['fingerprint']}"
-        )
-        print(f"  [✓] {host:20s}: Isolated record parsed (Key & SHA-256 match)")
+        rec.validate(expected_hostname=host, expected_key=entry["pubkey"], expected_fp=entry["fingerprint"])
+        print(f"  [✓] {host:20s}: Isolated record parsed & bound (Key, Fingerprint, & Context match)")
 
     print(f"[+] Out-of-band serial port acquisition verified for {len(verified_pins)} instances.")
     return True

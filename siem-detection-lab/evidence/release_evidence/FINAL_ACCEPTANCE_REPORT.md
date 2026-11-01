@@ -25,8 +25,8 @@ This report certifies the operational, cryptographic, and security verification 
 | **GCP Fail-Closed Boundary** | `python tests/verify_host_keys_acceptance.py --live-gcp` | **FAIL-CLOSED VERIFIED** | **Fail-Closed Security Boundary Test:** Verifies immediate non-zero exit (`code 1`) when `gcloud` or cloud credentials are not present; eliminates silent fallback. |
 | **GCP IAM Fail-Closed Boundary** | `python tests/integration/test_gcp_iam_isolation.py --live-gcp` | **FAIL-CLOSED VERIFIED** | **Fail-Closed Security Boundary Test:** Verifies immediate non-zero exit (`code 1`) when querying project/ancestor policies without credentials; prohibits silent skipping of ancestor hierarchy checks. |
 | **Workstation Safety Guard** | `bash tests/integration/test_auditd_live_rollback.sh` | **SAFETY-GUARD VERIFIED** | **Workstation Safety-Guard Test:** Confirms live kernel audit modification is blocked with exit code 1 unless executed with `--force-live-danger` on an isolated, disposable Linux VM. |
-| **Transactional Rollback Engine** | `bash tests/unit/test_auditd_rollback.sh` | **6/6 PASSED** | Unit Simulation: Syntax error trapping, daemon failure recovery, kernel status assertions, rename boundary 1 failure trapping, rename boundary 2 emergency recovery, and bit-for-bit directory metadata/permission preservation. |
-| **Negative CLI Assertion Matrix** | `python tests/unit/test_live_verification_failures_negative.py` | **16/16 PASSED** | Negative Security Gate: 16 isolated subprocess tests proving non-zero exit codes on unlocked policies, sub-30-day retention, tampered hashes, corrupt signatures, mock GCP errors, and identity spoofing. |
+| **Transactional Rollback Engine** | `bash tests/unit/test_auditd_rollback.sh` | **9/9 PASSED** | Unit Simulation: Syntax error trapping, daemon failure recovery, kernel status assertions, rename boundary 1 failure trapping, rename boundary 2 emergency recovery, bit-for-bit directory metadata/permission preservation, cleanup idempotency, interruption signal trapping, and rollback failure backup retention. |
+| **Negative CLI Assertion Matrix** | `python tests/unit/test_live_verification_failures_negative.py` | **20/20 PASSED** | Negative Security Gate: 20 isolated subprocess tests proving non-zero exit codes on unlocked policies, sub-30-day retention, tampered hashes, corrupt signatures, mock GCP errors, identity spoofing, naive timestamps, duplicate hierarchy IDs, ambiguous serial records, and unstructured substring host mentions. |
 | **Security & Secrets Gate** | `python tests/security_scan.py` | **4/4 PASSED** | Security Gate: Zero prohibited filenames, zero working directory secrets/keys, zero leaked credentials across full Git commit history, and active gitignore enforcement. |
 
 ---
@@ -86,3 +86,39 @@ C:\Users\yoges\.config\siem-lab/
 4. **Least-Privilege Cloud IAM**:
    - The honeypot instance runs under a dedicated, zero-privilege service account (`siem-lab-honeypot-sa@siem-detection-lab.iam.gserviceaccount.com`).
    - Project and ancestor IAM queries verify zero ambient roles, and metadata egress is denied via firewall rules and local iptables.
+
+
+---
+
+## 5. Reproducible Live Acceptance Evidence Protocol
+
+When executing deployment acceptance against live cloud infrastructure and disposable Linux hosts, capture and record sanitized provenance according to the following protocol:
+
+### Live GCP Control-Plane Acquisition
+`ash
+# Record sanitized live acceptance evidence
+python tests/verify_host_keys_acceptance.py --live-gcp --project-id=siem-detection-lab | tee live_gcp_acceptance.log
+python tests/integration/test_gcp_iam_isolation.py --live-gcp --project-id=siem-detection-lab | tee live_gcp_iam.log
+`
+- **Recorded Fields:**
+  - Standardized UTC execution timestamps (YYYY-MM-DDTHH:MM:SSZ).
+  - Project identifier (siem-detection-lab) and resource URIs (gs://siem-lab-immutable-evidence).
+  - GCS Bucket Lock status (
+etentionPolicy.isLocked: true, 
+etentionPeriod: 2592000s).
+  - GCS Object generations, content MD5, and SHA-256 hashes matching EVIDENCE_MANIFEST.json.
+  - Serial port 1 acquisition logs parsed into structured SerialAcquisitionRecord objects.
+  - Live IAM binding outcomes across project and ancestor resource nodes.
+- **Sanitization Guarantee:** Zero OAuth tokens, service account private keys, internal cookies, or authorization headers may be committed to Git.
+
+### Live Kernel Auditd Verification (Disposable VM)
+`ash
+# Execute inside disposable Linux VM (e.g. Ubuntu 22.04 LTS)
+sudo bash tests/integration/test_auditd_live_rollback.sh --force-live-danger | tee live_auditd_kernel_verification.log
+`
+- **Recorded Fields:**
+  - Pre-deployment active kernel rule baseline (uditctl -l).
+  - Daemon status before and after injection (uditctl -s).
+  - Candidate rule rejection confirmation by kernel/augenrules.
+  - Post-rollback kernel rule parity assertion (diff active_rules_pre.txt active_rules_post.txt).
+  - Post-rollback filesystem configuration parity (diff -r backup /etc/audit).

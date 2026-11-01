@@ -67,9 +67,9 @@
       "classification": "UNIT_SIMULATION_TEST",
       "status": "PASSED",
       "exit_code": 0,
-      "summary": "6/6 stages passed: candidate syntax error trapping, service restart failure recovery, kernel status assertions, rename boundary 1 failure trapping, rename boundary 2 emergency recovery, and metadata preservation.",
+      "summary": "9/9 stages passed: candidate syntax error trapping, service restart failure recovery, kernel status assertions, rename boundary 1 failure trapping, rename boundary 2 emergency recovery, metadata preservation, cleanup idempotency, interruption signal trapping, and rollback failure backup retention.",
       "log_file": "auditd_rollback_simulation.log",
-      "log_sha256": "4e63468af6d8e0ddfadb7cddbe2efa1909cb698dcbf81f46d377e48aaf554bf2"
+      "log_sha256": "db1fb836fdd2cefba65808b2ef0f07e2fdad0c8268dea64ef3a326e83bea235e"
     },
     {
       "id": "negative_cli_matrix",
