@@ -314,9 +314,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const statusNote = document.createElement('div');
         statusNote.style.color = 'var(--accent-emerald)';
         statusNote.style.fontSize = '0.75rem';
-        statusNote.style.marginTop = '0.4rem';
-        statusNote.textContent = 'RSA-3072 Detached Signatures & WORM Bucket Lock Cryptographically Verified';
+        statusNote.style.marginTop = '0.45rem';
+        statusNote.style.lineHeight = '1.4';
+        statusNote.textContent = '✓ Provenance Recorded: Hashes and RSA-3072 detached signatures verified by automated runbook pipeline at acquisition (preservation_mode: local snapshot).';
         hashDiv.appendChild(statusNote);
+
+        const wormNote = document.createElement('div');
+        wormNote.style.color = 'var(--text-muted)';
+        wormNote.style.fontSize = '0.72rem';
+        wormNote.style.marginTop = '0.25rem';
+        wormNote.style.lineHeight = '1.4';
+        wormNote.textContent = '🔒 WORM Cloud Storage: 30-day locked retention verified independently via evidence/gcs_bucket_lock_verification.json on gs://siem-lab-immutable-evidence.';
+        hashDiv.appendChild(wormNote);
       }
 
       caseModal.classList.add('open');

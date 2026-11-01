@@ -147,7 +147,17 @@ if [ "$INTEGRATION_MODE" = true ]; then
       exit 1
     fi
   }
-  trap cleanup_live_host EXIT INT TERM
+
+  handle_signal() {
+    local sig="$1"
+    echo -e "\n${RED}[!] Caught signal SIG${sig}. Running host cleanup and terminating with signal exit code...${NC}" >&2
+    cleanup_live_host
+    trap - "$sig"
+    kill -s "$sig" "$$"
+  }
+  trap cleanup_live_host EXIT
+  trap 'handle_signal INT' INT
+  trap 'handle_signal TERM' TERM
   
   echo "  - Staging corrupt audit rule directly into ${CANDIDATE_DEST}..."
   cp "$CANDIDATE_CORRUPT" "$CANDIDATE_DEST"
@@ -169,7 +179,14 @@ if [ "$INTEGRATION_MODE" = true ]; then
     # Safety: Even if candidate was unexpectedly accepted, trigger rollback to avoid leaving host modified
     echo "  [!] UNEXPECTED: Corrupt rule was accepted by parser. Triggering forced rollback..." >&2
     if [ -f "$PROD_ROLLBACK" ]; then
-      bash "$PROD_ROLLBACK" "$INT_BACKUP" "$CANDIDATE_DEST" || true
+      if ! bash "$PROD_ROLLBACK" "$INT_BACKUP" "$CANDIDATE_DEST"; then
+        echo -e "${RED}[!] FATAL: Production rollback engine failed during unexpected accept recovery!${NC}" >&2
+        DEPLOY_FAILED=false
+        CLEANUP_FAILED=1
+      fi
+    else
+      echo -e "${RED}[!] FATAL: Production rollback engine $PROD_ROLLBACK not found!${NC}" >&2
+      exit 1
     fi
   fi
   

@@ -9,31 +9,40 @@
 
 Before provisioning or restarting the lab, ensure your local operator environment is aligned:
 
-### 1.1 Verify Operator Public IP
-The SIEM management plane (SSH on TCP 22 and Dashboard on TCP 443) is strictly whitelisted to your public IP.
+### 1.1 Standardized Zero-Trust Access Architecture
+The lab strictly adheres to a **Zero-Trust Management Access Architecture**:
+- **Supported Management Access (Standard):** All administrative access to Bastion (`siem-lab-bastion`) and SIEM Manager (`siem-lab-wazuh`) routes exclusively through **Google Cloud Identity-Aware Proxy (IAP) TCP Forwarding** with **Google Cloud OS Login and multi-factor authentication (MFA)**. No direct public SSH or management ports are exposed to the open internet.
+- **Defense-in-Depth IP Whitelisting:** `your_public_ip` in `infra/terraform/terraform.tfvars` provides a secondary network-level firewall boundary on the Bastion ingress rule to restrict any direct management traffic strictly to your workstation IP (`YOUR_IP/32`).
+
 ```powershell
-# In PowerShell / Bash: Check your current public IP
+# In PowerShell / Bash: Verify your current workstation public IP
 curl -s https://ifconfig.me/ip
 ```
-Update `infra/terraform/terraform.tfvars` if your IP has changed:
+Ensure `infra/terraform/terraform.tfvars` contains your current workstation IP:
 ```hcl
 your_public_ip = "YOUR_CURRENT_IP/32"
 ```
 
-### 1.2 Access Model Prerequisites (OS Login & Honeypot SSH)
+### 1.2 Access Model Prerequisites (OS Login vs. Honeypot Key)
 
-The lab strictly separates the management access plane from the untrusted threat zone:
-- **Management Plane (Bastion & SIEM):** Protected by **Google Cloud IAM OS Login with MFA** and Google Identity-Aware Proxy (IAP). Static SSH keys are blocked.
-  *Required IAM Roles:*
-  - `roles/compute.osAdminLogin` (or `roles/compute.osLogin`)
-  - `roles/iap.tunnelResourceAccessor`
-- **Honeypot VM:** Uses an **isolated instance SSH key** (`~/.ssh/siem_lab_key`) and intentionally does *not* enable OS Login. This prevents threat actors probing the honeypot from pivoting into the GCP management plane.
+The lab enforces strict separation between the management plane and the untrusted threat zone:
+1. **Management Plane (Bastion & SIEM VMs):**
+   - **Authentication:** Google Cloud IAM identity authenticated via `gcloud auth login`.
+   - **Prerequisite IAM Roles:**
+     - `roles/compute.osAdminLogin` (or `roles/compute.osLogin`)
+     - `roles/iap.tunnelResourceAccessor`
+   - **Multi-Factor Authentication (MFA):** Enforced by Cloud Identity / Google Workspace context-aware access policies.
+   - **Zero Static Keys:** Static SSH keys are blocked (`block-project-ssh-keys = "TRUE"`).
+2. **Honeypot VM (DMZ Tier):**
+   - **Authentication:** Uses an **isolated instance SSH keypair** (`~/.ssh/siem_lab_key`) and intentionally does *not* enable OS Login or IAP.
+   - **Service Account Isolation:** Attached to a dedicated zero-privilege service account (`siem-lab-honeypot-sa`) with zero IAM roles.
+   - **Boundary Guarantee:** Attacker probes on the honeypot have zero pathway into Google Cloud IAM or management planes.
 
 ```bash
-# Verify GCP CLI authentication for OS Login
+# 1. Verify GCP CLI authentication for OS Login
 gcloud auth list
 
-# Verify isolated SSH keypair exists for Honeypot ingestion
+# 2. Verify isolated SSH keypair exists for Honeypot ingestion
 ls -l ~/.ssh/siem_lab_key
 
 ---
@@ -60,20 +69,21 @@ terraform apply -auto-approve
 
 ## 3. Wazuh SIEM Stack Installation
 
-Access the management plane using Google Cloud IAM OS Login via Identity-Aware Proxy (IAP) with MFA enforcement:
+Access the management plane using Google Cloud IAM OS Login via Identity-Aware Proxy (IAP) with MFA enforcement.
 
-```bash
-# 1. SSH into Admin Bastion via Google Cloud OS Login (IAP Tunnel + MFA)
-gcloud compute ssh siem-lab-bastion --zone=us-central1-a --tunnel-through-iap
+**Supported Access Pathways:**
+- **Primary (Direct IAP Tunnel):** Connect directly to the internal SIEM Manager from your workstation via encrypted IAP tunnel:
+  ```bash
+  gcloud compute ssh siem-lab-wazuh --zone=us-central1-a --tunnel-through-iap
+  ```
+- **Segmented Management (Admin Bastion Jumpbox):** For administrative workflows executed from within the isolated Admin Subnet (`10.0.30.0/24`):
+  ```bash
+  # Step A: SSH into Admin Bastion via IAP Tunnel
+  gcloud compute ssh siem-lab-bastion --zone=us-central1-a --tunnel-through-iap
 
-# 2. From Bastion, connect to the internal SIEM Manager (10.0.20.2):
-gcloud compute ssh siem-lab-wazuh --zone=us-central1-a --internal-ip
-```
-
-*(Alternatively, if accessing via Bastion ProxyJump using authorized OS Login keys)*:
-```bash
-ssh -J <OPERATOR>@<BASTION_PUBLIC_IP> <OPERATOR>@10.0.20.2
-```
+  # Step B: From Bastion, connect to internal SIEM Manager over VPC private network
+  gcloud compute ssh siem-lab-wazuh --zone=us-central1-a --internal-ip
+  ```
 
 Install Wazuh 4.9.2 All-in-One:
 ```bash
@@ -154,16 +164,21 @@ ssh -i ~/.ssh/siem_lab_key ubuntu@<HONEYPOT_PUBLIC_IP> "bash /home/ubuntu/valida
 
 ## 7. Operational Dashboards
 
-### 7.1 Import OpenSearch Dashboards
+### 7.1 Access & Import OpenSearch Dashboards
+Access the Wazuh web user interface through an encrypted Google Cloud IAP port forwarding tunnel:
+```bash
+# 1. Open local encrypted IAP tunnel to Wazuh Dashboard (Port 443 -> localhost:8443)
+gcloud compute start-iap-tunnel siem-lab-wazuh 443 --local-host-port=localhost:8443 --zone=us-central1-a
+
+# 2. Access Wazuh Dashboard in your browser:
+#    https://localhost:8443
+```
+
 Automatically import the customized SOC operational dashboards into the live Wazuh UI:
 ```bash
-# Option 1: Via local SSH port-forward tunnel through Bastion (https://localhost:8443)
+# Execute dashboard import script via the local IAP tunnel
 bash wazuh/dashboards/import_dashboards.sh localhost:8443 <WAZUH_PASSWORD>
-
-# Option 2: Directly from Admin Bastion jumpbox to internal SIEM manager IP
-bash wazuh/dashboards/import_dashboards.sh 10.0.20.2 <WAZUH_PASSWORD>
 ```
-Access the dashboards locally via SSH tunnel: `https://localhost:8443` (execute `terraform output -raw wazuh_dashboard_tunnel` to open the tunnel).
 
 ### 7.2 Standalone Interactive SOC Visualizer
 Open `dashboards/index.html` in any modern browser to view interactive KPIs, MITRE ATT&CK charts, live alert feeds, and case records without needing active cloud instances.

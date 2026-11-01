@@ -75,9 +75,16 @@ resource "google_compute_subnetwork" "admin_subnet" {
 # SERVICE ACCOUNTS & IAM — Least-Privilege IAM Boundaries
 # ══════════════════════════════════════════════════════════════════════════════
 
-# NOTE: To attach a dedicated zero-privilege service account, enable iam.googleapis.com
-# and provision google_service_account.honeypot_sa. The host-level kernel iptables
-# REJECT and GCP firewall egress rule provide defense-in-depth metadata isolation.
+# ── Dedicated Zero-Privilege Honeypot Service Account ─────────────────────────
+# Crucial Cloud Isolation Control: Attaching a dedicated service account with
+# ZERO IAM role bindings guarantees that an attacker who compromises the
+# internet-facing honeypot VM has no ambient IAM authority to access Google Cloud APIs
+# or pivot into the GCP project.
+resource "google_service_account" "honeypot_sa" {
+  account_id   = "siem-lab-honeypot-sa"
+  display_name = "SIEM Lab Honeypot Zero-Privilege Service Account"
+  description  = "Strict zero-privilege service account isolated from GCP APIs for untrusted honeypot VM"
+}
 
 # ── Operator OS Login & IAP Tunnel IAM Bindings ──────────────────────────────
 # Operators managing Bastion and SIEM via OS Login require roles/compute.osAdminLogin
@@ -317,6 +324,11 @@ resource "google_compute_instance" "honeypot" {
     access_config {
       # Ephemeral public IP
     }
+  }
+
+  service_account {
+    email  = google_service_account.honeypot_sa.email
+    scopes = ["https://www.googleapis.com/auth/logging.write"]
   }
 
   metadata = {

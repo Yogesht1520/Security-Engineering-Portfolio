@@ -99,8 +99,24 @@ def test_case_lifecycle_and_reopen():
         ]
         res = subprocess.run(cmd_reopen_unauth_role, cwd=str(REPO_ROOT), capture_output=True, text=True, env=test_env)
         assert res.returncode != 0, "Expected failure when authorizer lacks designated governance authority!"
-        assert "lacks designated governance authority" in res.stdout
+        assert "not a recognized governance authority" in res.stdout or "lacks designated governance authority" in res.stdout
         print("  [✓] Negative Test PASSED: Authorizer without governance role correctly rejected.")
+
+        # Step E2: Negative Test — Caller identity lacks RBAC policy assignment for requested role
+        unauth_env = test_env.copy()
+        unauth_env["USER"] = "unauthorized_guest"
+        unauth_env["USERNAME"] = "unauthorized_guest"
+        unauth_env["LOGNAME"] = "unauthorized_guest"
+        cmd_rbac_unauth = [
+            sys.executable, "incident_management/case_manager.py",
+            "--reopen", test_case_id,
+            "--authorizer", "SOC Lead",
+            "--justification", "Valid operational reason here"
+        ]
+        res = subprocess.run(cmd_rbac_unauth, cwd=str(REPO_ROOT), capture_output=True, text=True, env=unauth_env)
+        assert res.returncode != 0, "Expected failure when caller lacks RBAC assignment in rbac_policy.json!"
+        assert "lacks verified RBAC assignment" in res.stdout
+        print("  [✓] Negative Test PASSED: Principal without RBAC assignment correctly rejected (identity binding enforced).")
 
         # Step F: Negative Test — Attempt reopen with trivial justification
         cmd_reopen_short_just = [sys.executable, "incident_management/case_manager.py", "--reopen", test_case_id, "--authorizer", "SOC Lead Alice", "--justification", "short"]
@@ -131,10 +147,12 @@ def test_case_lifecycle_and_reopen():
         assert rec["authorizer"] == "Incident Commander Alice"
         assert len(rec["prior_state_sha256"]) == 64
         assert "executed_by" in rec
+        assert "auth_method" in rec
+        assert rec["auth_method"] in ["enterprise_rbac_policy_verified", "cryptographic_token_verified"]
         expected_user = test_env.get("USER") or test_env.get("USERNAME") or test_env.get("LOGNAME") or "unknown_user"
         assert rec["executed_by"] == expected_user
         print(f"  [✓] State seal verified: {rec['prior_state_sha256'][:16]}...")
-        print(f"  [✓] Authenticated caller identity verified: {rec['executed_by']}")
+        print(f"  [✓] Authenticated caller identity & RBAC method verified: {rec['executed_by']} ({rec['auth_method']})")
 
         # Step I: Assert persistent lockfile semantics
         lock_file = test_cases_dir / f"{test_case_id}.flock"

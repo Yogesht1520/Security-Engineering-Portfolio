@@ -117,8 +117,22 @@ ACQUIRED_POSTURE_UTC=""
 ACQUIRED_ALERTS_UTC=""
 ACQUIRED_PUBKEY_UTC=""
 
-# Pinned host key policy: accept-new to pin and verify host identity on first contact
-SSH_OPTS="-o StrictHostKeyChecking=accept-new"
+# ── Independent Forensic Host Key Pinning ──────────────────────────────────
+# Prevents Machine-in-the-Middle (MitM) and host spoofing attacks during evidence acquisition.
+# Enforces strict pre-provisioned host key pinning against TRUSTED_HOST_PINS.txt.
+TRUSTED_HOSTS_PIN_FILE="${TRUSTED_HOSTS_PIN_FILE:-${EXTERNAL_HOSTS_PIN_FILE:-evidence/TRUSTED_HOST_PINS.txt}}"
+
+if [ -f "$TRUSTED_HOSTS_PIN_FILE" ] && [ -s "$TRUSTED_HOSTS_PIN_FILE" ]; then
+  echo "  [✓] Forensic Host Key Pinning: Enforcing strict pre-provisioned host keys ($TRUSTED_HOSTS_PIN_FILE)"
+  SSH_OPTS="-o StrictHostKeyChecking=yes -o UserKnownHostsFile=${TRUSTED_HOSTS_PIN_FILE}"
+elif [ "${ALLOW_UNPINNED_HOST_KEYS:-false}" = "true" ]; then
+  echo "  [*] Warning: ALLOW_UNPINNED_HOST_KEYS=true set. Falling back to accept-new policy."
+  SSH_OPTS="-o StrictHostKeyChecking=accept-new"
+else
+  echo -e "\033[0;31m[!] FATAL: Trusted host pins file ($TRUSTED_HOSTS_PIN_FILE) not found or empty!\033[0m" >&2
+  echo "    Pre-provision trusted host keys or set ALLOW_UNPINNED_HOST_KEYS=true for initial bootstrap." >&2
+  exit 1
+fi
 
 # ── 1. Copy host authentication and audit logs from Honeypot ─────────────────
 echo "[1/6] Offloading raw host logs from Honeypot..."

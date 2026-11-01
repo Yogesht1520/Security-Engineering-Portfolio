@@ -127,6 +127,9 @@
           },
           "executed_by": {
             "type": "string"
+          },
+          "auth_method": {
+            "type": "string"
           }
         }
       }
@@ -159,6 +162,9 @@
             "type": "string"
           },
           "executed_by": {
+            "type": "string"
+          },
+          "auth_method": {
             "type": "string"
           }
         }

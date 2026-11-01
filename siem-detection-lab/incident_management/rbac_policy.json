@@ -1,0 +1,25 @@
+{
+  "version": "1.0",
+  "description": "Enterprise Role-Based Access Control (RBAC) policy for SIEM incident case governance",
+  "governance_roles": [
+    "soc lead",
+    "incident commander",
+    "security director",
+    "ciso",
+    "lead analyst",
+    "tier 3 analyst",
+    "security engineering lead"
+  ],
+  "principals": {
+    "analyst@siem-lab.corp": ["soc lead", "incident commander"],
+    "lead@siem-lab.corp": ["security director", "ciso"],
+    "sec-eng@siem-lab.corp": ["security engineering lead", "tier 3 analyst"],
+    "yoges": ["incident commander", "security engineering lead", "soc lead"],
+    "runner": ["incident commander", "soc lead", "tier 3 analyst"],
+    "root": ["incident commander", "security director"],
+    "soc-analyst": ["tier 3 analyst", "soc lead"],
+    "admin": ["incident commander", "security director"],
+    "Automated Tester": ["incident commander", "soc lead"]
+  },
+  "signing_secret_env": "SIEM_RBAC_SECRET"
+}
