@@ -70,10 +70,14 @@ fi
 echo "  [*] Restarting audit daemon..." >&2
 RESTART_OK=0
 if command -v systemctl >/dev/null 2>&1; then
-  systemctl restart auditd >/dev/null 2>&1 && RESTART_OK=1 || true
+  if systemctl restart auditd >/dev/null 2>&1; then
+    RESTART_OK=1
+  fi
 fi
 if [ "$RESTART_OK" -eq 0 ] && command -v service >/dev/null 2>&1; then
-  service auditd restart >/dev/null 2>&1 && RESTART_OK=1 || true
+  if service auditd restart >/dev/null 2>&1; then
+    RESTART_OK=1
+  fi
 fi
 
 if [ "$RESTART_OK" -eq 0 ]; then
@@ -92,9 +96,10 @@ fi
 # Step 7: Kernel Rule Parity Assertion (diff baseline vs post-rollback)
 if [ -s "${BACKUP_DIR}/active_rules_pre.txt" ]; then
   POST_RULES_FILE="${BACKUP_DIR}/active_rules_post_rollback.txt"
-  auditctl -l > "$POST_RULES_FILE" 2>/dev/null || true
-  
-  if ! cmp -s "${BACKUP_DIR}/active_rules_pre.txt" "$POST_RULES_FILE"; then
+  if ! auditctl -l > "$POST_RULES_FILE" 2>/dev/null || [ ! -s "$POST_RULES_FILE" ]; then
+    echo "  [!] ERROR: Failed to capture active post-rollback kernel rules (auditctl -l)!" >&2
+    ROLLBACK_FAILED=1
+  elif ! cmp -s "${BACKUP_DIR}/active_rules_pre.txt" "$POST_RULES_FILE"; then
     echo "  [!] ERROR: Kernel audit rule parity mismatch between pre-deployment and post-rollback state!" >&2
     echo "      Diff:" >&2
     diff -u "${BACKUP_DIR}/active_rules_pre.txt" "$POST_RULES_FILE" >&2 || true
