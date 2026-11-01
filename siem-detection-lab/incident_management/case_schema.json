@@ -21,18 +21,32 @@
     },
     "status": {
       "type": "string",
-      "enum": ["open", "investigating", "contained", "closed", "false_positive"]
+      "enum": [
+        "open",
+        "investigating",
+        "contained",
+        "closed",
+        "false_positive"
+      ]
     },
     "severity": {
       "type": "string",
-      "enum": ["low", "medium", "high", "critical"]
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ]
     },
     "opened_at": {
       "type": "string",
       "format": "date-time"
     },
     "closed_at": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "format": "date-time"
     },
     "source_ip": {
@@ -41,38 +55,79 @@
     "geo": {
       "type": "object",
       "properties": {
-        "country": { "type": "string" },
-        "city": { "type": "string" },
-        "asn": { "type": "string" },
-        "isp": { "type": "string" }
+        "country": {
+          "type": "string"
+        },
+        "city": {
+          "type": "string"
+        },
+        "asn": {
+          "type": "string"
+        },
+        "isp": {
+          "type": "string"
+        }
       }
     },
     "reputation": {
       "type": "object",
       "properties": {
-        "abuseipdb_score": { "type": ["integer", "null"] },
-        "total_reports": { "type": ["integer", "null"] },
-        "last_reported_at": { "type": ["string", "null"] }
+        "abuseipdb_score": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "total_reports": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "last_reported_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       }
     },
     "wazuh_alert_ids": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "target_users": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "timeline": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["timestamp", "event"],
+        "required": [
+          "timestamp",
+          "event"
+        ],
         "properties": {
-          "timestamp": { "type": "string" },
-          "event": { "type": "string" },
-          "authorizer": { "type": "string" },
-          "justification": { "type": "string" }
+          "timestamp": {
+            "type": "string"
+          },
+          "event": {
+            "type": "string"
+          },
+          "authorizer": {
+            "type": "string"
+          },
+          "justification": {
+            "type": "string"
+          },
+          "executed_by": {
+            "type": "string"
+          }
         }
       }
     },
@@ -80,19 +135,40 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["reopened_at", "authorizer", "justification", "prior_status", "prior_state_sha256"],
+        "required": [
+          "reopened_at",
+          "authorizer",
+          "justification",
+          "prior_status",
+          "prior_state_sha256"
+        ],
         "properties": {
-          "reopened_at": { "type": "string" },
-          "authorizer": { "type": "string" },
-          "justification": { "type": "string" },
-          "prior_status": { "type": "string" },
-          "prior_state_sha256": { "type": "string" }
+          "reopened_at": {
+            "type": "string"
+          },
+          "authorizer": {
+            "type": "string"
+          },
+          "justification": {
+            "type": "string"
+          },
+          "prior_status": {
+            "type": "string"
+          },
+          "prior_state_sha256": {
+            "type": "string"
+          },
+          "executed_by": {
+            "type": "string"
+          }
         }
       }
     },
     "containment_actions": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "evidence_preserved": {
       "type": "boolean"

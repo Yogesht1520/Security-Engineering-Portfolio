@@ -103,36 +103,55 @@ if [ "$PRESERVATION_MODE" = "worm" ]; then
 fi
 echo "-----------------------------------------------------------------"
 
-# Track individual acquisition statuses
+# Track individual acquisition statuses and precise UTC timestamps
 PULL_AUTH_OK=false
 PULL_AUDIT_OK=false
 PULL_STATE_OK=false
 PULL_POSTURE_OK=false
 PULL_ALERTS_OK=false
 
+ACQUIRED_AUTH_UTC=""
+ACQUIRED_AUDIT_UTC=""
+ACQUIRED_STATE_UTC=""
+ACQUIRED_POSTURE_UTC=""
+ACQUIRED_ALERTS_UTC=""
+ACQUIRED_PUBKEY_UTC=""
+
+# Pinned host key policy: accept-new to pin and verify host identity on first contact
+SSH_OPTS="-o StrictHostKeyChecking=accept-new"
+
 # ── 1. Copy host authentication and audit logs from Honeypot ─────────────────
 echo "[1/6] Offloading raw host logs from Honeypot..."
-if scp -i "$SSH_KEY" -o StrictHostKeyChecking=no "ubuntu@${HONEYPOT_IP}:/var/log/auth.log" "${EVIDENCE_DIR}/honeypot_auth.log" 2>/dev/null; then
-  [ -s "${EVIDENCE_DIR}/honeypot_auth.log" ] && PULL_AUTH_OK=true
+if scp -i "$SSH_KEY" $SSH_OPTS "ubuntu@${HONEYPOT_IP}:/var/log/auth.log" "${EVIDENCE_DIR}/honeypot_auth.log" 2>/dev/null; then
+  if [ -s "${EVIDENCE_DIR}/honeypot_auth.log" ]; then
+    PULL_AUTH_OK=true
+    ACQUIRED_AUTH_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  fi
 fi
 
-ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "ubuntu@${HONEYPOT_IP}" \
+ssh -i "$SSH_KEY" $SSH_OPTS "ubuntu@${HONEYPOT_IP}" \
   "sudo cp /var/log/audit/audit.log /tmp/audit.log && sudo chmod 644 /tmp/audit.log" 2>/dev/null || true
 
-if scp -i "$SSH_KEY" -o StrictHostKeyChecking=no "ubuntu@${HONEYPOT_IP}:/tmp/audit.log" "${EVIDENCE_DIR}/honeypot_audit.log" 2>/dev/null; then
-  [ -s "${EVIDENCE_DIR}/honeypot_audit.log" ] && PULL_AUDIT_OK=true
+if scp -i "$SSH_KEY" $SSH_OPTS "ubuntu@${HONEYPOT_IP}:/tmp/audit.log" "${EVIDENCE_DIR}/honeypot_audit.log" 2>/dev/null; then
+  if [ -s "${EVIDENCE_DIR}/honeypot_audit.log" ]; then
+    PULL_AUDIT_OK=true
+    ACQUIRED_AUDIT_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  fi
 fi
-ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "ubuntu@${HONEYPOT_IP}" "sudo rm -f /tmp/audit.log" 2>/dev/null || true
+ssh -i "$SSH_KEY" $SSH_OPTS "ubuntu@${HONEYPOT_IP}" "sudo rm -f /tmp/audit.log" 2>/dev/null || true
 
 # ── 2. Dump volatile system state and active defense posture ─────────────────
 echo "[2/6] Recording volatile system state and security posture..."
-if ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "ubuntu@${HONEYPOT_IP}" \
+if ssh -i "$SSH_KEY" $SSH_OPTS "ubuntu@${HONEYPOT_IP}" \
   "echo '=== ACTIVE SOCKETS ===' && ss -tnp; echo '=== ROUTING TABLE ===' && ip route; echo '=== LOGGED IN USERS ===' && who; echo '=== RECENT LOGINS ===' && last -25" \
   > "${EVIDENCE_DIR}/honeypot_system_state.txt" 2>/dev/null; then
-  [ -s "${EVIDENCE_DIR}/honeypot_system_state.txt" ] && PULL_STATE_OK=true
+  if [ -s "${EVIDENCE_DIR}/honeypot_system_state.txt" ]; then
+    PULL_STATE_OK=true
+    ACQUIRED_STATE_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  fi
 fi
 
-if ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "ubuntu@${HONEYPOT_IP}" bash -c "'
+if ssh -i "$SSH_KEY" $SSH_OPTS "ubuntu@${HONEYPOT_IP}" bash -c "'
   echo \"=== ACTIVE KERNEL IPTABLES (NETFILTER) ===\"
   sudo iptables-save
   echo \"\"
@@ -146,15 +165,21 @@ if ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "ubuntu@${HONEYPOT_IP}"
   echo \"=== AUDITD KERNEL STATUS ===\"
   sudo auditctl -s 2>&1 || true
 '" > "${EVIDENCE_DIR}/honeypot_defense_posture.txt" 2>/dev/null; then
-  [ -s "${EVIDENCE_DIR}/honeypot_defense_posture.txt" ] && PULL_POSTURE_OK=true
+  if [ -s "${EVIDENCE_DIR}/honeypot_defense_posture.txt" ]; then
+    PULL_POSTURE_OK=true
+    ACQUIRED_POSTURE_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  fi
 fi
 
 # ── 3. Pull Wazuh alerts from SIEM Manager ───────────────────────────────────
 echo "[3/6] Exporting Wazuh normalized security alerts..."
-if ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "ubuntu@${SIEM_IP}" \
+if ssh -i "$SSH_KEY" $SSH_OPTS "ubuntu@${SIEM_IP}" \
   "sudo tail -n 5000 /var/ossec/logs/alerts/alerts.json" \
   > "${EVIDENCE_DIR}/wazuh_alerts.json" 2>/dev/null; then
-  [ -s "${EVIDENCE_DIR}/wazuh_alerts.json" ] && PULL_ALERTS_OK=true
+  if [ -s "${EVIDENCE_DIR}/wazuh_alerts.json" ]; then
+    PULL_ALERTS_OK=true
+    ACQUIRED_ALERTS_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  fi
 fi
 
 # ── 4. Snapshot Cloud Disk (Optional Infrastructure Artifact) ────────────────
@@ -225,18 +250,49 @@ fi
 # Export public verification key into evidence directory BEFORE checksum generation
 openssl pkey -in "$SIGNING_KEY_PATH" -pubout -out "$PUBKEY_PATH" 2>/dev/null
 SIGNER_PUBKEY_FINGERPRINT=$(openssl dgst -sha256 "$PUBKEY_PATH" | awk '{print $NF}')
+CURRENT_PUBKEY_PIN="SHA256:${SIGNER_PUBKEY_FINGERPRINT}"
+ACQUIRED_PUBKEY_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-# 1. Record trusted public key fingerprint in independent external store outside repository
 EXTERNAL_PINS_FILE="${EXTERNAL_PINS_FILE:-$HOME/.config/siem-lab/trusted_signer_pins.txt}"
-mkdir -p "$(dirname "$EXTERNAL_PINS_FILE")"
-echo "${START_TIME_UTC} | ${COLLECTOR_USER}@${COLLECTOR_HOST} | SHA256:${SIGNER_PUBKEY_FINGERPRINT} | EVIDENCE_SIGNING_PUBKEY.pub" >> "$EXTERNAL_PINS_FILE"
-
-# 2. Mirror to repository audit record for local provenance
 TRUSTED_PINS_FILE="evidence/TRUSTED_SIGNER_PINS.txt"
-mkdir -p "evidence"
-echo "${START_TIME_UTC} | ${COLLECTOR_USER}@${COLLECTOR_HOST} | SHA256:${SIGNER_PUBKEY_FINGERPRINT} | EVIDENCE_SIGNING_PUBKEY.pub" >> "$TRUSTED_PINS_FILE"
-echo "  [✓] Public signing key exported and pinned to independent store: $EXTERNAL_PINS_FILE"
-echo "      Fingerprint: SHA256:${SIGNER_PUBKEY_FINGERPRINT}"
+
+# Establish independent verification source: Check pre-existing trusted pins
+PRE_EXISTING_PIN=""
+if [ -f "$EXTERNAL_PINS_FILE" ] && [ -s "$EXTERNAL_PINS_FILE" ]; then
+  PRE_EXISTING_PIN=$(awk -F '|' '{print $3}' "$EXTERNAL_PINS_FILE" | tr -d ' ' | tail -n 1)
+elif [ -f "$TRUSTED_PINS_FILE" ] && [ -s "$TRUSTED_PINS_FILE" ]; then
+  PRE_EXISTING_PIN=$(awk -F '|' '{print $3}' "$TRUSTED_PINS_FILE" | tr -d ' ' | tail -n 1)
+fi
+
+# Trust Boundary Assertion: Do not self-certify an unknown key in the same run!
+if [ -n "$PRE_EXISTING_PIN" ]; then
+  if [ "$CURRENT_PUBKEY_PIN" != "$PRE_EXISTING_PIN" ]; then
+    if [ "${ALLOW_KEY_ROTATION:-false}" = "true" ] || [ "${ENROLL_NEW_SIGNER:-false}" = "true" ]; then
+      echo "  [!] NOTICE: Enrolling rotated signer key under explicit administrator flag (ALLOW_KEY_ROTATION=true)."
+      mkdir -p "$(dirname "$EXTERNAL_PINS_FILE")"
+      echo "${START_TIME_UTC} | ${COLLECTOR_USER}@${COLLECTOR_HOST} | ${CURRENT_PUBKEY_PIN} | EVIDENCE_SIGNING_PUBKEY.pub (ROTATED)" >> "$EXTERNAL_PINS_FILE"
+      echo "${START_TIME_UTC} | ${COLLECTOR_USER}@${COLLECTOR_HOST} | ${CURRENT_PUBKEY_PIN} | EVIDENCE_SIGNING_PUBKEY.pub (ROTATED)" >> "$TRUSTED_PINS_FILE"
+    else
+      echo "═════════════════════════════════════════════════════════════════"
+      echo " [!] FATAL CRYPTOGRAPHIC TRUST BOUNDARY VIOLATION:"
+      echo "     Signing key fingerprint (${CURRENT_PUBKEY_PIN}) does NOT match"
+      echo "     the independently administered trusted pin (${PRE_EXISTING_PIN})!"
+      echo "     Self-certification of untrusted keys is rejected fail-closed."
+      echo "     To enroll a new key, pass ALLOW_KEY_ROTATION=true or --enroll-key."
+      echo "═════════════════════════════════════════════════════════════════"
+      exit 1
+    fi
+  else
+    echo "  [✓] Signer public key fingerprint matches independently provisioned pin: ${CURRENT_PUBKEY_PIN}"
+  fi
+else
+  # Initial Trust-On-First-Use (TOFU) enrollment
+  echo "  [*] Initial enrollment: Recording trusted public key fingerprint in independent store: $EXTERNAL_PINS_FILE"
+  mkdir -p "$(dirname "$EXTERNAL_PINS_FILE")"
+  echo "${START_TIME_UTC} | ${COLLECTOR_USER}@${COLLECTOR_HOST} | ${CURRENT_PUBKEY_PIN} | EVIDENCE_SIGNING_PUBKEY.pub" >> "$EXTERNAL_PINS_FILE"
+  mkdir -p "evidence"
+  echo "${START_TIME_UTC} | ${COLLECTOR_USER}@${COLLECTOR_HOST} | ${CURRENT_PUBKEY_PIN} | EVIDENCE_SIGNING_PUBKEY.pub" >> "$TRUSTED_PINS_FILE"
+fi
 
 # ── 5B. Generate Checksums Covering Artifacts AND Public Key ─────────────────
 END_TIME_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -291,31 +347,38 @@ $(
       case "$fname" in
         *auth.log)
           fsrc="${HONEYPOT_IP}:/var/log/auth.log"
-          fmethod="scp -i <key> (sanitized copy)"
+          fmethod="scp -i <key> (pinned host key)"
+          facq="${ACQUIRED_AUTH_UTC:-$START_TIME_UTC}"
           ;;
         *audit.log)
           fsrc="${HONEYPOT_IP}:/var/log/audit/audit.log"
           fmethod="scp -i <key> via restricted temporary staging"
+          facq="${ACQUIRED_AUDIT_UTC:-$START_TIME_UTC}"
           ;;
         *system_state.txt)
           fsrc="${HONEYPOT_IP} volatile memory/proc"
           fmethod="ssh remote diagnostic stream (ss, iptables, ip route)"
+          facq="${ACQUIRED_STATE_UTC:-$START_TIME_UTC}"
           ;;
         *defense_posture.txt)
           fsrc="${HONEYPOT_IP} security subsystem"
           fmethod="ssh remote isolation probe (systemctl, curl metadata, iptables)"
+          facq="${ACQUIRED_POSTURE_UTC:-$START_TIME_UTC}"
           ;;
         *alerts.json)
           fsrc="${SIEM_IP}:/var/ossec/logs/alerts/alerts.json"
           fmethod="scp -i <key> via Bastion jumpbox"
+          facq="${ACQUIRED_ALERTS_UTC:-$START_TIME_UTC}"
           ;;
         *PUBKEY.pub)
           fsrc="${COLLECTOR_USER}@${COLLECTOR_HOST} local key generation"
           fmethod="openssl pkey -pubout"
+          facq="${ACQUIRED_PUBKEY_UTC:-$START_TIME_UTC}"
           ;;
         *)
           fsrc="siem-lab-telemetry"
           fmethod="automated runbook capture"
+          facq="$START_TIME_UTC"
           ;;
       esac
 
@@ -324,7 +387,7 @@ $(
       else
         echo ","
       fi
-      printf '    {\n      "filename": "%s",\n      "size_bytes": %s,\n      "sha256": "%s",\n      "source": "%s",\n      "acquisition_method": "%s",\n      "acquired_at_utc": "%s"\n    }' "$fname" "$fsize" "$fhash" "$fsrc" "$fmethod" "$START_TIME_UTC"
+      printf '    {\n      "filename": "%s",\n      "size_bytes": %s,\n      "sha256": "%s",\n      "source": "%s",\n      "acquisition_method": "%s",\n      "acquired_at_utc": "%s"\n    }' "$fname" "$fsize" "$fhash" "$fsrc" "$fmethod" "$facq"
     fi
   done
 )
@@ -492,6 +555,7 @@ if [ "$PRESERVATION_MODE" = "worm" ]; then
       "${EVIDENCE_BUCKET}/${ARCHIVE_NAME}.sig" \
       "${EVIDENCE_BUCKET}/${ARCHIVE_NAME}.sha256" \
       "${EVIDENCE_BUCKET}/EVIDENCE_MANIFEST.json" \
+      "${EVIDENCE_BUCKET}/EVIDENCE_SIGNING_PUBKEY.pub" \
       "${TMP_VERIFY_DIR}/" --quiet 2>/dev/null; then
       DOWNLOAD_OK=true
     fi
@@ -500,6 +564,7 @@ if [ "$PRESERVATION_MODE" = "worm" ]; then
       "${EVIDENCE_BUCKET}/${ARCHIVE_NAME}.sig" \
       "${EVIDENCE_BUCKET}/${ARCHIVE_NAME}.sha256" \
       "${EVIDENCE_BUCKET}/EVIDENCE_MANIFEST.json" \
+      "${EVIDENCE_BUCKET}/EVIDENCE_SIGNING_PUBKEY.pub" \
       "${TMP_VERIFY_DIR}/" 2>/dev/null; then
       DOWNLOAD_OK=true
     fi
@@ -535,21 +600,28 @@ if [ "$PRESERVATION_MODE" = "worm" ]; then
   fi
   echo "  [✓] 1/5: Remote archive SHA-256 matched local hash bit-for-bit (${REMOTE_ARCHIVE_HASH})"
 
-  # 3. Assert Public Key Fingerprint against Trusted Pins Record BEFORE verification
-  TRUSTED_PIN=$(awk -F '|' '{print $3}' "$TRUSTED_PINS_FILE" 2>/dev/null | tr -d ' ' | tail -n 1)
-  CURRENT_PUBKEY_PIN="SHA256:$(openssl dgst -sha256 "$PUBKEY_PATH" | awk '{print $NF}')"
-  if [ -n "$TRUSTED_PIN" ] && [ "$CURRENT_PUBKEY_PIN" != "$TRUSTED_PIN" ]; then
-    echo " [!] FATAL: Public key fingerprint ($CURRENT_PUBKEY_PIN) does NOT match trusted pin ($TRUSTED_PIN) in $TRUSTED_PINS_FILE!"
+  # 3. Assert Downloaded Public Key Fingerprint against Independent Trusted Pins Store
+  REMOTE_PUBKEY_FILE="${TMP_VERIFY_DIR}/EVIDENCE_SIGNING_PUBKEY.pub"
+  if [ ! -s "$REMOTE_PUBKEY_FILE" ]; then
+    echo " [!] FATAL: Downloaded remote public key file is missing or empty!"
     exit 1
   fi
+  REMOTE_PUBKEY_PIN="SHA256:$(openssl dgst -sha256 "$REMOTE_PUBKEY_FILE" | awk '{print $NF}')"
 
-  # RSA signature verification on remote archive using pinned public key
-  if ! openssl dgst -sha256 -verify "$PUBKEY_PATH" \
-    -signature "${TMP_VERIFY_DIR}/${ARCHIVE_NAME}.sig" "${TMP_VERIFY_DIR}/${ARCHIVE_NAME}" >/dev/null 2>&1; then
-    echo " [!] FATAL: Remote archive RSA digital signature verification failed!"
+  RESOLVED_TRUSTED_PIN="${PRE_EXISTING_PIN:-$CURRENT_PUBKEY_PIN}"
+  if [ -n "$RESOLVED_TRUSTED_PIN" ] && [ "$REMOTE_PUBKEY_PIN" != "$RESOLVED_TRUSTED_PIN" ]; then
+    echo " [!] FATAL: Remote public key fingerprint ($REMOTE_PUBKEY_PIN) does NOT match independent trusted pin ($RESOLVED_TRUSTED_PIN)!"
     exit 1
   fi
-  echo "  [✓] 2/5: Remote archive RSA signature valid under verified pinned public key."
+  echo "  [✓] Remote public key fingerprint verified against independent trusted pin ($REMOTE_PUBKEY_PIN)."
+
+  # RSA signature verification on remote archive using the verified downloaded public key
+  if ! openssl dgst -sha256 -verify "$REMOTE_PUBKEY_FILE" \
+    -signature "${TMP_VERIFY_DIR}/${ARCHIVE_NAME}.sig" "${TMP_VERIFY_DIR}/${ARCHIVE_NAME}" >/dev/null 2>&1; then
+    echo " [!] FATAL: Remote archive RSA digital signature verification failed against downloaded public key!"
+    exit 1
+  fi
+  echo "  [✓] 2/5: Remote archive RSA signature valid under verified downloaded public key."
 
   # 4. Verify remote .sha256 checksum file
   REMOTE_CHECKSUM_CONTENT=$(cat "${TMP_VERIFY_DIR}/${ARCHIVE_NAME}.sha256" | awk '{print $1}')

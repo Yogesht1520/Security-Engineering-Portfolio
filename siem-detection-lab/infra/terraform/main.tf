@@ -72,12 +72,33 @@ resource "google_compute_subnetwork" "admin_subnet" {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SERVICE ACCOUNTS — Least-Privilege IAM Boundaries
+# SERVICE ACCOUNTS & IAM — Least-Privilege IAM Boundaries
 # ══════════════════════════════════════════════════════════════════════════════
 
 # NOTE: To attach a dedicated zero-privilege service account, enable iam.googleapis.com
 # and provision google_service_account.honeypot_sa. The host-level kernel iptables
 # REJECT and GCP firewall egress rule provide defense-in-depth metadata isolation.
+
+# ── Operator OS Login & IAP Tunnel IAM Bindings ──────────────────────────────
+# Operators managing Bastion and SIEM via OS Login require roles/compute.osAdminLogin
+# (or roles/compute.osLogin) and roles/iap.tunnelResourceAccessor.
+# Note: Full MFA enforcement (as demonstrated in bastion_oslogin_mfa.png) requires
+# an organization-level or identity-level 2-Step Verification policy (e.g. Google
+# Workspace / Cloud Identity Context-Aware Access or enforced 2SV policy).
+
+resource "google_project_iam_member" "operator_oslogin" {
+  count   = var.operator_iam_email != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/compute.osAdminLogin"
+  member  = var.operator_iam_email
+}
+
+resource "google_project_iam_member" "operator_iap" {
+  count   = var.operator_iam_email != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/iap.tunnelResourceAccessor"
+  member  = var.operator_iam_email
+}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FIREWALL RULES

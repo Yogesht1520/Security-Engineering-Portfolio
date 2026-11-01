@@ -68,9 +68,23 @@ TRANSITION_MATRIX = {
 
 import contextlib
 
+def get_caller_identity() -> str:
+    """Resolves authenticated operating system user identity from environment."""
+    return (
+        os.environ.get("USER")
+        or os.environ.get("USERNAME")
+        or os.environ.get("LOGNAME")
+        or "unknown_user"
+    )
+
 @contextlib.contextmanager
 def case_lock(case_id: str):
-    """Cross-platform advisory file locking to prevent concurrent update races."""
+    """Cross-platform advisory file locking to prevent concurrent update races.
+    
+    Locks are retained as persistent advisory lockfiles (.flock) rather than being
+    unlinked upon exit. This eliminates the POSIX/Windows unlinking race condition
+    where an unlinked inode is locked while a new process creates a conflicting file.
+    """
     lock_path = os.path.join(CASES_DIR, f"{case_id}.flock")
     lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR)
     try:
@@ -92,10 +106,6 @@ def case_lock(case_id: str):
         except Exception:
             pass
         os.close(lock_fd)
-        try:
-            os.remove(lock_path)
-        except Exception:
-            pass
 
 def get_utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -151,51 +161,54 @@ def create_case(title: str, severity: str, source_ip: str, analyst: str = "SOC A
         print(f"Error: Invalid IP address '{clean_ip}': {e}")
         sys.exit(1)
 
-    case_id = get_next_case_id()
-    opened_at = get_utc_now()
-
+    # Perform network enrichment outside lock to prevent blocking concurrent writes
     print(f"[*] Running autonomous enrichment for {clean_ip}...")
     geo_data = lookup_ip(clean_ip)
     rep_data = check_reputation(clean_ip)
 
-    case = {
-        "case_id": case_id,
-        "title": title,
-        "status": "investigating",
-        "severity": severity.lower(),
-        "opened_at": opened_at,
-        "closed_at": None,
-        "source_ip": clean_ip,
-        "geo": {
-            "country": geo_data.get("country", "Unknown"),
-            "city": geo_data.get("city", "Unknown"),
-            "asn": geo_data.get("asn", "Unknown"),
-            "isp": geo_data.get("isp", "Unknown")
-        },
-        "reputation": {
-            "abuseipdb_score": rep_data.get("abuseipdb_score"),
-            "total_reports": rep_data.get("total_reports"),
-            "last_reported_at": rep_data.get("last_reported_at")
-        },
-        "wazuh_alert_ids": [],
-        "target_users": [],
-        "timeline": [
-            {
-                "timestamp": opened_at,
-                "event": f"Case opened with severity {severity.upper()} targeting IP {clean_ip} by {analyst}"
-            }
-        ],
-        "reopen_records": [],
-        "containment_actions": [],
-        "evidence_preserved": False,
-        "analyst": analyst,
-        "root_cause": "",
-        "lessons_learned": ""
-    }
+    # Acquire global case allocation lock to prevent race conditions during ID generation & saving
+    with case_lock("cases_global"):
+        case_id = get_next_case_id()
+        opened_at = get_utc_now()
 
-    atomic_save_case(case_id, case)
-    print(f"[+] Case created successfully: {case_id}")
-    return case
+        case = {
+            "case_id": case_id,
+            "title": title,
+            "status": "investigating",
+            "severity": severity.lower(),
+            "opened_at": opened_at,
+            "closed_at": None,
+            "source_ip": clean_ip,
+            "geo": {
+                "country": geo_data.get("country", "Unknown"),
+                "city": geo_data.get("city", "Unknown"),
+                "asn": geo_data.get("asn", "Unknown"),
+                "isp": geo_data.get("isp", "Unknown")
+            },
+            "reputation": {
+                "abuseipdb_score": rep_data.get("abuseipdb_score"),
+                "total_reports": rep_data.get("total_reports"),
+                "last_reported_at": rep_data.get("last_reported_at")
+            },
+            "wazuh_alert_ids": [],
+            "target_users": [],
+            "timeline": [
+                {
+                    "timestamp": opened_at,
+                    "event": f"Case opened with severity {severity.upper()} targeting IP {clean_ip} by {analyst}"
+                }
+            ],
+            "reopen_records": [],
+            "containment_actions": [],
+            "evidence_preserved": False,
+            "analyst": analyst,
+            "root_cause": "",
+            "lessons_learned": ""
+        }
+
+        atomic_save_case(case_id, case)
+        print(f"[+] Case created successfully: {case_id}")
+        return case
 
 def list_cases():
     files = sorted([f for f in os.listdir(CASES_DIR) if f.endswith(".json")])
@@ -291,6 +304,8 @@ def reopen_case(case_id: str, authorizer: str, justification: str, target_status
             print("Error: Privileged reopen REJECTED: --authorizer is required to identify the approving lead/manager.")
             sys.exit(1)
 
+        caller_identity = get_caller_identity()
+
         # Authenticated Authorizer Governance Role Assertion
         has_authorized_role = any(role in clean_authorizer.lower() for role in AUTHORIZED_REOPEN_ROLES)
         if not has_authorized_role:
@@ -322,6 +337,7 @@ def reopen_case(case_id: str, authorizer: str, justification: str, target_status
         reopen_entry = {
             "reopened_at": timestamp,
             "authorizer": clean_authorizer,
+            "executed_by": caller_identity,
             "justification": clean_justification,
             "prior_status": old_status,
             "prior_state_sha256": prior_state_sha256
@@ -330,38 +346,37 @@ def reopen_case(case_id: str, authorizer: str, justification: str, target_status
 
         timeline_event = {
             "timestamp": timestamp,
-            "event": f"PRIVILEGED REOPEN AUTHORIZED by {clean_authorizer} (Transitioned: {old_status.upper()} -> {clean_target.upper()}). Justification: {clean_justification} [Prior State Seal: {prior_state_sha256[:16]}...]",
+            "event": f"PRIVILEGED REOPEN AUTHORIZED by {clean_authorizer} (executed by {caller_identity}, Transitioned: {old_status.upper()} -> {clean_target.upper()}). Justification: {clean_justification} [Prior State Seal: {prior_state_sha256[:16]}...]",
             "authorizer": clean_authorizer,
+            "executed_by": caller_identity,
             "justification": clean_justification
         }
         case["timeline"].append(timeline_event)
 
         atomic_save_case(case_id, case)
-        print(f"[+] Case {case_id} REOPENED to status {clean_target.upper()} under authority of '{clean_authorizer}'.")
+        print(f"[+] Case {case_id} REOPENED to status {clean_target.upper()} under authority of '{clean_authorizer}' (caller: {caller_identity}).")
         print(f"    Cryptographic Prior State Seal: {prior_state_sha256}")
         return case
-    print(f"[+] Case {case_id} REOPENED to status {clean_target.upper()} under authority of '{clean_authorizer}'.")
-    print(f"    Cryptographic Prior State Seal: {prior_state_sha256}")
-    return case
 
 def add_alert_to_case(case_id: str, alert_id: str, analyst: str = "SOC Analyst"):
-    fpath = os.path.join(CASES_DIR, f"{case_id}.json")
-    if not os.path.exists(fpath):
-        print(f"Error: Case {case_id} not found.")
-        return
-    with open(fpath, "r", encoding="utf-8") as f:
-        case = json.load(f)
+    with case_lock(case_id):
+        fpath = os.path.join(CASES_DIR, f"{case_id}.json")
+        if not os.path.exists(fpath):
+            print(f"Error: Case {case_id} not found.")
+            return
+        with open(fpath, "r", encoding="utf-8") as f:
+            case = json.load(f)
 
-    if alert_id not in case["wazuh_alert_ids"]:
-        case["wazuh_alert_ids"].append(alert_id)
-        case["timeline"].append({
-            "timestamp": get_utc_now(),
-            "event": f"Linked Wazuh alert ID: {alert_id} by {analyst}"
-        })
-        atomic_save_case(case_id, case)
-        print(f"[+] Alert {alert_id} added to case {case_id}.")
-    else:
-        print(f"Alert {alert_id} already linked to case {case_id}.")
+        if alert_id not in case["wazuh_alert_ids"]:
+            case["wazuh_alert_ids"].append(alert_id)
+            case["timeline"].append({
+                "timestamp": get_utc_now(),
+                "event": f"Linked Wazuh alert ID: {alert_id} by {analyst}"
+            })
+            atomic_save_case(case_id, case)
+            print(f"[+] Alert {alert_id} added to case {case_id}.")
+        else:
+            print(f"Alert {alert_id} already linked to case {case_id}.")
 
 def close_case(case_id: str, resolution: str, analyst: str = "SOC Analyst"):
     transition_case(case_id, "closed", notes=resolution, analyst=analyst)

@@ -48,13 +48,38 @@ apt-get install -y \
 # =============================================================================
 echo "[1B] Enforcing host-level cloud metadata isolation..."
 # Defensive Policy Preservation: Do not flush existing OUTPUT chains.
-# Instead, check if isolation rule is already active; if not, prepend at rule position 1.
+# Primary controls: GCP VPC egress deny (priority 900) and zero-privilege IAM.
+# Defense-in-depth: Host-level kernel TCP reset on 169.254.169.254 and link-local drop.
+
+# Step 1: Prepend IPv4 metadata rejection rule at position 1
 if ! iptables -C OUTPUT -d 169.254.169.254/32 -p tcp -j REJECT --reject-with tcp-reset 2>/dev/null; then
   iptables -I OUTPUT 1 -d 169.254.169.254/32 -p tcp -j REJECT --reject-with tcp-reset
 fi
 
-if ! ip6tables -C OUTPUT -d fe80::/10 -j REJECT 2>/dev/null; then
-  ip6tables -I OUTPUT 1 -d fe80::/10 -j REJECT 2>/dev/null || true
+# Step 2: Prepend IPv6 link-local rejection rule if IPv6 subsystem is enabled
+IPV6_FILTER_ACTIVE=false
+if command -v ip6tables >/dev/null 2>&1; then
+  if ! ip6tables -C OUTPUT -d fe80::/10 -j REJECT 2>/dev/null; then
+    if ip6tables -I OUTPUT 1 -d fe80::/10 -j REJECT 2>/dev/null; then
+      IPV6_FILTER_ACTIVE=true
+    fi
+  else
+    IPV6_FILTER_ACTIVE=true
+  fi
+fi
+
+# Step 3: Post-application assertions (assert rules are verified active in running kernel)
+if iptables -C OUTPUT -d 169.254.169.254/32 -p tcp -j REJECT --reject-with tcp-reset 2>/dev/null; then
+  echo "  [✓] Verified active kernel rule: IPv4 metadata egress REJECT (169.254.169.254: TCP reset)."
+else
+  echo "  [!] ERROR: IPv4 metadata isolation rule assertion failed!" >&2
+  exit 1
+fi
+
+if [ "$IPV6_FILTER_ACTIVE" = true ] && ip6tables -C OUTPUT -d fe80::/10 -j REJECT 2>/dev/null; then
+  echo "  [✓] Verified active kernel rule: IPv6 link-local egress REJECT (fe80::/10)."
+else
+  echo "  [*] Notice: IPv6 link-local rule inactive (kernel IPv6 networking disabled or unconfigured)."
 fi
 
 # Persist iptables rules across reboots

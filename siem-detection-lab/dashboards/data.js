@@ -10589,5 +10589,77 @@ const LIVE_DATA = {
       },
       "location": "journald"
     }
+  ],
+  "threat_intel": [
+  {
+    "ip": "209.99.190.186",
+    "badge": "CONFIDENCE: 100%",
+    "badge_class": "badge-level level-critical",
+    "border_color": "var(--accent-rose)",
+    "ip_color": "var(--accent-rose)",
+    "geo": "Zurich, Switzerland \u2022 AS402253 (SKN Subnet & Telecom)",
+    "tactics": "Tactics: Low-and-slow SSH dictionary attack targeting 7+ standard accounts."
+  },
+  {
+    "ip": "80.94.92.234",
+    "badge": "ACTIVE SCANNER",
+    "badge_class": "badge-level level-high",
+    "border_color": "var(--accent-amber)",
+    "ip_color": "var(--accent-amber)",
+    "geo": "Opportunistic Cloud IP \u2022 Automated Port 22 Probes",
+    "tactics": "Tactics: Automated banner scraping and rapid root login probes."
+  }
+],
+  "manifest": {
+  "provenance": {
+    "collector": "soc-analyst@siem-lab",
+    "collection_start_utc": "2026-10-28T19:13:47Z",
+    "collection_end_utc": "2026-10-30T11:01:38Z",
+    "runbook_version": "3.5.0",
+    "preservation_mode": "local",
+    "target_honeypot_ip": "34.121.64.158",
+    "target_siem_ip": "34.71.182.95",
+    "gcp_disk_snapshot": "snapshot-honeypot-disk-20261028-191347",
+    "custody_notice": "Cryptographic hashes and asymmetric digital signatures guarantee tamper detection from recorded collection point forward."
+  },
+  "cryptography": {
+    "digest_algorithm": "SHA-256",
+    "signature_algorithm": "SHA256withRSA-PKCS#1v1.5",
+    "public_key_file": "EVIDENCE_SIGNING_PUBKEY.pub",
+    "public_key_sha256": "356be70607c615e9e00bcaf5a38f4f7e09e9ed32077664dc2d3a15fb827cc91b",
+    "trusted_pins_record": "evidence/TRUSTED_SIGNER_PINS.txt"
+  },
+  "artifacts": [
+    {
+      "filename": "EVIDENCE_SIGNING_PUBKEY.pub",
+      "size_bytes": 625,
+      "sha256": "356be70607c615e9e00bcaf5a38f4f7e09e9ed32077664dc2d3a15fb827cc91b"
+    },
+    {
+      "filename": "honeypot_audit.log",
+      "size_bytes": 6184687,
+      "sha256": "9ef714dd817fb06f100295021c80ca5241aefb9e4ca6db8b4255de2a5575b16c"
+    },
+    {
+      "filename": "honeypot_auth.log",
+      "size_bytes": 326015,
+      "sha256": "6cc44576b96e923374f3434ecd336284578f6eea3334eb1da8e5dad9d569b087"
+    },
+    {
+      "filename": "honeypot_defense_posture.txt",
+      "size_bytes": 1252,
+      "sha256": "940ee2b29a4eedec7f76a52146779171996ad21e6555c9393287ae3cf229936e"
+    },
+    {
+      "filename": "honeypot_system_state.txt",
+      "size_bytes": 684,
+      "sha256": "f40ef34244a528fd39857336f68eee32732eac7d5c48b2371d554f091da56d3a"
+    },
+    {
+      "filename": "wazuh_alerts.json",
+      "size_bytes": 2008234,
+      "sha256": "c78a37dbc8365d78029f31f467fd54426e1b878c392e182dfbb9efe54f992ab4"
+    }
   ]
+}
 };

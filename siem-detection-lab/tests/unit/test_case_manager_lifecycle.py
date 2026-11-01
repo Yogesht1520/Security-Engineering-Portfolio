@@ -33,6 +33,10 @@ def test_case_lifecycle_and_reopen():
         test_cases_dir = Path(temp_dir)
         test_env = os.environ.copy()
         test_env["SIEM_CASES_DIR"] = str(test_cases_dir)
+        os.environ["SIEM_CASES_DIR"] = str(test_cases_dir)
+
+        import incident_management.case_manager as cm
+        cm.CASES_DIR = str(test_cases_dir)
 
         test_case_id = "CASE-2099-999"
         test_case_path = test_cases_dir / f"{test_case_id}.json"
@@ -126,7 +130,36 @@ def test_case_lifecycle_and_reopen():
         rec = updated_case["reopen_records"][0]
         assert rec["authorizer"] == "Incident Commander Alice"
         assert len(rec["prior_state_sha256"]) == 64
+        assert "executed_by" in rec
+        expected_user = test_env.get("USER") or test_env.get("USERNAME") or test_env.get("LOGNAME") or "unknown_user"
+        assert rec["executed_by"] == expected_user
         print(f"  [✓] State seal verified: {rec['prior_state_sha256'][:16]}...")
+        print(f"  [✓] Authenticated caller identity verified: {rec['executed_by']}")
+
+        # Step I: Assert persistent lockfile semantics
+        lock_file = test_cases_dir / f"{test_case_id}.flock"
+        assert lock_file.exists(), "Expected persistent .flock file to remain on disk to prevent unlink-race condition!"
+        print("  [✓] Persistent lockfile verified: .flock retained on disk (no unlink race).")
+
+        # Step J: Concurrent Case Creation Race Prevention Test
+        print("  [*] Testing concurrent case creation ID collision prevention...")
+        from concurrent.futures import ThreadPoolExecutor
+        from incident_management.case_manager import create_case
+
+        def make_concurrent_case(idx):
+            return create_case(
+                title=f"Concurrent Test Case {idx}",
+                severity="medium",
+                source_ip=f"198.51.100.{10 + idx}",
+                analyst=f"Tester-{idx}"
+            )
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            created_cases = list(executor.map(make_concurrent_case, range(5)))
+
+        case_ids = [c["case_id"] for c in created_cases]
+        assert len(set(case_ids)) == len(case_ids), f"Collision detected in concurrent case IDs: {case_ids}"
+        print(f"  [✓] Concurrent case creation verified: {len(case_ids)} unique IDs allocated without collision ({case_ids})")
         print("  [✓] Test directory isolation: zero temporary files leaked into real cases directory.")
 
     print("=" * 65)

@@ -2,6 +2,14 @@
 // Interactive SOC Portal — Application Controller
 // =============================================================================
 
+function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof LIVE_DATA === 'undefined') {
     console.error('LIVE_DATA not loaded');
@@ -54,37 +62,80 @@ document.addEventListener('DOMContentLoaded', () => {
   kpiUsers.textContent = targetUsers.size.toLocaleString();
   kpiCritical.textContent = criticalCount.toLocaleString();
 
-  // ── 2. Threat Intel Box ────────────────────────────────────────────────────
+  // ── 2. Threat Intel Box (Safe DOM Rendering) ──────────────────────────────
   if (threatIntelBox) {
-    threatIntelBox.innerHTML = `
-      <div style="display: flex; flex-direction: column; gap: 0.85rem;">
-        <div style="background: rgba(0,0,0,0.3); padding: 0.85rem 1rem; border-radius: 8px; border-left: 3px solid var(--accent-rose);">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-family: var(--font-mono); font-weight: 700; color: var(--accent-rose); font-size: 0.95rem;">209.99.190.186</span>
-            <span class="badge-level level-critical">CONFIDENCE: 100%</span>
-          </div>
-          <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
-            Zurich, Switzerland • AS402253 (SKN Subnet & Telecom)
-          </div>
-          <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 0.25rem;">
-            Tactics: Low-and-slow SSH dictionary attack targeting 7+ standard accounts.
-          </div>
-        </div>
+    threatIntelBox.replaceChildren();
+    const container = document.createElement('div');
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.gap = '0.85rem';
 
-        <div style="background: rgba(0,0,0,0.3); padding: 0.85rem 1rem; border-radius: 8px; border-left: 3px solid var(--accent-amber);">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-family: var(--font-mono); font-weight: 700; color: var(--accent-amber); font-size: 0.95rem;">80.94.92.234</span>
-            <span class="badge-level level-high">ACTIVE SCANNER</span>
-          </div>
-          <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
-            Opportunistic Cloud IP • Automated Port 22 Probes
-          </div>
-          <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 0.25rem;">
-            Tactics: Automated banner scraping and rapid root login probes.
-          </div>
-        </div>
-      </div>
-    `;
+    const intelItems = LIVE_DATA.threat_intel || [
+      {
+        ip: "209.99.190.186",
+        badge: "CONFIDENCE: 100%",
+        badge_class: "badge-level level-critical",
+        border_color: "var(--accent-rose)",
+        ip_color: "var(--accent-rose)",
+        geo: "Zurich, Switzerland • AS402253 (SKN Subnet & Telecom)",
+        tactics: "Tactics: Low-and-slow SSH dictionary attack targeting 7+ standard accounts."
+      },
+      {
+        ip: "80.94.92.234",
+        badge: "ACTIVE SCANNER",
+        badge_class: "badge-level level-high",
+        border_color: "var(--accent-amber)",
+        ip_color: "var(--accent-amber)",
+        geo: "Opportunistic Cloud IP • Automated Port 22 Probes",
+        tactics: "Tactics: Automated banner scraping and rapid root login probes."
+      }
+    ];
+
+    intelItems.forEach(item => {
+      const card = document.createElement('div');
+      card.style.background = 'rgba(0,0,0,0.3)';
+      card.style.padding = '0.85rem 1rem';
+      card.style.borderRadius = '8px';
+      card.style.borderLeft = `3px solid ${item.border_color}`;
+
+      const header = document.createElement('div');
+      header.style.display = 'flex';
+      header.style.justifyContent = 'space-between';
+      header.style.alignItems = 'center';
+
+      const ipSpan = document.createElement('span');
+      ipSpan.style.fontFamily = 'var(--font-mono)';
+      ipSpan.style.fontWeight = '700';
+      ipSpan.style.color = item.ip_color;
+      ipSpan.style.fontSize = '0.95rem';
+      ipSpan.textContent = item.ip;
+
+      const badge = document.createElement('span');
+      badge.className = item.badge_class;
+      badge.textContent = item.badge;
+
+      header.appendChild(ipSpan);
+      header.appendChild(badge);
+
+      const geoDiv = document.createElement('div');
+      geoDiv.style.fontSize = '0.8rem';
+      geoDiv.style.color = 'var(--text-muted)';
+      geoDiv.style.marginTop = '0.25rem';
+      geoDiv.textContent = item.geo;
+
+      const tacticsDiv = document.createElement('div');
+      tacticsDiv.style.fontSize = '0.75rem';
+      tacticsDiv.style.color = 'var(--text-dim)';
+      tacticsDiv.style.marginTop = '0.25rem';
+      tacticsDiv.textContent = item.tactics;
+
+      card.appendChild(header);
+      card.appendChild(geoDiv);
+      card.appendChild(tacticsDiv);
+      container.appendChild(card);
+    });
+
+    threatIntelBox.appendChild(container);
   }
 
   // ── 3. Charts ──────────────────────────────────────────────────────────────
@@ -113,7 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     tableCountTag.textContent = `Showing ${filtered.length} of ${alerts.length} events`;
-    alertsTbody.innerHTML = '';
+    alertsTbody.replaceChildren();
 
     filtered.slice(0, 50).forEach(a => {
       const tr = document.createElement('tr');
@@ -212,7 +263,7 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('modal-status').textContent = (activeCase.status || 'contained').toUpperCase();
 
       const timelineUl = document.getElementById('modal-timeline');
-      timelineUl.innerHTML = '';
+      timelineUl.replaceChildren();
       (activeCase.timeline || []).forEach(item => {
         const li = document.createElement('li');
         li.style.marginBottom = '0.5rem';
@@ -234,15 +285,39 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       const hashDiv = document.getElementById('modal-evidence-hashes');
-      hashDiv.innerHTML = `
-        ✓ 9ef714dd... honeypot_audit.log (6.18 MB)<br>
-        ✓ 6cc44576... honeypot_auth.log (326 KB)<br>
-        ✓ 940ee2b2... honeypot_defense_posture.txt (1.25 KB)<br>
-        ✓ f40ef342... honeypot_system_state.txt (684 B)<br>
-        ✓ c78a37db... wazuh_alerts.json (2.00 MB)<br>
-        ✓ 356be706... EVIDENCE_SIGNING_PUBKEY.pub (625 B)<br>
-        <span style="color: var(--accent-emerald);">RSA-3072 Detached Signatures & WORM Bucket Lock Cryptographically Verified</span>
-      `;
+      if (hashDiv) {
+        hashDiv.replaceChildren();
+        const artifacts = LIVE_DATA.manifest?.artifacts || [];
+        artifacts.forEach(art => {
+          const row = document.createElement('div');
+          row.style.fontFamily = 'var(--font-mono)';
+          row.style.fontSize = '0.78rem';
+          row.style.lineHeight = '1.4';
+
+          const check = document.createElement('span');
+          check.style.color = 'var(--accent-emerald)';
+          check.textContent = '✓ ';
+
+          const hashSpan = document.createElement('span');
+          hashSpan.style.color = 'var(--accent-cyan)';
+          hashSpan.textContent = (art.sha256 ? art.sha256.substring(0, 8) + '... ' : '');
+
+          const nameSpan = document.createElement('span');
+          nameSpan.textContent = `${art.filename} (${formatBytes(art.size_bytes)})`;
+
+          row.appendChild(check);
+          row.appendChild(hashSpan);
+          row.appendChild(nameSpan);
+          hashDiv.appendChild(row);
+        });
+
+        const statusNote = document.createElement('div');
+        statusNote.style.color = 'var(--accent-emerald)';
+        statusNote.style.fontSize = '0.75rem';
+        statusNote.style.marginTop = '0.4rem';
+        statusNote.textContent = 'RSA-3072 Detached Signatures & WORM Bucket Lock Cryptographically Verified';
+        hashDiv.appendChild(statusNote);
+      }
 
       caseModal.classList.add('open');
     });

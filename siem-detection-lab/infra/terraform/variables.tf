@@ -37,9 +37,15 @@ variable "your_public_ip" {
 }
 
 variable "ssh_public_key_path" {
-  description = "Path to SSH public key to inject into both VMs"
+  description = "Path to SSH public key to inject into the Honeypot VM (DMZ tier only; management tier uses OS Login)"
   type        = string
   default     = "~/.ssh/siem_lab_key.pub"
+}
+
+variable "operator_iam_email" {
+  description = "Google Cloud IAM identity (e.g. user:analyst@example.com) granted OS Login Admin and IAP Tunnel roles for Bastion and SIEM management. Leave empty if managing IAM externally."
+  type        = string
+  default     = ""
 }
 
 # ── VM sizing ────────────────────────────────────────────────────────────────

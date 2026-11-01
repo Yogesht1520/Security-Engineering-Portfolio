@@ -96,30 +96,61 @@ if [ "$INTEGRATION_MODE" = true ]; then
   INT_BACKUP="/var/backups/audit_live_test_$(date +%s)"
   mkdir -p "$INT_BACKUP"
   cp -r /etc/audit "$INT_BACKUP/"
-  auditctl -l > "${INT_BACKUP}/active_rules_pre.txt" 2>/dev/null || true
   
+  # Fail-closed baseline requirement: Assert active non-empty rules baseline before modifying host
+  if ! auditctl -l > "${INT_BACKUP}/active_rules_pre.txt" 2>/dev/null || [ ! -s "${INT_BACKUP}/active_rules_pre.txt" ]; then
+    echo -e "${RED}[!] FATAL: Failed to capture active non-empty kernel audit rules baseline (auditctl -l)! Aborting live test.${NC}" >&2
+    rm -rf "$INT_BACKUP"
+    exit 1
+  fi
+  
+  CANDIDATE_DEST="/etc/audit/rules.d/siem-lab.rules"
+  PRE_EXISTED_SIEM_RULES=false
+  if [ -f "$CANDIDATE_DEST" ]; then
+    PRE_EXISTED_SIEM_RULES=true
+    cp "$CANDIDATE_DEST" "${INT_BACKUP}/pre_existing_siem-lab.rules"
+    echo "  [*] Pre-existing candidate file detected and preserved: ${CANDIDATE_DEST}"
+  fi
+
   CANDIDATE_CORRUPT="/tmp/live_corrupt_test.rules"
   echo "-a invalid_action_flag -S execve -k broken" > "$CANDIDATE_CORRUPT"
 
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   PROD_ROLLBACK="${SCRIPT_DIR}/../../infra/rollback_auditd.sh"
 
-  # Exit Trap: Guarantees full host state restoration under ANY termination path
+  # Exit Trap: Guarantees full host state restoration and propagates recovery errors
+  CLEANUP_FAILED=0
   cleanup_live_host() {
     echo -e "\n${CYAN}[*] Running guaranteed live host exit trap cleanup...${NC}"
     rm -f "$CANDIDATE_CORRUPT"
-    rm -f /etc/audit/rules.d/siem-lab.rules
+
+    # Restore pre-existing candidate file if it was present before test; otherwise unlink candidate
+    if [ "$PRE_EXISTED_SIEM_RULES" = true ] && [ -f "${INT_BACKUP}/pre_existing_siem-lab.rules" ]; then
+      cp "${INT_BACKUP}/pre_existing_siem-lab.rules" "$CANDIDATE_DEST"
+      echo "  [✓] Restored pre-existing candidate file state to $CANDIDATE_DEST"
+    else
+      rm -f "$CANDIDATE_DEST"
+    fi
+
     if [ -d "$INT_BACKUP" ]; then
       if [ -f "$PROD_ROLLBACK" ]; then
-        bash "$PROD_ROLLBACK" "$INT_BACKUP" "/etc/audit/rules.d/siem-lab.rules" >/dev/null 2>&1 || true
+        if ! bash "$PROD_ROLLBACK" "$INT_BACKUP" "$CANDIDATE_DEST"; then
+          echo -e "${RED}[!] FATAL: Rollback engine failed during exit trap cleanup!${NC}" >&2
+          CLEANUP_FAILED=1
+        fi
       fi
       rm -rf "$INT_BACKUP"
+    fi
+
+    if [ "$CLEANUP_FAILED" -ne 0 ]; then
+      echo -e "${RED}[!] Host recovery failed during trap execution! Propagating non-zero exit code.${NC}" >&2
+      exit 1
     fi
   }
   trap cleanup_live_host EXIT INT TERM
   
-  echo "  - Staging corrupt audit rule directly into /etc/audit/rules.d/siem-lab.rules..."
-  cp "$CANDIDATE_CORRUPT" /etc/audit/rules.d/siem-lab.rules
+  echo "  - Staging corrupt audit rule directly into ${CANDIDATE_DEST}..."
+  cp "$CANDIDATE_CORRUPT" "$CANDIDATE_DEST"
   
   # Trigger deployment verification
   DEPLOY_FAILED=false
@@ -127,7 +158,7 @@ if [ "$INTEGRATION_MODE" = true ]; then
     DEPLOY_FAILED=true
     echo "  [✓] Corrupt rule correctly failed validation. Executing shared production rollback engine (infra/rollback_auditd.sh)..."
     if [ -f "$PROD_ROLLBACK" ]; then
-      if ! bash "$PROD_ROLLBACK" "$INT_BACKUP" "/etc/audit/rules.d/siem-lab.rules"; then
+      if ! bash "$PROD_ROLLBACK" "$INT_BACKUP" "$CANDIDATE_DEST"; then
         echo "  [!] ERROR: Production rollback engine failed during recovery!" >&2
       fi
     else
@@ -138,7 +169,7 @@ if [ "$INTEGRATION_MODE" = true ]; then
     # Safety: Even if candidate was unexpectedly accepted, trigger rollback to avoid leaving host modified
     echo "  [!] UNEXPECTED: Corrupt rule was accepted by parser. Triggering forced rollback..." >&2
     if [ -f "$PROD_ROLLBACK" ]; then
-      bash "$PROD_ROLLBACK" "$INT_BACKUP" "/etc/audit/rules.d/siem-lab.rules" || true
+      bash "$PROD_ROLLBACK" "$INT_BACKUP" "$CANDIDATE_DEST" || true
     fi
   fi
   
@@ -146,16 +177,13 @@ if [ "$INTEGRATION_MODE" = true ]; then
   CURRENT_RULES=$(auditctl -l 2>/dev/null || true)
   PRE_RULES=$(cat "${INT_BACKUP}/active_rules_pre.txt" 2>/dev/null || true)
   
-  if [ "$DEPLOY_FAILED" = true ] && [ ! -f /etc/audit/rules.d/siem-lab.rules ] && [ "$CURRENT_RULES" = "$PRE_RULES" ]; then
+  if [ "$DEPLOY_FAILED" = true ] && [ "$CURRENT_RULES" = "$PRE_RULES" ]; then
     record_result "Live VM" "Kernel Audit Policy Parity & Candidate Purge" "PASS" \
-      "Corrupt rule purged from /etc/audit/rules.d, kernel rules restored bit-for-bit"
+      "Corrupt rule purged/restored, kernel rules restored bit-for-bit"
   else
     record_result "Live VM" "Kernel Audit Policy Parity & Candidate Purge" "FAIL" \
       "Discrepancy detected between initial kernel rules and post-rollback policy"
   fi
-  
-  rm -f "$CANDIDATE_CORRUPT"
-  rm -rf "$INT_BACKUP"
 
 else
   # ════════════════════════════════════════════════════════════════════════════

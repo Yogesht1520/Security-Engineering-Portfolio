@@ -33,9 +33,9 @@ output "ssh_bastion" {
   value       = "gcloud compute ssh ${google_compute_instance.bastion.name} --zone=${var.zone}"
 }
 
-output "ssh_bastion_direct" {
-  description = "Standard SSH command for Admin Bastion jumpbox using OS Login user"
-  value       = "ssh -i ~/.ssh/siem_lab_key ubuntu@${google_compute_instance.bastion.network_interface[0].access_config[0].nat_ip}"
+output "ssh_bastion_iap" {
+  description = "OS Login SSH command for Admin Bastion jumpbox via Cloud IAP tunnel (zero public ingress required)"
+  value       = "gcloud compute ssh ${google_compute_instance.bastion.name} --zone=${var.zone} --tunnel-through-iap"
 }
 
 output "ssh_siem" {
@@ -44,8 +44,13 @@ output "ssh_siem" {
 }
 
 output "wazuh_dashboard_tunnel" {
-  description = "SSH local port forwarding command to access Wazuh Dashboard securely through Bastion"
-  value       = "ssh -i ~/.ssh/siem_lab_key -N -L 8443:${google_compute_instance.siem.network_interface[0].network_ip}:443 ubuntu@${google_compute_instance.bastion.network_interface[0].access_config[0].nat_ip}"
+  description = "Secure port forwarding tunnel for Wazuh Dashboard via Cloud IAP directly to private SIEM VM"
+  value       = "gcloud compute start-iap-tunnel ${google_compute_instance.siem.name} 443 --local-host-port=localhost:8443 --zone=${var.zone}"
+}
+
+output "wazuh_dashboard_tunnel_bastion" {
+  description = "Alternative port forwarding tunnel via Bastion jumpbox with OS Login"
+  value       = "gcloud compute ssh ${google_compute_instance.bastion.name} --zone=${var.zone} -- -N -L 8443:${google_compute_instance.siem.network_interface[0].network_ip}:443"
 }
 
 output "wazuh_dashboard_url" {

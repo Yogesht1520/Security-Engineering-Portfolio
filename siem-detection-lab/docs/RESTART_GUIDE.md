@@ -121,11 +121,11 @@ From your local machine or repository root, deploy the custom detection rules to
 # Verify static rule syntax locally first
 python tests/validate_rules.py
 
-# Push custom rules to SIEM manager (via Bastion jumpbox)
-scp -i ~/.ssh/siem_lab_key -o "ProxyJump=ubuntu@<BASTION_PUBLIC_IP>" wazuh/custom_rules/*.xml ubuntu@10.0.20.2:/tmp/
+# Push custom rules to SIEM manager (via OS Login / IAP tunnel)
+gcloud compute scp wazuh/custom_rules/*.xml siem-lab-wazuh:/tmp/ --zone=us-central1-a --tunnel-through-iap
 
-# On SIEM Manager: Install and verify syntax
-ssh -i ~/.ssh/siem_lab_key -J ubuntu@<BASTION_PUBLIC_IP> ubuntu@10.0.20.2 "
+# On SIEM Manager: Install and verify syntax via OS Login
+gcloud compute ssh siem-lab-wazuh --zone=us-central1-a --tunnel-through-iap --command="
   sudo cp /tmp/*.xml /var/ossec/etc/rules/
   sudo chown wazuh:wazuh /var/ossec/etc/rules/*.xml
   sudo /var/ossec/bin/wazuh-analysisd -t
