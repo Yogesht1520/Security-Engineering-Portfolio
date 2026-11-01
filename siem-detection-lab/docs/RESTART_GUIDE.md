@@ -72,16 +72,24 @@ terraform apply -auto-approve
 Access the management plane using Google Cloud IAM OS Login via Identity-Aware Proxy (IAP) with MFA enforcement.
 
 **Supported Access Pathways:**
-- **Primary (Direct IAP Tunnel):** Connect directly to the internal SIEM Manager from your workstation via encrypted IAP tunnel:
+- **Primary (Workstation-Direct IAP Tunnel — Recommended):**
+  Connect directly from your local workstation to the private SIEM Manager via Google Cloud IAP. This zero-reauthentication pathway completely eliminates the need to store, cache, or forward operator credentials through intermediate jumpbox VMs:
   ```bash
   gcloud compute ssh siem-lab-wazuh --zone=us-central1-a --tunnel-through-iap
   ```
-- **Segmented Management (Admin Bastion Jumpbox):** For administrative workflows executed from within the isolated Admin Subnet (`10.0.30.0/24`):
+- **Segmented Management (Admin Bastion Jumpbox):**
+  For administrative workflows requiring origin from within the isolated Admin Subnet (`10.0.30.0/24`):
   ```bash
-  # Step A: SSH into Admin Bastion via IAP Tunnel
-  gcloud compute ssh siem-lab-bastion --zone=us-central1-a --tunnel-through-iap
+  # Step A: SSH into Admin Bastion via IAP Tunnel with SSH Agent Forwarding
+  gcloud compute ssh siem-lab-bastion --zone=us-central1-a --tunnel-through-iap --ssh-flag="-A"
 
-  # Step B: From Bastion, connect to internal SIEM Manager over VPC private network
+  # Step B: From Bastion, connect to the internal SIEM Manager over VPC private network
+  # Identity & Permission Propagation:
+  # - Option 1 (SSH Agent Forwarding): Your local OS Login SSH agent credentials forward
+  #   through the Bastion to authenticate directly to siem-lab-wazuh.
+  # - Option 2 (GCP CLI on Bastion): If executing gcloud CLI commands directly on the Bastion,
+  #   run `gcloud auth login` on the Bastion or attach an IAM service account possessing
+  #   roles/compute.osAdminLogin to the Bastion VM.
   gcloud compute ssh siem-lab-wazuh --zone=us-central1-a --internal-ip
   ```
 

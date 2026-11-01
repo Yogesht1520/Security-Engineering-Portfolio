@@ -124,6 +124,91 @@ def test_case_lifecycle_and_reopen():
         assert res.returncode != 0, "Expected failure when justification is < 10 chars!"
         print("  [✓] Negative Test PASSED: Reopen with trivial justification correctly rejected.")
 
+        # ── Cryptographic HMAC Bearer Token Suite ──────────────────────────
+        from incident_management.case_manager import generate_rbac_token
+        test_secret = "test-secret-key-for-rbac-verification-2026"
+        valid_user = test_env.get("USER") or test_env.get("USERNAME") or "yoges"
+
+        # Step F1: Negative Token Test — Missing external secret in environment
+        token_env_no_secret = test_env.copy()
+        token_env_no_secret.pop("SIEM_RBAC_SECRET", None)
+        dummy_tok = generate_rbac_token(valid_user, "soc lead", test_secret)
+        cmd_tok_no_sec = [
+            sys.executable, "incident_management/case_manager.py",
+            "--reopen", test_case_id,
+            "--authorizer", "SOC Lead",
+            "--justification", "Testing token secret requirement",
+            "--auth-token", dummy_tok
+        ]
+        res = subprocess.run(cmd_tok_no_sec, cwd=str(REPO_ROOT), capture_output=True, text=True, env=token_env_no_secret)
+        assert res.returncode != 0, "Expected failure when SIEM_RBAC_SECRET is missing!"
+        assert "SIEM_RBAC_SECRET is not provisioned" in res.stdout
+        print("  [✓] Negative Token Test PASSED: Missing SIEM_RBAC_SECRET fails closed.")
+
+        # Step F2: Negative Token Test — Token subject binding mismatch
+        token_env_with_secret = test_env.copy()
+        token_env_with_secret["SIEM_RBAC_SECRET"] = test_secret
+        token_mismatch = generate_rbac_token("alice_different_user", "soc lead", test_secret)
+        cmd_tok_mismatch = [
+            sys.executable, "incident_management/case_manager.py",
+            "--reopen", test_case_id,
+            "--authorizer", "SOC Lead",
+            "--justification", "Testing token subject mismatch",
+            "--auth-token", token_mismatch
+        ]
+        res = subprocess.run(cmd_tok_mismatch, cwd=str(REPO_ROOT), capture_output=True, text=True, env=token_env_with_secret)
+        assert res.returncode != 0, "Expected failure when token subject does not match caller!"
+        assert "Token subject binding mismatch" in res.stdout
+        print("  [✓] Negative Token Test PASSED: Token subject mismatch correctly rejected.")
+
+        # Step F3: Negative Token Test — Expired token
+        token_expired = generate_rbac_token(valid_user, "soc lead", test_secret, ttl_seconds=-10)
+        cmd_tok_exp = [
+            sys.executable, "incident_management/case_manager.py",
+            "--reopen", test_case_id,
+            "--authorizer", "SOC Lead",
+            "--justification", "Testing token expiry rejection",
+            "--auth-token", token_expired
+        ]
+        res = subprocess.run(cmd_tok_exp, cwd=str(REPO_ROOT), capture_output=True, text=True, env=token_env_with_secret)
+        assert res.returncode != 0, "Expected failure on expired token!"
+        assert "Token expired at" in res.stdout
+        print("  [✓] Negative Token Test PASSED: Expired token correctly rejected.")
+
+        # Step F4: Negative Token Test — Tampered signature
+        valid_tok = generate_rbac_token(valid_user, "soc lead", test_secret)
+        tampered_tok = valid_tok[:-4] + "dead"
+        cmd_tok_tamper = [
+            sys.executable, "incident_management/case_manager.py",
+            "--reopen", test_case_id,
+            "--authorizer", "SOC Lead",
+            "--justification", "Testing signature tampering rejection",
+            "--auth-token", tampered_tok
+        ]
+        res = subprocess.run(cmd_tok_tamper, cwd=str(REPO_ROOT), capture_output=True, text=True, env=token_env_with_secret)
+        assert res.returncode != 0, "Expected failure on tampered signature!"
+        assert "signature verification failed" in res.stdout
+        print("  [✓] Negative Token Test PASSED: Tampered token signature correctly rejected.")
+
+        # Step F5: Positive Token Test — Valid cryptographic token authorizes reopen
+        valid_reopen_tok = generate_rbac_token(valid_user, "soc lead", test_secret)
+        cmd_tok_valid = [
+            sys.executable, "incident_management/case_manager.py",
+            "--reopen", test_case_id,
+            "--authorizer", "SOC Lead",
+            "--justification", "Cryptographic bearer token authorization verified",
+            "--auth-token", valid_reopen_tok
+        ]
+        res = subprocess.run(cmd_tok_valid, cwd=str(REPO_ROOT), capture_output=True, text=True, env=token_env_with_secret)
+        assert res.returncode == 0, f"Token-authorized reopen failed: {res.stderr} - {res.stdout}"
+        assert "auth: cryptographic_token_verified" in res.stdout
+        print("  [✓] Positive Token Test PASSED: Cryptographic bearer token successfully authorized reopen.")
+
+        # Close case again to prepare for Step G policy test
+        cmd_reclose = [sys.executable, "incident_management/case_manager.py", "--close", test_case_id, "Re-closed after token test"]
+        res = subprocess.run(cmd_reclose, cwd=str(REPO_ROOT), capture_output=True, text=True, env=test_env)
+        assert res.returncode == 0
+
         # Step G: Positive Test — Authorized Privileged Reopen
         cmd_reopen_valid = [
             sys.executable, "incident_management/case_manager.py",
@@ -142,8 +227,10 @@ def test_case_lifecycle_and_reopen():
 
         assert updated_case["status"] == "investigating"
         assert updated_case["closed_at"] is None
-        assert len(updated_case["reopen_records"]) == 1
-        rec = updated_case["reopen_records"][0]
+        assert len(updated_case["reopen_records"]) == 2
+        assert updated_case["reopen_records"][0]["auth_method"] == "cryptographic_token_verified"
+        assert updated_case["reopen_records"][1]["auth_method"] == "enterprise_rbac_policy_verified"
+        rec = updated_case["reopen_records"][-1]
         assert rec["authorizer"] == "Incident Commander Alice"
         assert len(rec["prior_state_sha256"]) == 64
         assert "executed_by" in rec

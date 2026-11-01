@@ -127,7 +127,8 @@ Pre-configured dashboard definitions are exported as version-controlled `.ndjson
 - [`ssh_bruteforce_deepdive.ndjson`](wazuh/dashboards/ssh_bruteforce_deepdive.ndjson): Credential access and brute-force correlation analytics.
 - Import command:
   ```bash
-  # Option 1: Via local SSH port forward tunnel through Bastion (https://localhost:8443)
+  # Option 1: Via encrypted IAP tunnel from local workstation (https://localhost:8443)
+  gcloud compute start-iap-tunnel siem-lab-wazuh 443 --local-host-port=localhost:8443 --zone=us-central1-a
   bash wazuh/dashboards/import_dashboards.sh localhost:8443 <WAZUH_PASSWORD>
 
   # Option 2: Directly from Bastion host to private SIEM core IP (10.0.20.2)
@@ -161,11 +162,11 @@ Includes a real-time searchable event table with severity filtering chips (`Crit
 ![Wazuh Alert JSON Payload Inspector](screenshots/soc_portal_json_inspector.png)
 *Figure 7: Forensic payload inspector drawer displaying normalized event metadata, MITRE technique IDs (T1078, T1021), and user context.*
 
-#### D. Incident Case Drawer & Evidence Chain of Custody
-Interactive incident response drawer displaying `CASE-2026-001`, containment state, investigation timeline, and verified SHA-256 cryptographic evidence hashes.
+#### D. Incident Case Drawer & Recorded Evidence Chain of Custody
+Interactive incident response drawer displaying `CASE-2026-001`, containment state, investigation timeline, and the forensic evidence manifest recorded during the automated preservation runbook pipeline (including file sizes, artifact SHA-256 digests, and detached digital signatures).
 
 ![Active Incident Case Drawer](screenshots/soc_portal_case_drawer.png)
-*Figure 8: Active incident case drawer for CASE-2026-001 showing verified containment status, chronological timeline, and SHA-256 evidence chain of custody.*
+*Figure 8: Active incident case drawer for CASE-2026-001 showing verified containment status, chronological timeline, and recorded SHA-256 evidence chain of custody.*
 
 - **Quick Launch:** Open [`dashboards/index.html`](dashboards/index.html) in any modern web browser or run:
   ```powershell

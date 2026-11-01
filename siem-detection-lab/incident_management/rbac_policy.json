@@ -1,6 +1,7 @@
 {
   "version": "1.0",
-  "description": "Enterprise Role-Based Access Control (RBAC) policy for SIEM incident case governance",
+  "environment": "lab_demonstration",
+  "notice": "DEMONSTRATION POLICY: In enterprise production environments, principal governance mapping is federated via OIDC/SAML claims from an enterprise Identity Provider (e.g. Google Cloud Identity, Okta, Azure AD). The local principals below represent sandbox identities for CI harnesses and local lab testing.",
   "governance_roles": [
     "soc lead",
     "incident commander",

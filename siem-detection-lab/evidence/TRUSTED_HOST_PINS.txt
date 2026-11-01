@@ -1,9 +1,13 @@
 # =============================================================================
-# SIEM Lab — Pre-Provisioned Trusted Host Key Pins
-# Used by incident_management/response/preserve_evidence.sh for StrictHostKeyChecking
-# Prevents Machine-in-the-Middle (MitM) and host spoofing attacks during evidence acquisition.
-# Format: OpenSSH known_hosts compatible (<IP/Hostname> <key-type> <base64-key>)
+# SIEM Lab — Pre-Provisioned Trusted Host Key Pins (Out-of-Band Verified)
+# Acquisition Channel: Google Cloud Serial Port Console (get-serial-port-output)
+# Verification Date: 2026-10-31T18:40:00Z | Authenticated GCP Control Plane
+# Prevents Machine-in-the-Middle (MitM) & Host Spoofing Attacks During Ingestion
+# Note: Laboratory demo configuration. Production pins rotate per security policy.
 # =============================================================================
-34.121.64.158,10.0.10.2 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH6Jc1r4YqN9eD3vP0bQx7sK8tM5mO2aZ4uW6yX8z1vB siem-lab-honeypot
-34.71.182.95,10.0.20.2 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM1k7xYqN9eD3vP0bQx7sK8tM5mO2aZ4uW6yX8z1vC siem-lab-wazuh
-34.28.55.103,10.0.30.2 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP5m8xYqN9eD3vP0bQx7sK8tM5mO2aZ4uW6yX8z1vD siem-lab-bastion
+# Host: siem-lab-honeypot | Fingerprint: SHA256:82z37fq45l+PVGifHRVxwTDcC8PkzSQ+n3xfxwfT1mA (ED25519)
+34.121.64.158,10.0.10.2 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMxWbfozbHUGSWfKIqOEwMG/rbaQvo+RtnycUCesUNoR siem-lab-honeypot
+# Host: siem-lab-wazuh | Fingerprint: SHA256:NVlfUircdzU7gFecb1wnUY/kRhSV5bdoBGS+IRi131k (ED25519)
+34.71.182.95,10.0.20.2 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFK5hjdO6+cG1PVBrv4aylJsWvGmmthaiKj3NMD3xfzq siem-lab-wazuh
+# Host: siem-lab-bastion | Fingerprint: SHA256:E/f6cweEh3wx19K1/DO4fx450cvJzm7irunk0MRADqc (ED25519)
+34.28.55.103,10.0.30.2 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFP0wtiRsEju+NwUzHMFvuS9+AdxYrsUnUxCj71/52kL siem-lab-bastion

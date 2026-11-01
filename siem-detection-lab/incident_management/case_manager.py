@@ -68,19 +68,34 @@ TRANSITION_MATRIX = {
 
 import contextlib
 
+import base64
+import hmac
+
 RBAC_POLICY_PATH = os.path.join(BASE_DIR, "rbac_policy.json")
 
 def load_rbac_policy() -> dict:
-    if os.path.exists(RBAC_POLICY_PATH):
-        try:
-            with open(RBAC_POLICY_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {"principals": {}, "governance_roles": AUTHORIZED_REOPEN_ROLES}
+    """Loads and strictly validates the enterprise RBAC policy store.
+    
+    Fails closed on missing file, corrupted JSON, or malformed schema to prevent
+    unauthorized state transitions under degraded policy states.
+    """
+    if not os.path.exists(RBAC_POLICY_PATH):
+        raise FileNotFoundError(f"FATAL: Required RBAC policy file missing at {RBAC_POLICY_PATH}. Failing closed.")
+    try:
+        with open(RBAC_POLICY_PATH, "r", encoding="utf-8") as f:
+            policy = json.load(f)
+    except Exception as e:
+        raise ValueError(f"FATAL: Failed to parse RBAC policy file {RBAC_POLICY_PATH}: {e}. Failing closed.")
+
+    if not isinstance(policy, dict) or "principals" not in policy or "governance_roles" not in policy:
+        raise ValueError(f"FATAL: RBAC policy at {RBAC_POLICY_PATH} violates schema (missing 'principals' or 'governance_roles').")
+    if not isinstance(policy["principals"], dict) or not isinstance(policy["governance_roles"], list):
+        raise ValueError(f"FATAL: RBAC policy structure invalid ('principals' must be dict, 'governance_roles' must be list).")
+
+    return policy
 
 def get_caller_identity() -> str:
-    """Resolves authenticated operating system user identity from environment."""
+    """Resolves operating system user identity from environment."""
     return (
         os.environ.get("USER")
         or os.environ.get("USERNAME")
@@ -88,15 +103,34 @@ def get_caller_identity() -> str:
         or "unknown_user"
     )
 
+def generate_rbac_token(subject: str, role: str, secret: str, ttl_seconds: int = 300) -> str:
+    """Generates a cryptographically signed HMAC-SHA256 bearer authorization token."""
+    now = int(datetime.now(timezone.utc).timestamp())
+    payload = {
+        "sub": subject,
+        "role": role,
+        "iss": "siem-lab-auth-authority",
+        "aud": "siem-lab-case-manager",
+        "iat": now,
+        "exp": now + ttl_seconds
+    }
+    payload_str = json.dumps(payload, sort_keys=True)
+    payload_b64 = base64.urlsafe_b64encode(payload_str.encode("utf-8")).decode("utf-8").rstrip("=")
+    sig = hmac.new(secret.encode("utf-8"), payload_b64.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{payload_b64}.{sig}"
+
 def verify_caller_authorization(claimed_authorizer: str, caller_identity: str, auth_token: str = None) -> dict:
     """Verifies caller identity and governance role against enterprise RBAC policy or signed token.
     
-    Prevents unverified privilege escalation where an attacker passes an unauthenticated
-    authorizer string or manipulates environment variables.
+    Prevents unverified privilege escalation by enforcing:
+    1. Zero hardcoded secrets: Fails closed if SIEM_RBAC_SECRET is missing when token is presented.
+    2. Token subject binding: Asserts that token subject matches executing caller identity.
+    3. Mandatory claims: Validates expiration (exp), issuer (iss), audience (aud), and governance role.
+    4. Strict RBAC policy mapping: Validates caller against rbac_policy.json when token is absent.
     """
     clean_authorizer = claimed_authorizer.strip().lower()
 
-    # 1. Check if claimed role is a recognized governance role
+    # 1. Check if claimed role is a recognized governance authority
     has_role = any(role in clean_authorizer for role in AUTHORIZED_REOPEN_ROLES)
     if not has_role:
         return {
@@ -107,26 +141,110 @@ def verify_caller_authorization(claimed_authorizer: str, caller_identity: str, a
     # 2. Cryptographic Token / HMAC Claim Verification
     token = auth_token or os.environ.get("SIEM_AUTH_TOKEN")
     if token:
-        import hmac
-        secret = os.environ.get("SIEM_RBAC_SECRET", "siem-lab-hardened-rbac-secret-key-2026")
+        secret = os.environ.get("SIEM_RBAC_SECRET")
+        if not secret:
+            return {
+                "authorized": False,
+                "reason": "Cryptographic authorization token provided but SIEM_RBAC_SECRET is not provisioned in environment. Failing closed."
+            }
+
+        parts = token.split(".")
+        if len(parts) != 2:
+            return {
+                "authorized": False,
+                "reason": "Malformed authorization token format (expected '<payload>.<signature>')."
+            }
+
+        payload_str, sig = parts[0], parts[1]
+        expected_sig = hmac.new(secret.encode("utf-8"), payload_str.encode("utf-8"), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected_sig):
+            return {
+                "authorized": False,
+                "reason": "Cryptographic token signature verification failed (HMAC mismatch)."
+            }
+
+        # Parse payload (supporting urlsafe base64 or raw JSON)
         try:
-            parts = token.split(".")
-            if len(parts) == 2:
-                payload_str, sig = parts[0], parts[1]
-                expected_sig = hmac.new(secret.encode(), payload_str.encode(), hashlib.sha256).hexdigest()
-                if hmac.compare_digest(sig, expected_sig):
-                    payload = json.loads(payload_str)
-                    token_user = payload.get("sub", caller_identity)
-                    token_role = payload.get("role", "").lower()
-                    if any(r in token_role for r in AUTHORIZED_REOPEN_ROLES):
-                        return {
-                            "authorized": True,
-                            "auth_method": "cryptographic_token_verified",
-                            "verified_identity": token_user,
-                            "verified_role": token_role
-                        }
+            padded = payload_str + "=" * (-len(payload_str) % 4)
+            raw_json = base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8")
+            payload = json.loads(raw_json)
         except Exception:
-            pass
+            try:
+                payload = json.loads(payload_str)
+            except Exception as e:
+                return {
+                    "authorized": False,
+                    "reason": f"Failed to parse token payload: {e}"
+                }
+
+        # Claim 1: Explicit subject claim required & bound to caller identity
+        token_sub = payload.get("sub")
+        if not token_sub:
+            return {
+                "authorized": False,
+                "reason": "Token validation failed: Missing mandatory 'sub' (subject) claim."
+            }
+        if token_sub.lower() != caller_identity.lower():
+            return {
+                "authorized": False,
+                "reason": f"Token subject binding mismatch: Token issued for subject '{token_sub}' but presented by caller '{caller_identity}'."
+            }
+
+        # Claim 2: Expiration (exp) numeric check
+        token_exp = payload.get("exp")
+        if not token_exp or not isinstance(token_exp, (int, float)):
+            return {
+                "authorized": False,
+                "reason": "Token validation failed: Missing or invalid numeric 'exp' (expiration) claim."
+            }
+        now_utc = datetime.now(timezone.utc).timestamp()
+        if now_utc > token_exp:
+            return {
+                "authorized": False,
+                "reason": f"Token expired at {datetime.fromtimestamp(token_exp, tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}."
+            }
+
+        # Claim 3: Not-Before (nbf) check if present
+        token_nbf = payload.get("nbf")
+        if token_nbf and isinstance(token_nbf, (int, float)) and now_utc < token_nbf:
+            return {
+                "authorized": False,
+                "reason": "Token not valid yet (nbf claim in future)."
+            }
+
+        # Claim 4: Issuer (iss) & Audience (aud) validation
+        token_iss = payload.get("iss")
+        token_aud = payload.get("aud")
+        if token_iss != "siem-lab-auth-authority":
+            return {
+                "authorized": False,
+                "reason": f"Untrusted token issuer '{token_iss}'. Expected 'siem-lab-auth-authority'."
+            }
+        if token_aud != "siem-lab-case-manager":
+            return {
+                "authorized": False,
+                "reason": f"Invalid token audience '{token_aud}'. Expected 'siem-lab-case-manager'."
+            }
+
+        # Claim 5: Governance Role validation
+        token_role = payload.get("role", "").lower().strip()
+        if not any(r in token_role for r in AUTHORIZED_REOPEN_ROLES):
+            return {
+                "authorized": False,
+                "reason": f"Token role '{token_role}' lacks designated governance authority."
+            }
+        if clean_authorizer not in token_role and token_role not in clean_authorizer:
+            return {
+                "authorized": False,
+                "reason": f"Claimed authorizer role '{claimed_authorizer}' does not match token role '{token_role}'."
+            }
+
+        return {
+            "authorized": True,
+            "auth_method": "cryptographic_token_verified",
+            "verified_identity": token_sub,
+            "verified_role": token_role
+        }
 
     # 3. Enterprise RBAC Policy Mapping Check (rbac_policy.json)
     policy = load_rbac_policy()

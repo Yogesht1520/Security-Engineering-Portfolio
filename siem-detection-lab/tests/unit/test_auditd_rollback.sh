@@ -139,7 +139,13 @@ if [ "$INTEGRATION_MODE" = true ]; then
           CLEANUP_FAILED=1
         fi
       fi
-      rm -rf "$INT_BACKUP"
+      # SAFETY: Never delete recovery material if rollback or parity check failed
+      if [ "$CLEANUP_FAILED" -eq 0 ]; then
+        rm -rf "$INT_BACKUP"
+      else
+        echo -e "${RED}[!] PRESERVING RECOVERY BACKUP AT: ${INT_BACKUP}${NC}" >&2
+        echo -e "${RED}[!] Do not remove. Use this directory to manually restore host audit baseline.${NC}" >&2
+      fi
     fi
 
     if [ "$CLEANUP_FAILED" -ne 0 ]; then
@@ -169,10 +175,13 @@ if [ "$INTEGRATION_MODE" = true ]; then
     echo "  [✓] Corrupt rule correctly failed validation. Executing shared production rollback engine (infra/rollback_auditd.sh)..."
     if [ -f "$PROD_ROLLBACK" ]; then
       if ! bash "$PROD_ROLLBACK" "$INT_BACKUP" "$CANDIDATE_DEST"; then
-        echo "  [!] ERROR: Production rollback engine failed during recovery!" >&2
+        echo -e "${RED}[!] FATAL: Production rollback engine failed during recovery!${NC}" >&2
+        DEPLOY_FAILED=false
+        CLEANUP_FAILED=1
       fi
     else
-      echo "  [!] ERROR: Production rollback engine $PROD_ROLLBACK not found!" >&2
+      echo -e "${RED}[!] FATAL: Production rollback engine $PROD_ROLLBACK not found!${NC}" >&2
+      CLEANUP_FAILED=1
       exit 1
     fi
   else
@@ -186,6 +195,7 @@ if [ "$INTEGRATION_MODE" = true ]; then
       fi
     else
       echo -e "${RED}[!] FATAL: Production rollback engine $PROD_ROLLBACK not found!${NC}" >&2
+      CLEANUP_FAILED=1
       exit 1
     fi
   fi
@@ -194,12 +204,13 @@ if [ "$INTEGRATION_MODE" = true ]; then
   CURRENT_RULES=$(auditctl -l 2>/dev/null || true)
   PRE_RULES=$(cat "${INT_BACKUP}/active_rules_pre.txt" 2>/dev/null || true)
   
-  if [ "$DEPLOY_FAILED" = true ] && [ "$CURRENT_RULES" = "$PRE_RULES" ]; then
+  if [ "$DEPLOY_FAILED" = true ] && [ "$CURRENT_RULES" = "$PRE_RULES" ] && [ "$CLEANUP_FAILED" -eq 0 ]; then
     record_result "Live VM" "Kernel Audit Policy Parity & Candidate Purge" "PASS" \
       "Corrupt rule purged/restored, kernel rules restored bit-for-bit"
   else
     record_result "Live VM" "Kernel Audit Policy Parity & Candidate Purge" "FAIL" \
       "Discrepancy detected between initial kernel rules and post-rollback policy"
+    CLEANUP_FAILED=1
   fi
 
 else
