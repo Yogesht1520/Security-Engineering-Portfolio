@@ -73,6 +73,47 @@ def calculate_openssh_fingerprint(base64_pubkey: str) -> str:
     b64_fp = base64.b64encode(digest).decode("ascii").rstrip("=")
     return f"SHA256:{b64_fp}"
 
+def extract_structured_serial_identities(console_output: str) -> set:
+    """Extracts explicit, structured host identity declarations from a Linux/GCP serial stream.
+    
+    Avoids loose substring matching. Extracts identities only from structured boundary tokens:
+    1. Key comment field: HostKey: ssh-ed25519 <key> [user@]<hostname>
+    2. systemd hostname declarations: systemd: Set hostname to <<hostname>>
+    3. cloud-init network/identity table: ci-info: | Hostname | <hostname>
+    4. Serial console login prompts: ^<hostname> login:
+    5. Linux kernel build/boot banner: Linux version ... (user@<hostname>)
+    6. Google Guest Agent instance identification: instance <hostname>
+    """
+    identities = set()
+    
+    # 1. HostKey comment in guest agent or sshd output: HostKey: ssh-ed25519 <key> [user@]<hostname>
+    for m in re.finditer(r"HostKey:\s+ssh-ed25519\s+[A-Za-z0-9+/=]+\s+(?:[A-Za-z0-9_.-]+@)?([A-Za-z0-9_-]+)", console_output):
+        identities.add(m.group(1).strip().lower())
+        
+    # 2. systemd Set hostname to <hostname>
+    for m in re.finditer(r"systemd(?:\[\d+\])?:\s+(?:Set hostname to|Hostname set to)\s+<([^>]+)>", console_output, re.IGNORECASE):
+        raw_name = m.group(1).split(".")[0].strip().lower()
+        if raw_name:
+            identities.add(raw_name)
+            
+    # 3. cloud-init Hostname table
+    for m in re.finditer(r"ci-info:\s+\|\s+Hostname\s+\|\s*([A-Za-z0-9_-]+)", console_output, re.IGNORECASE):
+        identities.add(m.group(1).strip().lower())
+        
+    # 4. Serial console login prompt: ^<hostname> login:
+    for m in re.finditer(r"(?:^|\r?\n)([A-Za-z0-9_-]+)\s+login:\s*", console_output):
+        identities.add(m.group(1).strip().lower())
+        
+    # 5. Kernel boot banner hostname: Linux version ... (user@<hostname>)
+    for m in re.finditer(r"Linux version [^\n]+\((?:[A-Za-z0-9_.-]+@)?([A-Za-z0-9_-]+)\)", console_output):
+        identities.add(m.group(1).strip().lower())
+
+    # 6. Google Guest Agent instance identity
+    for m in re.finditer(r"google_guest_agent(?:\[\d+\])?:\s+.*?\binstance\s+([A-Za-z0-9_-]+)", console_output, re.IGNORECASE):
+        identities.add(m.group(1).strip().lower())
+
+    return identities
+
 def verify_host_key_pins():
     print("=" * 65)
     print(" [1/3] Acceptance Verification: Trusted Host Key Fingerprints  ")
@@ -172,9 +213,14 @@ def verify_serial_console_evidence(verified_pins, live_gcp: bool = False, projec
                     f"AMBIGUOUS SERIAL RECORDS: Detected {len(distinct_pairs)} differing key/fingerprint records on {host}: {distinct_pairs}"
                 )
 
-                # Validate acquisition identity: Console output must belong to the target host
-                assert host in console_output or f"Linux {host}" in console_output, (
-                    f"Acquisition identity mismatch: console stream did not identify target host '{host}'!"
+                # Validate acquisition identity: Structured identity parsing instead of loose substring matching
+                extracted_identities = extract_structured_serial_identities(console_output)
+                target_host_norm = host.strip().lower()
+                assert target_host_norm in extracted_identities, (
+                    f"Structured acquisition identity mismatch for target host '{host}'!\n"
+                    f"Parsed structured identities from serial stream: {sorted(extracted_identities) if extracted_identities else 'None'}.\n"
+                    f"Console stream must declare identity via structured HostKey comment (root@{host}), "
+                    f"systemd ('Set hostname to <{host}>'), cloud-init ('Hostname | {host}'), or login prompt."
                 )
 
                 live_key, live_fp = next(iter(distinct_pairs))
@@ -248,6 +294,14 @@ def verify_serial_console_evidence(verified_pins, live_gcp: bool = False, projec
         )
         assert host_name not in parsed_records, (
             f"AMBIGUOUS / DUPLICATE RECORD: Multiple acquisition records detected for host '{host_name}'!"
+        )
+
+        # Structured acquisition identity check on offline record block
+        block_identities = extract_structured_serial_identities(block)
+        assert host_name.lower() in block_identities, (
+            f"Structured identity mismatch in offline record block for '{host_name}'!\n"
+            f"Parsed structured identities: {sorted(block_identities) if block_identities else 'None'}.\n"
+            f"Expected structured host identity in record block."
         )
 
         key_match = re.search(r"HostKey:\s+ssh-ed25519\s+(\S+)", block)

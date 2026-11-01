@@ -78,11 +78,11 @@
       "classification": "NEGATIVE_SECURITY_TEST",
       "status": "PASSED",
       "exit_code": 0,
-      "summary": "19/19 negative assertions passed proving non-zero exit codes on unlocked policies, sub-30-day retention, tampered hashes, corrupt signatures, mock GCP errors, identity spoofing, naive timestamps, duplicate hierarchy IDs, and ambiguous serial records.",
+      "summary": "20/20 negative assertions passed proving non-zero exit codes on unlocked policies, sub-30-day retention, tampered hashes, corrupt signatures, mock GCP errors, identity spoofing, naive timestamps, duplicate hierarchy IDs, ambiguous serial records, and unstructured substring host mentions.",
       "log_file": "negative_cli_matrix.log",
-      "log_sha256": "f0e33445fe5c71c0055b2c04647265d3c5cfc8675d3a9a0d90b0bacf6153708d",
-      "assertions_passed": 19,
-      "assertions_total": 19
+      "log_sha256": "db33075d9b9f484c6ac747ce5ec6b5cacbc20270c97b0361ebe36395fa1a228e",
+      "assertions_passed": 20,
+      "assertions_total": 20
     },
     {
       "id": "security_scan",
