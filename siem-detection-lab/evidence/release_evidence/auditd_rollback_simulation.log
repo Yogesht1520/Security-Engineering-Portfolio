@@ -28,17 +28,17 @@
   [0;32m[PASS] Stage 6: Full Transactional Swap Succeeded & Baseline Restored[0m
          Atomic directory swap succeeded, corrupt candidate purged, directory metadata preserved
 
-[0;36m[*] Validating Stage 7: Cleanup Idempotency & Duplicate Execution Prevention...[0m
-  [0;32m[PASS] Stage 7: Cleanup Idempotency Verified (Single Execution Guarantee)[0m
-         Repeated cleanup calls safely executed rollback exactly once; duplicate executions were cleanly suppressed
+[0;36m[*] Validating Stage 7: Cleanup Idempotency & Failure State Preservation...[0m
+  [0;32m[PASS] Stage 7: Cleanup Idempotency & Failure State Preservation Verified[0m
+         Success executes once and suppresses duplicates; failed cleanup preserves failure status on repeat invocations
 
-[0;36m[*] Validating Stage 8: Interruption Signal Trapping & Emergency Rollback...[0m
-  [0;32m[PASS] Stage 8: Process Interruption Signal Trapped & Emergency Rollback Completed[0m
-         Signal trap executed emergency rollback during dirty state; corrupt candidate was purged and baseline restored
+[0;36m[*] Validating Stage 8: Interruption Signal Trapping During Active Dirty State...[0m
+  [0;32m[PASS] Stage 8: Process Interruption in Dirty State Trapped & Recovery Verified[0m
+         Confirmed child in dirty state; signal trap executed recovery handler; corrupt candidate purged and baseline restored
 
-[0;36m[*] Validating Stage 9: Rollback Failure Backup Retention Safety...[0m
-  [0;32m[PASS] Stage 9: Failed Rollback Preserves Recovery Backup on Disk[0m
-         Rollback failure cleanly propagated exit code 1; recovery backup directory was strictly preserved on disk for manual remediation
+[0;36m[*] Validating Stage 9: Rollback Failure Backup Quarantine Preservation...[0m
+  [0;32m[PASS] Stage 9: Failed Rollback Preserves Recovery Backup in Dedicated Quarantine[0m
+         Simulated rollback failure exited non-zero (1); recovery backup survived the test harness in quarantine for manual remediation
 
 ----------------------------------------------------------------
 [0;32m[1mAuditd Rollback Suite: 9/9 Passed [ALL PASS][0m

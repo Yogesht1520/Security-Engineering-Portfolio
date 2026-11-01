@@ -54,7 +54,7 @@ def test_negative_cli_assertions():
         return subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, env=env)
 
     # ── Test 1: Full CLI — Unlocked Bucket Policy Rejected ───────────────────
-    print("[1/20] Testing CLI fail-closed on unlocked WORM bucket policy...")
+    print("[1/23] Testing CLI fail-closed on unlocked WORM bucket policy...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_repo = Path(tmp_dir) / "repo"
         shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
@@ -71,7 +71,7 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: Unlocked bucket policy rejected with exit code {res.returncode}.")
 
     # ── Test 2: Full CLI — Insufficient Retention Duration (< 30 days) ───────
-    print("[2/20] Testing CLI fail-closed on sub-30-day retention duration...")
+    print("[2/23] Testing CLI fail-closed on sub-30-day retention duration...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_repo = Path(tmp_dir) / "repo"
         shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
@@ -88,7 +88,7 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: Sub-30-day retention rejected with exit code {res.returncode}.")
 
     # ── Test 3: Full CLI — Object SHA-256 Checksum Tampering ─────────────────
-    print("[3/20] Testing CLI fail-closed on object SHA-256 hash tampering...")
+    print("[3/23] Testing CLI fail-closed on object SHA-256 hash tampering...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_repo = Path(tmp_dir) / "repo"
         shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
@@ -105,7 +105,7 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: Tampered object hash rejected with exit code {res.returncode}.")
 
     # ── Test 4: Full CLI — Missing Required Local Evidence Archive ───────────
-    print("[4/20] Testing CLI fail-closed when local evidence archive is missing...")
+    print("[4/23] Testing CLI fail-closed when local evidence archive is missing...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_repo = Path(tmp_dir) / "repo"
         shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
@@ -118,7 +118,7 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: Missing local evidence archive rejected with exit code {res.returncode}.")
 
     # ── Test 5: Full CLI — Missing Detached Digital Signature File ────────────
-    print("[5/20] Testing CLI fail-closed when detached signature file is missing...")
+    print("[5/23] Testing CLI fail-closed when detached signature file is missing...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_repo = Path(tmp_dir) / "repo"
         shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
@@ -131,7 +131,7 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: Missing signature file rejected with exit code {res.returncode}.")
 
     # ── Test 6: Full CLI — Corrupted RSA Detached Digital Signature ───────────
-    print("[6/20] Testing CLI fail-closed on corrupted digital signature...")
+    print("[6/23] Testing CLI fail-closed on corrupted digital signature...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_repo = Path(tmp_dir) / "repo"
         shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
@@ -156,7 +156,7 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: Corrupted signature rejected with exit code {res.returncode}.")
 
     # ── Test 7: Full CLI — Missing Trusted Signer Pins File ───────────────────
-    print("[7/20] Testing CLI fail-closed when TRUSTED_SIGNER_PINS.txt is missing...")
+    print("[7/23] Testing CLI fail-closed when TRUSTED_SIGNER_PINS.txt is missing...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_repo = Path(tmp_dir) / "repo"
         shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
@@ -169,7 +169,7 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: Missing trusted signer pins rejected with exit code {res.returncode}.")
 
     # ── Test 8: Full CLI — Tampered Host Key Pin Fingerprint Mismatch ─────────
-    print("[8/20] Testing CLI fail-closed on tampered host key pin...")
+    print("[8/23] Testing CLI fail-closed on tampered host key pin...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_repo = Path(tmp_dir) / "repo"
         shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
@@ -184,7 +184,7 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: Tampered host key pin rejected with exit code {res.returncode}.")
 
     # ── Test 9: Full CLI — Serial Record Internal Parity Mismatch ────────────
-    print("[9/20] Testing CLI fail-closed on serial log record self-consistency error...")
+    print("[9/23] Testing CLI fail-closed on serial log record self-consistency error...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_repo = Path(tmp_dir) / "repo"
         shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
@@ -203,7 +203,7 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: Serial log record discrepancy rejected with exit code {res.returncode}.")
 
     # ── Test 10: Full CLI — External Trust Anchor Hash Mismatch ───────────────
-    print("[10/20] Testing CLI fail-closed on external trust anchor mismatch...")
+    print("[10/23] Testing CLI fail-closed on external trust anchor mismatch...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         bogus_anchor = Path(tmp_dir) / "bogus_anchor.txt"
         bogus_anchor.write_text("SHA256:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef | serial_console_host_keys.log\n")
@@ -215,7 +215,7 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: External trust anchor mismatch rejected with exit code {res.returncode}.")
 
     # ── Test 11: Deployment Acceptance Mode Mandatory External Trust Anchor ───
-    print("[11/20] Testing CLI fail-closed when external trust anchor is missing in deployment acceptance mode...")
+    print("[11/23] Testing CLI fail-closed when external trust anchor is missing in deployment acceptance mode...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         nonexistent_anchor = Path(tmp_dir) / "missing_anchor.txt"
         env = {
@@ -244,7 +244,7 @@ def test_negative_cli_assertions():
             pass
 
     # ── Test 12: Acceptance CLI --live-gcp Deterministic Mocked Failure ───────
-    print("[12/20] Testing CLI acceptance --live-gcp deterministic failure with mocked gcloud...")
+    print("[12/23] Testing CLI acceptance --live-gcp deterministic failure with mocked gcloud...")
     with tempfile.TemporaryDirectory() as mock_dir:
         mock_bin = Path(mock_dir) / "mock_bin"
         make_mock_gcloud(mock_bin, fail_msg="Live GCP API simulated failure: PERMISSION_DENIED", exit_code=1)
@@ -257,7 +257,7 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: Acceptance CLI --live-gcp deterministically failed closed with exit code {res.returncode}.")
 
     # ── Test 13: IAM Isolation CLI --live-gcp Deterministic Mocked Failure ────
-    print("[13/20] Testing CLI IAM isolation --live-gcp deterministic failure with mocked gcloud...")
+    print("[13/23] Testing CLI IAM isolation --live-gcp deterministic failure with mocked gcloud...")
     with tempfile.TemporaryDirectory() as mock_dir:
         mock_bin = Path(mock_dir) / "mock_bin"
         make_mock_gcloud(mock_bin, fail_msg="Live GCP API simulated failure: PERMISSION_DENIED", exit_code=1)
@@ -270,7 +270,7 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: IAM Isolation CLI --live-gcp deterministically failed closed with exit code {res.returncode}.")
 
     # ── Test 14: Deterministic Missing Tool (PATH Without gcloud) ──────────────
-    print("[14/20] Testing CLI --live-gcp deterministic failure when gcloud is missing from PATH...")
+    print("[14/23] Testing CLI --live-gcp deterministic failure when gcloud is missing from PATH...")
     env_no_gcloud = os.environ.copy()
     env_no_gcloud["PATH"] = os.path.dirname(python_bin)
     res = subprocess.run([python_bin, "tests/verify_host_keys_acceptance.py", "--live-gcp"], cwd=str(REPO_ROOT), env=env_no_gcloud, capture_output=True, text=True)
@@ -279,7 +279,7 @@ def test_negative_cli_assertions():
     print(f"  [✓] PASSED: Missing gcloud executable deterministically failed closed with exit code {res.returncode}.")
 
     # ── Test 15: Case Manager SIEM_TEST_IDENTITY Rejection in Production Mode ─
-    print("[15/20] Testing case manager strict rejection of SIEM_TEST_IDENTITY in production...")
+    print("[15/23] Testing case manager strict rejection of SIEM_TEST_IDENTITY in production...")
     cmd_prod_auth = [
         python_bin, "-c",
         "import os, sys; from pathlib import Path; sys.path.insert(0, r'" + str(REPO_ROOT) + "'); os.environ['SIEM_ENV']='production'; os.environ['SIEM_TEST_IDENTITY']='fake'; import incident_management.case_manager as cm; cm.get_caller_identity()"
@@ -290,14 +290,14 @@ def test_negative_cli_assertions():
     print(f"  [✓] PASSED: Production identity override rejected with exit code {res.returncode} (Fail Closed).")
 
     # ── Test 16: Live Auditd Rollback Script Rejection Without Confirmation Flag
-    print("[16/20] Testing live auditd integration script blocks without --force-live-danger...")
+    print("[16/23] Testing live auditd integration script blocks without --force-live-danger...")
     res = subprocess.run(["bash", "tests/integration/test_auditd_live_rollback.sh"], cwd=str(REPO_ROOT), capture_output=True, text=True)
     assert res.returncode != 0, "Expected non-zero exit code on live auditd test without confirmation flag!"
     assert "SAFETY BLOCKED" in res.stderr
     print(f"  [✓] PASSED: Live auditd integration test safely blocked with exit code {res.returncode}.")
 
     # ── Test 17: Rejection of Naive Timestamps Lacking Explicit Timezone ─────
-    print("[17/20] Testing strict rejection of naive retention timestamps lacking timezone offsets...")
+    print("[17/23] Testing strict rejection of naive retention timestamps lacking timezone offsets...")
     cmd_naive_ts = [
         python_bin, "-c",
         "import sys; from pathlib import Path; sys.path.insert(0, r'" + str(REPO_ROOT) + "'); from tests.verify_host_keys_acceptance import parse_timezone_aware_utc; parse_timezone_aware_utc('2026-11-30 13:38:27')"
@@ -308,7 +308,7 @@ def test_negative_cli_assertions():
     print(f"  [✓] PASSED: Naive timestamp lacking explicit timezone rejected with exit code {res.returncode}.")
 
     # ── Test 18: Rejection of Malformed IAM Hierarchy with Duplicate Resource IDs
-    print("[18/20] Testing strict rejection of malformed IAM hierarchy with duplicate resource IDs...")
+    print("[18/23] Testing strict rejection of malformed IAM hierarchy with duplicate resource IDs...")
     with tempfile.TemporaryDirectory() as mock_dir:
         mock_bin = Path(mock_dir) / "mock_bin"
         mock_bin.mkdir(parents=True, exist_ok=True)
@@ -350,7 +350,7 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: Duplicate resource ID in IAM hierarchy rejected with exit code {res.returncode}.")
 
     # ── Test 19: Rejection of Ambiguous / Duplicate Serial Console Records ───
-    print("[19/20] Testing strict rejection of ambiguous / duplicate serial console records...")
+    print("[19/23] Testing strict rejection of ambiguous / duplicate serial console records...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_repo = Path(tmp_dir) / "repo"
         shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
@@ -368,14 +368,14 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: Duplicate serial console record rejected with exit code {res.returncode}.")
 
     # ── Test 20: Rejection of Serial Record with Unstructured / Loose Substring Host Reference
-    print("[20/20] Testing strict rejection of serial record lacking structured host identity token...")
+    print("[20/23] Testing strict rejection of serial record lacking structured host identity token...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_repo = Path(tmp_dir) / "repo"
         shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
         serial_log = tmp_repo / "evidence" / "serial_console_host_keys.log"
-        content = serial_log.read_text(encoding="utf-8")
+        c = serial_log.read_text(encoding="utf-8")
         # Replace structured comment root@siem-lab-honeypot with untrusted box, but leave an unstructured log string
-        tampered_log = content.replace("root@siem-lab-honeypot", "root@untrusted-spoofed-host")
+        tampered_log = c.replace("root@siem-lab-honeypot", "root@untrusted-spoofed-host")
         tampered_log = tampered_log.replace(
             "[    0.000000] Command line: BOOT_IMAGE=",
             "[    0.000000] Unstructured noise log mentioning siem-lab-honeypot in passing\n[    0.000000] Command line: BOOT_IMAGE="
@@ -389,8 +389,71 @@ def test_negative_cli_assertions():
         assert "Structured identity mismatch" in res.stderr or "AssertionError" in res.stderr
         print(f"  [✓] PASSED: Unstructured substring host mention rejected with exit code {res.returncode} (Fail Closed).")
 
+    # ── Test 21: Rejection of Offline Serial Record Lacking Command Provenance Header ───
+    print("[21/23] Testing strict rejection of offline acquisition block missing command provenance header...")
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_repo = Path(tmp_dir) / "repo"
+        shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
+        serial_log = tmp_repo / "evidence" / "serial_console_host_keys.log"
+        c = serial_log.read_text(encoding="utf-8")
+        # Remove the command provenance line from record 1 (siem-lab-honeypot)
+        tampered_log = c.replace(
+            "# Command: gcloud compute instances get-serial-port-output siem-lab-honeypot --zone=us-central1-a --port=1",
+            "# Command provenance omitted"
+        )
+        serial_log.write_text(tampered_log, encoding="utf-8")
+        h = hashlib.sha256(tampered_log.encode("utf-8")).hexdigest()
+        (tmp_repo / "evidence" / "serial_console_host_keys.log.sha256").write_text(f"{h}  serial_console_host_keys.log\n")
+
+        res = run_acceptance_cli(cwd=tmp_repo)
+        assert res.returncode != 0, "Expected non-zero exit code on serial block missing command provenance!"
+        assert "UNAMBIGUOUS COMMAND PROVENANCE FAILURE" in res.stderr or "AssertionError" in res.stderr
+        print(f"  [✓] PASSED: Missing command provenance header rejected with exit code {res.returncode}.")
+
+    # ── Test 22: Rejection of Serial Record Lacking Explicit user@hostname Comment ───
+    print("[22/23] Testing strict rejection of serial record lacking explicit user@hostname comment...")
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_repo = Path(tmp_dir) / "repo"
+        shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
+        serial_log = tmp_repo / "evidence" / "serial_console_host_keys.log"
+        c = serial_log.read_text(encoding="utf-8")
+        # Strip root@siem-lab-honeypot comment from HostKey line
+        tampered_log = c.replace(
+            "HostKey: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMxWbfozbHUGSWfKIqOEwMG/rbaQvo+RtnycUCesUNoR root@siem-lab-honeypot",
+            "HostKey: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMxWbfozbHUGSWfKIqOEwMG/rbaQvo+RtnycUCesUNoR"
+        )
+        serial_log.write_text(tampered_log, encoding="utf-8")
+        h = hashlib.sha256(tampered_log.encode("utf-8")).hexdigest()
+        (tmp_repo / "evidence" / "serial_console_host_keys.log.sha256").write_text(f"{h}  serial_console_host_keys.log\n")
+
+        res = run_acceptance_cli(cwd=tmp_repo)
+        assert res.returncode != 0, "Expected non-zero exit code on HostKey lacking explicit user@hostname comment!"
+        assert "UNAMBIGUOUS IDENTITY BINDING FAILURE" in res.stderr or "AssertionError" in res.stderr
+        print(f"  [✓] PASSED: Missing user@hostname key comment rejected with exit code {res.returncode}.")
+
+    # ── Test 23: Rejection of Serial Record Containing Conflicting Identity Announcements ───
+    print("[23/23] Testing strict rejection of serial record containing conflicting identity announcements...")
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_repo = Path(tmp_dir) / "repo"
+        shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
+        serial_log = tmp_repo / "evidence" / "serial_console_host_keys.log"
+        c = serial_log.read_text(encoding="utf-8")
+        # Inject conflicting system hostname announcement into siem-lab-honeypot block
+        tampered_log = c.replace(
+            "systemd[1]: Set hostname to <siem-lab-honeypot>.",
+            "systemd[1]: Set hostname to <siem-lab-honeypot>.\nsystemd[1]: Set hostname to <siem-lab-bastion>."
+        )
+        serial_log.write_text(tampered_log, encoding="utf-8")
+        h = hashlib.sha256(tampered_log.encode("utf-8")).hexdigest()
+        (tmp_repo / "evidence" / "serial_console_host_keys.log.sha256").write_text(f"{h}  serial_console_host_keys.log\n")
+
+        res = run_acceptance_cli(cwd=tmp_repo)
+        assert res.returncode != 0, "Expected non-zero exit code on conflicting identity announcements!"
+        assert "CONFLICTING IDENTITY ANNOUNCEMENTS" in res.stderr or "AssertionError" in res.stderr
+        print(f"  [✓] PASSED: Conflicting identity announcements rejected with exit code {res.returncode}.")
+
     print("\n" + "=" * 65)
-    print(" [✓] ALL 20 NEGATIVE & MISSING-EVIDENCE CLI ASSERTIONS PASSED.")
+    print(" [✓] ALL 23 NEGATIVE & MISSING-EVIDENCE CLI ASSERTIONS PASSED.")
     print("=" * 65)
 
 if __name__ == "__main__":

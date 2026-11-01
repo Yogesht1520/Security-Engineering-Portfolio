@@ -105,27 +105,43 @@ def extract_structured_serial_identities(console_output: str) -> set:
     # 4. Serial console login prompt: ^<hostname> login:
     for m in re.finditer(r"(?:^|\r?\n)([A-Za-z0-9_-]+)\s+login:\s*", console_output):
         identities.add(m.group(1).strip().lower())
-        
-    # 5. Kernel boot banner hostname: Linux version ... (user@<hostname>)
-    for m in re.finditer(r"Linux version [^\n]+\((?:[A-Za-z0-9_.-]+@)?([A-Za-z0-9_-]+)\)", console_output):
-        identities.add(m.group(1).strip().lower())
 
-    # 6. Google Guest Agent instance identity
+    # 5. Google Guest Agent instance identity
     for m in re.finditer(r"google_guest_agent(?:\[\d+\])?:\s+.*?\binstance\s+([A-Za-z0-9_-]+)", console_output, re.IGNORECASE):
         identities.add(m.group(1).strip().lower())
 
     return identities
 
+EXPECTED_VM_ZONES = {
+    "siem-lab-honeypot": "us-central1-a",
+    "siem-lab-wazuh": "us-central1-b",
+    "siem-lab-bastion": "us-central1-c"
+}
+
+@dataclass(frozen=True)
+class SerialAcquisitionContext:
+    """Deeply immutable provenance context for a serial acquisition record."""
+    source: str
+    zone: str
+    port: int
+    bound_host: str
+    verified_identities: tuple
+    cmd_instance: Optional[str] = None
+    internal_ip: Optional[str] = None
+    public_ip: Optional[str] = None
+    project_id: Optional[str] = None
+
 @dataclass(frozen=True)
 class SerialAcquisitionRecord:
     """Represents a cryptographically validated, unambiguous out-of-band serial acquisition record.
     Binds hostname, public key, fingerprint, and acquisition context together.
+    Deeply immutable: all fields are primitive types or frozen tuples/dataclasses.
     """
     hostname: str
     pubkey: str
     fingerprint: str
     key_type: str
-    acquisition_context: Dict[str, Any]
+    acquisition_context: SerialAcquisitionContext
 
     def validate(self, expected_hostname: Optional[str] = None, expected_key: Optional[str] = None, expected_fp: Optional[str] = None):
         """Validates internal consistency and identity binding."""
@@ -155,7 +171,7 @@ class SerialAcquisitionRecord:
 def parse_live_serial_record(console_output: str, target_host: str, zone: str, project_id: str) -> SerialAcquisitionRecord:
     """Parses live virtual serial port output into a structured SerialAcquisitionRecord.
     Binds hostname, public key, fingerprint, and acquisition context together.
-    Rejects stream if attributes cannot be associated unambiguously.
+    Rejects stream if attributes cannot be associated unambiguously or if conflicting identities appear.
     """
     target_norm = target_host.strip().lower()
 
@@ -167,15 +183,29 @@ def parse_live_serial_record(console_output: str, target_host: str, zone: str, p
             f"Detected identities: {sorted(extracted_identities) if extracted_identities else 'None'}"
         )
 
-    # 2. Strict Live Record Parsing: Key and fingerprint must be parsed within the same record block
+    # Reject conflicting host announcements
+    conflicting_identities = {
+        ident for ident in extracted_identities
+        if ident != target_norm and not ident.startswith(f"{target_norm}.")
+    }
+    if conflicting_identities:
+        raise ValueError(
+            f"CONFLICTING IDENTITY ANNOUNCEMENTS: Detected conflicting host identities {sorted(conflicting_identities)} "
+            f"alongside target host '{target_norm}' in serial console stream!"
+        )
+
+    # 2. Strict Live Record Parsing: Key, mandatory root@<hostname> comment, and fingerprint in same block
     record_pattern = (
         r"HostKey:\s+(?P<key_type>ssh-ed25519)\s+(?P<key>[A-Za-z0-9+/=]+)"
-        r"(?:\s+(?:[A-Za-z0-9_.-]+@)?(?P<bound_host>[A-Za-z0-9_.-]+))?[^\n]*\n"
+        r"\s+(?:[A-Za-z0-9_.-]+@)(?P<bound_host>[A-Za-z0-9_.-]+)[^\n]*\n"
         r"[^\n]*?HostKey Fingerprint:\s+\(?(?P<fp>SHA256:[A-Za-z0-9+/=]+)\)?"
     )
     all_records = list(re.finditer(record_pattern, console_output))
     if not all_records:
-        raise ValueError(f"Live virtual serial port 1 on {target_host} did NOT contain a coherent HostKey + Fingerprint record block!")
+        raise ValueError(
+            f"UNAMBIGUOUS IDENTITY BINDING FAILURE: Live virtual serial port 1 on {target_host} did NOT contain a coherent HostKey "
+            f"record block with mandatory root@{target_host} comment!"
+        )
 
     # 3. Reject ambiguous or conflicting records across the serial stream
     distinct_pairs = {(m.group("key"), m.group("fp"), m.group("bound_host")) for m in all_records}
@@ -188,20 +218,20 @@ def parse_live_serial_record(console_output: str, target_host: str, zone: str, p
     key_type = m.group("key_type")
     bound_host = m.group("bound_host")
 
-    if bound_host:
-        bound_norm = bound_host.split(".")[0].strip().lower()
-        if bound_norm != target_norm:
-            raise ValueError(
-                f"UNAMBIGUOUS IDENTITY BINDING FAILURE: Key comment host '{bound_norm}' != target host '{target_norm}'!"
-            )
+    bound_norm = bound_host.split(".")[0].strip().lower()
+    if bound_norm != target_norm:
+        raise ValueError(
+            f"UNAMBIGUOUS IDENTITY BINDING FAILURE: Key comment host '{bound_norm}' != target host '{target_norm}'!"
+        )
 
-    context = {
-        "source": "live_virtual_serial_port_1",
-        "zone": zone,
-        "project_id": project_id,
-        "bound_host_declaration": bound_host or target_norm,
-        "verified_identities": sorted(extracted_identities)
-    }
+    context = SerialAcquisitionContext(
+        source="live_virtual_serial_port_1",
+        zone=zone,
+        port=1,
+        bound_host=bound_norm,
+        verified_identities=tuple(sorted(extracted_identities)),
+        project_id=project_id
+    )
 
     record = SerialAcquisitionRecord(
         hostname=target_norm,
@@ -216,7 +246,7 @@ def parse_live_serial_record(console_output: str, target_host: str, zone: str, p
 def parse_offline_acquisition_block(block: str, valid_hosts: set) -> SerialAcquisitionRecord:
     """Parses an offline serial acquisition block into a structured SerialAcquisitionRecord.
     Binds hostname, public key, fingerprint, and acquisition context together.
-    Rejects block if attributes cannot be associated unambiguously.
+    Rejects block if command provenance is missing, or if attributes cannot be associated unambiguously.
     """
     lines = [line.strip() for line in block.splitlines() if line.strip()]
     if not lines:
@@ -228,53 +258,99 @@ def parse_offline_acquisition_block(block: str, valid_hosts: set) -> SerialAcqui
     if header_host not in valid_hosts:
         raise ValueError(f"Unrecognized or invalid acquisition identity in serial log: '{header_host}'!")
 
-    context = {"source": "offline_serial_transcript"}
-    cmd_match = re.search(r"#\s*Command:\s*gcloud\s+compute\s+instances\s+get-serial-port-output\s+(\S+)\s+--zone=(\S+)\s+--port=(\d+)", block)
-    if cmd_match:
-        cmd_inst = cmd_match.group(1).strip().lower()
-        context["cmd_instance"] = cmd_inst
-        context["zone"] = cmd_match.group(2)
-        context["port"] = int(cmd_match.group(3))
-        if cmd_inst != header_host.lower():
-            raise ValueError(
-                f"UNAMBIGUOUS IDENTITY BINDING FAILURE: Header host '{header_host}' != command host '{cmd_inst}'!"
-            )
+    # 1. Mandatory out-of-band gcloud get-serial-port-output command provenance
+    cmd_match = re.search(
+        r"#\s*Command:\s*gcloud\s+compute\s+instances\s+get-serial-port-output\s+(?P<inst>\S+)\s+--zone=(?P<zone>\S+)\s+--port=(?P<port>\d+)(?:\s+--project=(?P<proj>\S+))?",
+        block
+    )
+    if not cmd_match:
+        raise ValueError(
+            f"UNAMBIGUOUS COMMAND PROVENANCE FAILURE: Acquisition block for '{header_host}' is missing mandatory "
+            f"out-of-band 'gcloud compute instances get-serial-port-output' command provenance!"
+        )
 
+    cmd_inst = cmd_match.group("inst").strip().lower()
+    if cmd_inst != header_host.lower():
+        raise ValueError(
+            f"UNAMBIGUOUS IDENTITY BINDING FAILURE: Header host '{header_host}' != command instance '{cmd_inst}'!"
+        )
+
+    cmd_zone = cmd_match.group("zone").strip()
+    expected_zone = EXPECTED_VM_ZONES.get(header_host.lower())
+    if expected_zone and cmd_zone != expected_zone:
+        raise ValueError(
+            f"UNAMBIGUOUS COMMAND PROVENANCE FAILURE: Command zone '{cmd_zone}' != expected zone '{expected_zone}' for '{header_host}'!"
+        )
+
+    cmd_port = int(cmd_match.group("port"))
+    if cmd_port != 1:
+        raise ValueError(
+            f"UNAMBIGUOUS COMMAND PROVENANCE FAILURE: Command port '{cmd_port}' != mandatory serial port 1 for '{header_host}'!"
+        )
+
+    cmd_proj = cmd_match.group("proj")
+
+    # 2. Extract network context from header comments if present
+    internal_ip = None
+    public_ip = None
     ip_match = re.search(r"#\s*Internal IP:\s*([0-9.]+)\s*\|\s*Public IP:\s*([0-9.]+)", block)
     if ip_match:
-        context["internal_ip"] = ip_match.group(1)
-        context["public_ip"] = ip_match.group(2)
+        internal_ip = ip_match.group(1)
+        public_ip = ip_match.group(2)
 
-    # Structured identity tokens in block
+    # 3. Structured identity tokens in block & conflict rejection
     block_identities = extract_structured_serial_identities(block)
     if header_host.lower() not in block_identities:
         raise ValueError(
             f"Structured identity mismatch in offline record block for '{header_host}'!\n"
             f"Parsed structured identities: {sorted(block_identities) if block_identities else 'None'}."
         )
-    context["verified_identities"] = sorted(block_identities)
 
-    # HostKey line with type, key, and optional host comment
-    key_match = re.search(r"HostKey:\s+(?P<type>ssh-ed25519)\s+(?P<key>\S+)(?:\s+(?:[A-Za-z0-9_.-]+@)?(?P<comment_host>[A-Za-z0-9_.-]+))?", block)
+    conflicting_block_identities = {
+        ident for ident in block_identities
+        if ident != header_host.lower() and not ident.startswith(f"{header_host.lower()}.")
+    }
+    if conflicting_block_identities:
+        raise ValueError(
+            f"CONFLICTING IDENTITY ANNOUNCEMENTS: Offline acquisition block for '{header_host}' contains conflicting identities: {sorted(conflicting_block_identities)}!"
+        )
+
+    # 4. HostKey line with mandatory type, key, and root@<hostname> comment
+    key_match = re.search(
+        r"HostKey:\s+(?P<type>ssh-ed25519)\s+(?P<key>\S+)\s+(?:[A-Za-z0-9_.-]+@)(?P<comment_host>[A-Za-z0-9_.-]+)",
+        block
+    )
     if not key_match:
-        raise ValueError(f"Serial console record for '{header_host}' missing HostKey ssh-ed25519 line!")
+        raise ValueError(
+            f"UNAMBIGUOUS IDENTITY BINDING FAILURE: Acquisition block for '{header_host}' missing mandatory root@{header_host} comment on HostKey line!"
+        )
 
     key_type = key_match.group("type")
     pubkey = key_match.group("key")
     comment_host = key_match.group("comment_host")
-    if comment_host:
-        comment_host_norm = comment_host.split(".")[0].strip().lower()
-        if comment_host_norm != header_host.lower():
-            raise ValueError(
-                f"UNAMBIGUOUS IDENTITY BINDING FAILURE: Key comment host '{comment_host_norm}' != record header host '{header_host}'!"
-            )
-        context["comment_host"] = comment_host_norm
+    comment_host_norm = comment_host.split(".")[0].strip().lower()
+    if comment_host_norm != header_host.lower():
+        raise ValueError(
+            f"UNAMBIGUOUS IDENTITY BINDING FAILURE: Key comment host '{comment_host_norm}' != record header host '{header_host}'!"
+        )
 
-    # HostKey Fingerprint line
+    # 5. HostKey Fingerprint line
     fp_match = re.search(r"HostKey Fingerprint:\s+(SHA256:\S+)", block)
     if not fp_match:
         raise ValueError(f"Serial console record for '{header_host}' missing HostKey Fingerprint line!")
     fingerprint = fp_match.group(1).rstrip(")")
+
+    context = SerialAcquisitionContext(
+        source="offline_serial_transcript",
+        zone=cmd_zone,
+        port=cmd_port,
+        bound_host=header_host.lower(),
+        verified_identities=tuple(sorted(block_identities)),
+        cmd_instance=cmd_inst,
+        internal_ip=internal_ip,
+        public_ip=public_ip,
+        project_id=cmd_proj
+    )
 
     record = SerialAcquisitionRecord(
         hostname=header_host,

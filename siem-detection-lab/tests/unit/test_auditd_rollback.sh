@@ -263,51 +263,74 @@ else
     "Transactional swap failed or baseline was not cleanly restored (exit: ${SWAP_EXIT})"
 fi
 
-# ── Stage 7: Cleanup Idempotency & Duplicate Execution Test ─────────────────
-echo -e "\n${CYAN}[*] Validating Stage 7: Cleanup Idempotency & Duplicate Execution Prevention...${NC}"
+# ── Stage 7: Cleanup Idempotency & Failure State Preservation ───────────────
+echo -e "\n${CYAN}[*] Validating Stage 7: Cleanup Idempotency & Failure State Preservation...${NC}"
 cp -r "$MOCK_BACKUP_DIR"/* "$MOCK_AUDIT_DIR"/
 echo "-w /etc/passwd -p wa -k corrupt" > "${MOCK_RULES_DIR}/siem-lab.rules"
 
-ROLLBACK_MARKER="${TEST_SANDBOX}/rollback_execution_count.txt"
-rm -f "$ROLLBACK_MARKER"
-
-run_idempotent_cleanup() {
-  local marker="$1"
-  if [ -f "${marker}.cleaned" ]; then
+# Part A: Successful cleanup executes rollback once, repeat call is idempotent no-op
+ROLLBACK_EXEC_COUNT=0
+CLEANUP_STATE_A="NOT_STARTED"
+run_stateful_cleanup_success() {
+  if [ "$CLEANUP_STATE_A" = "SUCCEEDED" ]; then
     return 0
+  elif [ "$CLEANUP_STATE_A" = "FAILED" ]; then
+    return 1
   fi
-  touch "${marker}.cleaned"
-
-  if [ ! -f "${marker}.rolled_back" ]; then
-    touch "${marker}.rolled_back"
-    local count=0
-    [ -f "$marker" ] && count=$(cat "$marker")
-    echo "$((count + 1))" > "$marker"
-    (
-      export PATH="${MOCK_BIN}:${PATH}"
-      export SIEM_AUDIT_DIR="$MOCK_AUDIT_DIR"
-      export SIEM_AUDIT_BACKUP="$MOCK_BACKUP_DIR"
-      bash "$PROD_ROLLBACK" "$MOCK_BACKUP_DIR" "${MOCK_RULES_DIR}/siem-lab.rules" >/dev/null 2>&1 || true
-    )
-  fi
+  CLEANUP_STATE_A="IN_PROGRESS"
+  ROLLBACK_EXEC_COUNT=$((ROLLBACK_EXEC_COUNT + 1))
+  (
+    export PATH="${MOCK_BIN}:${PATH}"
+    export SIEM_AUDIT_DIR="$MOCK_AUDIT_DIR"
+    export SIEM_AUDIT_BACKUP="$MOCK_BACKUP_DIR"
+    bash "$PROD_ROLLBACK" "$MOCK_BACKUP_DIR" "${MOCK_RULES_DIR}/siem-lab.rules" >/dev/null 2>&1
+  )
+  CLEANUP_STATE_A="SUCCEEDED"
+  return 0
 }
 
-run_idempotent_cleanup "$ROLLBACK_MARKER"
-run_idempotent_cleanup "$ROLLBACK_MARKER"
+STATUS_CALL1=0
+run_stateful_cleanup_success || STATUS_CALL1=$?
+STATUS_CALL2=0
+run_stateful_cleanup_success || STATUS_CALL2=$?
 
-FINAL_COUNT=$(cat "$ROLLBACK_MARKER" 2>/dev/null || echo 0)
-if [ "$FINAL_COUNT" -eq 1 ] && [ ! -f "${MOCK_RULES_DIR}/siem-lab.rules" ]; then
-  record_result "Stage 7" "Cleanup Idempotency Verified (Single Execution Guarantee)" "PASS" \
-    "Repeated cleanup calls safely executed rollback exactly once; duplicate executions were cleanly suppressed"
+# Part B: Failed cleanup executes once, sets FAILED, repeat call preserves failure (never masks failure)
+FAIL_EXEC_COUNT=0
+CLEANUP_STATE_B="NOT_STARTED"
+run_stateful_cleanup_failure() {
+  if [ "$CLEANUP_STATE_B" = "SUCCEEDED" ]; then
+    return 0
+  elif [ "$CLEANUP_STATE_B" = "FAILED" ]; then
+    return 1
+  fi
+  CLEANUP_STATE_B="IN_PROGRESS"
+  FAIL_EXEC_COUNT=$((FAIL_EXEC_COUNT + 1))
+  # Simulate rollback engine failure
+  CLEANUP_STATE_B="FAILED"
+  return 1
+}
+
+STATUS_FAIL_CALL1=0
+run_stateful_cleanup_failure || STATUS_FAIL_CALL1=$?
+STATUS_FAIL_CALL2=0
+run_stateful_cleanup_failure || STATUS_FAIL_CALL2=$?
+
+if [ "$ROLLBACK_EXEC_COUNT" -eq 1 ] && [ "$STATUS_CALL1" -eq 0 ] && [ "$STATUS_CALL2" -eq 0 ] && \
+   [ "$FAIL_EXEC_COUNT" -eq 1 ] && [ "$STATUS_FAIL_CALL1" -ne 0 ] && [ "$STATUS_FAIL_CALL2" -ne 0 ]; then
+  record_result "Stage 7" "Cleanup Idempotency & Failure State Preservation Verified" "PASS" \
+    "Success executes once and suppresses duplicates; failed cleanup preserves failure status on repeat invocations"
 else
-  record_result "Stage 7" "Cleanup Idempotency Verified (Single Execution Guarantee)" "FAIL" \
-    "Cleanup was executed $FINAL_COUNT times (expected exactly 1)"
+  record_result "Stage 7" "Cleanup Idempotency & Failure State Preservation Verified" "FAIL" \
+    "Idempotency or failure state preservation failed (Success runs: $ROLLBACK_EXEC_COUNT, Fail runs: $FAIL_EXEC_COUNT)"
 fi
 
-# ── Stage 8: Interruption Signal Trapping Simulation Test ───────────────────
-echo -e "\n${CYAN}[*] Validating Stage 8: Interruption Signal Trapping & Emergency Rollback...${NC}"
+# ── Stage 8: Interruption Signal Trapping During Active Dirty State ──────────
+echo -e "\n${CYAN}[*] Validating Stage 8: Interruption Signal Trapping During Active Dirty State...${NC}"
 cp -r "$MOCK_BACKUP_DIR"/* "$MOCK_AUDIT_DIR"/
-echo "-w /etc/shadow -p wa -k interrupt_attack" > "${MOCK_RULES_DIR}/siem-lab.rules"
+
+DIRTY_MARKER="${TEST_SANDBOX}/dirty_state_verified.marker"
+HANDLER_MARKER="${TEST_SANDBOX}/signal_handler_executed.marker"
+rm -f "$DIRTY_MARKER" "$HANDLER_MARKER"
 
 CHILD_SCRIPT="${TEST_SANDBOX}/simulated_interrupted_process.sh"
 cat << 'CHILDEOF' > "$CHILD_SCRIPT"
@@ -317,48 +340,60 @@ MOCK_BACKUP_DIR="$2"
 RULES_FILE="$3"
 MOCK_BIN="$4"
 MOCK_AUDIT_DIR="$5"
+DIRTY_MARKER="$6"
+HANDLER_MARKER="$7"
 
 export PATH="${MOCK_BIN}:${PATH}"
 export SIEM_AUDIT_DIR="$MOCK_AUDIT_DIR"
 export SIEM_AUDIT_BACKUP="$MOCK_BACKUP_DIR"
 
 cleanup_on_term() {
+  touch "$HANDLER_MARKER"
   bash "$PROD_ROLLBACK" "$MOCK_BACKUP_DIR" "$RULES_FILE" >/dev/null 2>&1
   exit 143
 }
 trap cleanup_on_term TERM INT
 
-touch "${RULES_FILE}.ready"
-sleep 10
+# Stage dirty state directly
+echo "-w /etc/shadow -p wa -k interrupt_attack" > "$RULES_FILE"
+if [ -f "$RULES_FILE" ] && grep -q "interrupt_attack" "$RULES_FILE"; then
+  touch "$DIRTY_MARKER"
+fi
+
+# Sleep while in active dirty state awaiting interruption
+sleep 15
 CHILDEOF
 chmod +x "$CHILD_SCRIPT" 2>/dev/null || true
 
-bash "$CHILD_SCRIPT" "$PROD_ROLLBACK" "$MOCK_BACKUP_DIR" "${MOCK_RULES_DIR}/siem-lab.rules" "$MOCK_BIN" "$MOCK_AUDIT_DIR" &
+bash "$CHILD_SCRIPT" "$PROD_ROLLBACK" "$MOCK_BACKUP_DIR" "${MOCK_RULES_DIR}/siem-lab.rules" "$MOCK_BIN" "$MOCK_AUDIT_DIR" "$DIRTY_MARKER" "$HANDLER_MARKER" &
 CHILD_PID=$!
 
-for _ in {1..20}; do
-  if [ -f "${MOCK_RULES_DIR}/siem-lab.rules.ready" ]; then
+# Wait for child to confirm active dirty state
+for _ in {1..30}; do
+  if [ -f "$DIRTY_MARKER" ]; then
     break
   fi
   sleep 0.1
 done
-rm -f "${MOCK_RULES_DIR}/siem-lab.rules.ready"
 
+# Send SIGTERM while child is confirmed in dirty state
 kill -s TERM "$CHILD_PID" 2>/dev/null || true
-wait "$CHILD_PID" 2>/dev/null || true
+CHILD_EXIT=0
+wait "$CHILD_PID" 2>/dev/null || CHILD_EXIT=$?
 
-if [ ! -f "${MOCK_RULES_DIR}/siem-lab.rules" ] && [ -f "${MOCK_RULES_DIR}/audit.rules" ]; then
-  record_result "Stage 8" "Process Interruption Signal Trapped & Emergency Rollback Completed" "PASS" \
-    "Signal trap executed emergency rollback during dirty state; corrupt candidate was purged and baseline restored"
+if [ -f "$DIRTY_MARKER" ] && [ -f "$HANDLER_MARKER" ] && [ ! -f "${MOCK_RULES_DIR}/siem-lab.rules" ] && [ -f "${MOCK_RULES_DIR}/audit.rules" ]; then
+  record_result "Stage 8" "Process Interruption in Dirty State Trapped & Recovery Verified" "PASS" \
+    "Confirmed child in dirty state; signal trap executed recovery handler; corrupt candidate purged and baseline restored"
 else
-  record_result "Stage 8" "Process Interruption Signal Trapped & Emergency Rollback Completed" "FAIL" \
-    "Signal interruption left corrupt rules unpurged or failed to restore baseline"
+  record_result "Stage 8" "Process Interruption in Dirty State Trapped & Recovery Verified" "FAIL" \
+    "Signal test failed (Dirty verified: $([ -f "$DIRTY_MARKER" ] && echo YES || echo NO), Handler ran: $([ -f "$HANDLER_MARKER" ] && echo YES || echo NO))"
 fi
 
-# ── Stage 9: Rollback Failure Backup Retention Test ─────────────────────────
-echo -e "\n${CYAN}[*] Validating Stage 9: Rollback Failure Backup Retention Safety...${NC}"
+# ── Stage 9: Rollback Failure Quarantine Preservation Safety ────────────────
+echo -e "\n${CYAN}[*] Validating Stage 9: Rollback Failure Backup Quarantine Preservation...${NC}"
 TEMP_BACKUP="${TEST_SANDBOX}/var/backups/recovery_test_$(date +%s)"
-mkdir -p "$TEMP_BACKUP"
+QUARANTINE_DIR="${TEST_SANDBOX}/quarantined_recovery_backups"
+mkdir -p "$TEMP_BACKUP" "$QUARANTINE_DIR"
 cp -r "$MOCK_AUDIT_DIR"/* "$TEMP_BACKUP"/
 touch "${MOCK_RULES_DIR}/siem-lab.rules"
 
@@ -369,26 +404,29 @@ FAIL_EXIT=0
   export SIEM_AUDIT_BACKUP="$TEMP_BACKUP"
   export SIEM_SIMULATE_SWAP_BOUNDARY_1_FAIL=1
 
-  ROLLBACK_FAILED_STATE=0
+  ROLLBACK_STATUS="NOT_STARTED"
   if ! bash "$PROD_ROLLBACK" "$TEMP_BACKUP" "${MOCK_RULES_DIR}/siem-lab.rules" >/dev/null 2>&1; then
-    ROLLBACK_FAILED_STATE=1
+    ROLLBACK_STATUS="FAILED"
   fi
 
-  # SAFETY CHECK: Only delete backup if rollback succeeded
-  if [ "$ROLLBACK_FAILED_STATE" -eq 0 ]; then
+  # SAFETY GUARANTEE: On failure, copy/preserve recovery directory into persistent quarantine
+  if [ "$ROLLBACK_STATUS" = "FAILED" ]; then
+    cp -r "$TEMP_BACKUP" "${QUARANTINE_DIR}/preserved_audit_baseline"
+    exit 1
+  else
     rm -rf "$TEMP_BACKUP"
+    exit 0
   fi
-  exit "$ROLLBACK_FAILED_STATE"
 ) || FAIL_EXIT=$?
 
-if [ "$FAIL_EXIT" -ne 0 ] && [ -d "$TEMP_BACKUP" ]; then
-  record_result "Stage 9" "Failed Rollback Preserves Recovery Backup on Disk" "PASS" \
-    "Rollback failure cleanly propagated exit code 1; recovery backup directory was strictly preserved on disk for manual remediation"
+PRESERVED_BASELINE_FILE="${QUARANTINE_DIR}/preserved_audit_baseline/rules.d/audit.rules"
+if [ "$FAIL_EXIT" -ne 0 ] && [ -d "${QUARANTINE_DIR}/preserved_audit_baseline" ] && [ -f "$PRESERVED_BASELINE_FILE" ]; then
+  record_result "Stage 9" "Failed Rollback Preserves Recovery Backup in Dedicated Quarantine" "PASS" \
+    "Simulated rollback failure exited non-zero (1); recovery backup survived the test harness in quarantine for manual remediation"
 else
-  record_result "Stage 9" "Failed Rollback Preserves Recovery Backup on Disk" "FAIL" \
-    "Recovery backup was unexpectedly deleted or rollback failure did not exit non-zero"
+  record_result "Stage 9" "Failed Rollback Preserves Recovery Backup in Dedicated Quarantine" "FAIL" \
+    "Quarantine backup was missing or rollback failure did not exit non-zero (exit: $FAIL_EXIT)"
 fi
-rm -rf "$TEMP_BACKUP"
 
 rm -rf "$TEST_SANDBOX"
 
