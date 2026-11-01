@@ -69,13 +69,15 @@ Every detection capability and incident response workflow in this lab is backed 
 | **Cryptographic Manifest & Sigs** | [`evidence/.../EVIDENCE_MANIFEST.json`](evidence/20261028_191347/EVIDENCE_MANIFEST.json) | Structured JSON provenance manifest for local evidence snapshot with collector identity, UTC timestamps, SHA-256 hashes, and detached `.sig` digital signatures. |
 | **WORM Bucket Lock Policy** | [`evidence/gcs_bucket_lock_verification.json`](evidence/gcs_bucket_lock_verification.json) | Independent verification of GCP Cloud Storage locked WORM retention policy (30-day technical immutability supporting compliance-oriented evidence preservation on `gs://siem-lab-immutable-evidence`). |
 | **Out-of-Band Host Key Pins & Serial Logs** | [`evidence/TRUSTED_HOST_PINS.txt`](evidence/TRUSTED_HOST_PINS.txt) & [`evidence/serial_console_host_keys.log`](evidence/serial_console_host_keys.log) | Pre-provisioned OpenSSH host keys acquired out-of-band via Google Cloud Serial Port 1 (`get-serial-port-output`) to prevent MitM and spoofing during evidence ingestion. |
-| **Host Key & WORM Acceptance Suite** | `python tests/verify_host_keys_acceptance.py` | Standalone acceptance test verifying host-key OpenSSH fingerprints, serial-console capture artifacts, and live or artifact-backed WORM bucket lock. |
+| **Host Key & WORM Acceptance Suite** | `python tests/verify_host_keys_acceptance.py --deployment-acceptance` | Standalone acceptance test verifying host-key OpenSSH fingerprints, serial-console capture artifacts, and WORM bucket lock, enforcing mandatory external trust anchors (`~/.config/siem-lab/`). |
+| **Final Release Acceptance Evidence** | [`evidence/release_evidence/FINAL_ACCEPTANCE_REPORT.md`](evidence/release_evidence/FINAL_ACCEPTANCE_REPORT.md) | Release certification and raw execution logs validating deployment acceptance, fail-closed cloud controls, auditd directory swap safety, and deterministic negative CLI matrices. |
 | **Active Incident Case** | [`incident_management/cases/CASE-2026-001.json`](incident_management/cases/CASE-2026-001.json) | High-severity case opened and contained against live attacker `209.99.190.186` (Zurich, Switzerland) with strict FSM lifecycle enforcement and enterprise RBAC authorization. |
 | **Unit Test Suite Results** | [`tests/results/unit_test_latest.json`](tests/results/unit_test_latest.json) | Automated execution of 15 detection unit tests against `wazuh-logtest` (**15/15 Passed — 100% Rule, Boundary & Negative Coverage**). Tests execute against live `/var/ossec/bin/wazuh-logtest` on SIEM Manager, or deterministic `mock_logtest.py` in CI. |
 | **Static Rule Audit** | `python tests/validate_rules.py` | Validates XML syntax, duplicate rule IDs, and ID range enforcement (**10/10 Passed**). |
 | **Security Leak Gate** | `python tests/security_scan.py` | Full-history git commit and workspace audit for credentials, Slack tokens, JWTs, and `.tfstate` (**Zero Leaks — Fail Closed**). |
 | **Negative Security Tests** | [`tests/unit/test_security_gate_negative.py`](tests/unit/test_security_gate_negative.py) | Negative assertion test suite confirming security gate catches simulated private keys and forbidden files (**Passing**). |
-| **Fail-Closed Negative Suite** | [`tests/unit/test_live_verification_failures_negative.py`](tests/unit/test_live_verification_failures_negative.py) | Negative assertion test suite proving 11 failure scenarios produce non-zero exit codes (unlocked WORM policy, tampered SHA-256, corrupt signatures, rogue IAM roles, live GCP failures, and prod identity overrides). |
+| **Fail-Closed Negative Matrix** | [`tests/unit/test_live_verification_failures_negative.py`](tests/unit/test_live_verification_failures_negative.py) | Negative assertion test suite proving 16 failure scenarios produce non-zero exit codes (unlocked WORM policy, tampered SHA-256, corrupt signatures, rogue IAM roles, live GCP failures, missing external anchors, and prod identity overrides) (**16/16 Passed**). |
+| **Auditd Rollback Engine** | [`tests/unit/test_auditd_rollback.sh`](tests/unit/test_auditd_rollback.sh) | 6-stage transactional rollback test suite validating syntax corruption traps, daemon failures, kernel status assertions, rename boundary 1 & 2 failures, and directory metadata preservation (**6/6 Passed**). |
 
 ---
 
@@ -275,3 +277,35 @@ For full step-by-step instructions on provisioning, bootstrapping software, runn
 
 > [!CAUTION]
 > **Mandatory Rule:** Always run `bash incident_management/response/preserve_evidence.sh` before running `terraform destroy` to ensure no forensic attack evidence is lost upon teardown.
+
+---
+
+## 8. Final Acceptance, Release Evidence & Deployment Limitations
+
+### 8.1 Release Acceptance Test Results (v1.0.0)
+
+All security, isolation, and detection capabilities are verified via automated test suites and cryptographic evidence:
+
+| Verification Suite | Target Component / Gate | Status | Key Verifications & Assertions |
+| :--- | :--- | :---: | :--- |
+| `verify_host_keys_acceptance.py --deployment-acceptance` | Deployment Acceptance & Out-of-Band Trust | **PASSED** | OpenSSH key math across 3 VMs; isolated serial console record parsing; out-of-band external trust anchors (`~/.config/siem-lab/`); 30-day GCS bucket lock; RSA-SHA256 detached signature. |
+| `test_live_verification_failures_negative.py` | Fail-Closed Negative CLI Matrix | **16/16 PASSED** | Validates non-zero exit codes on unlocked bucket policies, sub-30-day retention, tampered object hashes, missing evidence/signature/pins, corrupt RSA signatures, tampered host pins, serial record inconsistencies, external anchor mismatches, missing deployment anchors, deterministic mock `gcloud` failures, missing CLI binaries, and production identity spoofing. |
+| `test_auditd_rollback.sh` | Transactional Rollback Engine | **6/6 PASSED** | Validates candidate syntax corruption trapping, service restart failure recovery, kernel rule status assertions, rename boundary 1 failure trapping, rename boundary 2 emergency recovery, and bit-for-bit directory metadata/permission preservation. |
+| `test_gcp_iam_isolation.py` | Control Plane & Honeypot SA Isolation | **PASSED** | Dedicated zero-privilege honeypot service account (`siem-lab-honeypot-sa`), minimal logging OAuth scope, zero ambient roles in Terraform HCL, zero instance SA in state, and fail-closed live API/ancestor policy checking. |
+| `run_rule_unit_tests.sh` | Detection Engineering & Rules | **15/15 PASSED** | 100% test coverage across brute-force, privilege escalation, and execution detection rules against Wazuh logtest. |
+| `test_security_gate_negative.py` & `security_scan.py` | Repository Security & Secrets Gate | **4/4 PASSED** | Fail-closed inspection across all tracked files, working directory, and entire Git commit history. Zero credentials or leaked keys. |
+
+### 8.2 Deployment Limitations & Operational Boundaries
+
+1. **Live Google Cloud API Verification (`--live-gcp`)**:
+   - Querying live Google Cloud Storage bucket lock policies, object metadata, virtual serial ports, and IAM ancestor policies requires an authenticated Google Cloud SDK (`gcloud`) environment with `roles/storage.admin`, `roles/compute.viewer`, and `resourcemanager.organizationViewer` permissions.
+   - When executed in environments without `gcloud` installed or authenticated, both `verify_host_keys_acceptance.py --live-gcp` and `test_gcp_iam_isolation.py --live-gcp` **intentionally fail closed** (`exit 1`). Silent fallback to static offline artifacts in live mode is prohibited.
+2. **Live Kernel Auditd Integration (`test_auditd_live_rollback.sh`)**:
+   - Modifies `/etc/audit/rules.d/` and reloads live Linux kernel auditctl rules; strictly prohibited on developer workstations, shared CI runners, and production hosts.
+   - Requires an isolated, disposable Linux virtual machine, effective root privileges (`EUID == 0`), and explicit `--force-live-danger` confirmation.
+3. **Mandatory External Trust Anchors in Deployment Mode**:
+   - When running `verify_host_keys_acceptance.py --deployment-acceptance`, the verifier enforces that out-of-band trust anchors exist outside the repository at `~/.config/siem-lab/trusted_serial_hashes.txt` (virtual serial port 1 transcript SHA-256 seal) and `~/.config/siem-lab/trusted_signer_pins.txt` (forensic evidence signer public key hash).
+   - This eliminates circular trust and prevents repository-contained tampering.
+4. **WORM Storage Compliance Framing**:
+   - Google Cloud Storage bucket retention lock enforces technical immutability (Write-Once-Read-Many) by preventing modification or premature deletion of forensic bundles during the 30-day retention window.
+   - This implementation provides technical controls supporting compliance-oriented preservation objectives (such as SEC Rule 17a-4 and FINRA Rule 4511 technical immutability goals), ensuring non-repudiation and evidence integrity without claiming independent regulatory accreditation.
