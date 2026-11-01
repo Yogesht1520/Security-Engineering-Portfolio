@@ -114,10 +114,16 @@ def verify_host_key_pins():
     print(f"[+] All {len(verified_entries)} pre-provisioned host keys mathematically verified against OpenSSH format.")
     return verified_entries
 
-def verify_serial_console_evidence(verified_pins, live_gcp: bool = False, project_id: str = "siem-detection-lab"):
+def verify_serial_console_evidence(verified_pins, live_gcp: bool = False, project_id: str = "siem-detection-lab", deployment_acceptance: bool = False):
     print("\n" + "=" * 65)
     print(" [2/3] Acceptance Verification: Out-of-Band Serial Port Auth   ")
     print("=" * 65)
+
+    if deployment_acceptance:
+        print("  [*] Enforcing Deployment Acceptance: External serial trust anchor is MANDATORY.")
+        assert EXTERNAL_SERIAL_ANCHOR.exists(), (
+            f"FATAL: External serial trust anchor {EXTERNAL_SERIAL_ANCHOR} is MANDATORY in deployment acceptance mode but was not found!"
+        )
 
     if live_gcp:
         print("  [*] Mode: LIVE GCP VIRTUAL SERIAL PORT 1 CONSOLE QUERY")
@@ -179,7 +185,7 @@ def verify_serial_console_evidence(verified_pins, live_gcp: bool = False, projec
     )
     print(f"  [✓] Repository SHA-256 Hash Seal Verified: {log_sha256}")
 
-    # 2. Authenticate against Trust Anchor OUTSIDE repository if present
+    # 2. Authenticate against Trust Anchor OUTSIDE repository
     if EXTERNAL_SERIAL_ANCHOR.exists():
         with open(EXTERNAL_SERIAL_ANCHOR, "r", encoding="utf-8") as f:
             ext_content = f.read()
@@ -187,7 +193,7 @@ def verify_serial_console_evidence(verified_pins, live_gcp: bool = False, projec
             f"EXTERNAL TRUST ANCHOR MISMATCH: Serial log hash {log_sha256} not found in {EXTERNAL_SERIAL_ANCHOR}!"
         )
         print(f"  [✓] External Trust Anchor Authenticated ({EXTERNAL_SERIAL_ANCHOR}): MATCH")
-    elif os.environ.get("SIEM_REQUIRE_EXTERNAL_TRUST_ANCHOR") == "1":
+    elif deployment_acceptance or os.environ.get("SIEM_REQUIRE_EXTERNAL_TRUST_ANCHOR") == "1":
         print(f"  [-] FATAL: External trust anchor {EXTERNAL_SERIAL_ANCHOR} required but not found! Failing closed.")
         return False
 
@@ -237,10 +243,16 @@ def verify_serial_console_evidence(verified_pins, live_gcp: bool = False, projec
     print(f"[+] Out-of-band serial port acquisition verified for {len(verified_pins)} instances.")
     return True
 
-def verify_worm_bucket_and_objects(live_gcp: bool = False, bucket_override: str = None, project_id: str = "siem-detection-lab"):
+def verify_worm_bucket_and_objects(live_gcp: bool = False, bucket_override: str = None, project_id: str = "siem-detection-lab", deployment_acceptance: bool = False):
     print("\n" + "=" * 65)
     print(" [3/3] Acceptance Verification: WORM Policy & Object Immutability")
     print("=" * 65)
+
+    if deployment_acceptance:
+        print("  [*] Enforcing Deployment Acceptance: External signer trust anchor is MANDATORY.")
+        assert EXTERNAL_SIGNER_ANCHOR.exists(), (
+            f"FATAL: External signer trust anchor {EXTERNAL_SIGNER_ANCHOR} is MANDATORY in deployment acceptance mode but was not found!"
+        )
 
     target_bucket = bucket_override or os.environ.get("EVIDENCE_BUCKET", "gs://siem-lab-immutable-evidence")
     if not target_bucket.startswith("gs://"):
@@ -299,8 +311,13 @@ def verify_worm_bucket_and_objects(live_gcp: bool = False, bucket_override: str 
                     assert live_size == expected_size, (
                         f"Live GCS size mismatch for {obj_name}! Live={live_size}, Expected={expected_size}"
                     )
+                expected_exp = obj_record.get("retentionExpirationTime")
+                assert expected_exp, f"Manifest object record for {obj_name} is missing retentionExpirationTime!"
                 assert live_exp, f"Missing retentionExpirationTime on live GCS object {obj_name}!"
-                print(f"  [✓] Live GCS Object Verified Against Manifest ({obj_name}): Gen={live_gen}, MD5={live_md5}, Size={live_size}B")
+                assert live_exp == expected_exp, (
+                    f"Live GCS retentionExpirationTime mismatch for {obj_name}! Live={live_exp}, Expected={expected_exp}"
+                )
+                print(f"  [✓] Live GCS Object Verified Against Manifest ({obj_name}): Gen={live_gen}, MD5={live_md5}, Size={live_size}B, RetentionExpires={live_exp} (MATCH)")
 
             print("[+] Live GCP WORM bucket and manifest object metadata successfully verified.")
             return True
@@ -376,7 +393,7 @@ def verify_worm_bucket_and_objects(live_gcp: bool = False, bucket_override: str 
     assert pub_sha256 in signer_pins_text, f"FATAL: Signer public key {pub_sha256} is NOT in {SIGNER_PINS_FILE}!"
     print(f"  [✓] Repository Signer Key Authenticated against TRUSTED_SIGNER_PINS.txt: {pub_sha256[:16]}...")
 
-    # Authenticate against External Trust Anchor OUTSIDE repository if present
+    # Authenticate against External Trust Anchor OUTSIDE repository
     if EXTERNAL_SIGNER_ANCHOR.exists():
         with open(EXTERNAL_SIGNER_ANCHOR, "r", encoding="utf-8") as f:
             ext_signer_content = f.read()
@@ -384,7 +401,7 @@ def verify_worm_bucket_and_objects(live_gcp: bool = False, bucket_override: str 
             f"EXTERNAL TRUST ANCHOR MISMATCH: Signer key {pub_sha256} not in {EXTERNAL_SIGNER_ANCHOR}!"
         )
         print(f"  [✓] External Signer Trust Anchor Authenticated ({EXTERNAL_SIGNER_ANCHOR}): MATCH")
-    elif os.environ.get("SIEM_REQUIRE_EXTERNAL_TRUST_ANCHOR") == "1":
+    elif deployment_acceptance or os.environ.get("SIEM_REQUIRE_EXTERNAL_TRUST_ANCHOR") == "1":
         print(f"  [-] FATAL: External trust anchor {EXTERNAL_SIGNER_ANCHOR} required but not found! Failing closed.")
         return False
 
@@ -408,14 +425,35 @@ if __name__ == "__main__":
     parser.add_argument("--live-gcp", action="store_true", help="Query live Google Cloud APIs (fails closed on error)")
     parser.add_argument("--bucket", type=str, default=None, help="Cloud Storage bucket URL for live verification")
     parser.add_argument("--project", type=str, default="siem-detection-lab", help="GCP Project ID for live verification")
+    parser.add_argument("--deployment-acceptance", action="store_true", help="Enforce deployment acceptance mode with mandatory external trust anchors")
     args = parser.parse_args()
+
+    deployment_acceptance = (
+        args.deployment_acceptance or
+        os.environ.get("SIEM_DEPLOYMENT_ACCEPTANCE") == "1" or
+        os.environ.get("SIEM_ACCEPTANCE_MODE") == "1" or
+        os.environ.get("SIEM_REQUIRE_EXTERNAL_TRUST_ANCHOR") == "1"
+    )
+
+    if deployment_acceptance:
+        print("[*] DEPLOYMENT ACCEPTANCE MODE ENFORCED: External trust anchors outside repository are mandatory.")
 
     verified_pins = verify_host_key_pins()
     if not verified_pins:
         sys.exit(1)
 
-    serial_ok = verify_serial_console_evidence(verified_pins, live_gcp=args.live_gcp, project_id=args.project)
-    worm_ok = verify_worm_bucket_and_objects(live_gcp=args.live_gcp, bucket_override=args.bucket, project_id=args.project)
+    serial_ok = verify_serial_console_evidence(
+        verified_pins,
+        live_gcp=args.live_gcp,
+        project_id=args.project,
+        deployment_acceptance=deployment_acceptance
+    )
+    worm_ok = verify_worm_bucket_and_objects(
+        live_gcp=args.live_gcp,
+        bucket_override=args.bucket,
+        project_id=args.project,
+        deployment_acceptance=deployment_acceptance
+    )
 
     if verified_pins and serial_ok and worm_ok:
         print("\n" + "=" * 65)

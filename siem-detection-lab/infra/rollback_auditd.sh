@@ -40,7 +40,9 @@ if [ -f "$CANDIDATE_FILE" ]; then
   echo "  [✓] Purged candidate audit rules file: ${CANDIDATE_FILE}" >&2
 fi
 
-# Step 2: Safely and transactionally replace the entire /etc/audit configuration directory
+# Step 2: Safely and transactionally replace the entire audit configuration directory
+# Preserves original directory permissions, ownership, and SELinux/file attributes.
+AUDIT_DIR="${SIEM_AUDIT_DIR:-/etc/audit}"
 SOURCE_AUDIT_DIR=""
 if [ -d "${BACKUP_DIR}/audit" ]; then
   SOURCE_AUDIT_DIR="${BACKUP_DIR}/audit"
@@ -48,11 +50,22 @@ elif [ -d "${BACKUP_DIR}/rules.d" ]; then
   SOURCE_AUDIT_DIR="${BACKUP_DIR}"
 fi
 
-BROKEN_DIR="/etc/audit.failed.$$"
+BROKEN_DIR="${AUDIT_DIR}.failed.$$"
 if [ -n "$SOURCE_AUDIT_DIR" ]; then
-  echo "  [*] Transactionally replacing entire /etc/audit configuration from ${SOURCE_AUDIT_DIR}..." >&2
-  STAGE_DIR="/etc/audit.rollback.$$"
+  echo "  [*] Transactionally replacing entire ${AUDIT_DIR} configuration from ${SOURCE_AUDIT_DIR}..." >&2
+  STAGE_DIR="${AUDIT_DIR}.rollback.$$"
   rm -rf "$STAGE_DIR" "$BROKEN_DIR"
+
+  # Capture and preserve original directory permissions and ownership before swap
+  ORIG_PERMS=""
+  ORIG_OWNER=""
+  if [ -d "$AUDIT_DIR" ]; then
+    if command -v stat >/dev/null 2>&1; then
+      ORIG_PERMS="$(stat -c "%a" "$AUDIT_DIR" 2>/dev/null || stat -f "%Lp" "$AUDIT_DIR" 2>/dev/null || echo "")"
+      ORIG_OWNER="$(stat -c "%u:%g" "$AUDIT_DIR" 2>/dev/null || stat -f "%u:%g" "$AUDIT_DIR" 2>/dev/null || echo "")"
+    fi
+  fi
+
   mkdir -p "$STAGE_DIR"
 
   # Copy clean baseline into staging directory
@@ -62,25 +75,60 @@ if [ -n "$SOURCE_AUDIT_DIR" ]; then
   CANDIDATE_NAME="$(basename "$CANDIDATE_FILE")"
   rm -f "${STAGE_DIR}/rules.d/${CANDIDATE_NAME}"
 
-  # Set secure root permissions
-  chmod 0750 "$STAGE_DIR" 2>/dev/null || true
-  if [ -d "${STAGE_DIR}/rules.d" ]; then
+  # Preserve original permissions and ownership on staging directory
+  if [ -d "$AUDIT_DIR" ]; then
+    chmod --reference="$AUDIT_DIR" "$STAGE_DIR" 2>/dev/null || \
+      ([ -n "$ORIG_PERMS" ] && chmod "$ORIG_PERMS" "$STAGE_DIR" 2>/dev/null) || \
+      chmod 0750 "$STAGE_DIR" 2>/dev/null || true
+    chown --reference="$AUDIT_DIR" "$STAGE_DIR" 2>/dev/null || \
+      ([ -n "$ORIG_OWNER" ] && chown "$ORIG_OWNER" "$STAGE_DIR" 2>/dev/null) || true
+  else
+    chmod 0750 "$STAGE_DIR" 2>/dev/null || true
+  fi
+
+  if [ -d "${AUDIT_DIR}/rules.d" ] && [ -d "${STAGE_DIR}/rules.d" ]; then
+    chmod --reference="${AUDIT_DIR}/rules.d" "${STAGE_DIR}/rules.d" 2>/dev/null || chmod 0750 "${STAGE_DIR}/rules.d" 2>/dev/null || true
+    chown --reference="${AUDIT_DIR}/rules.d" "${STAGE_DIR}/rules.d" 2>/dev/null || true
+  elif [ -d "${STAGE_DIR}/rules.d" ]; then
     chmod 0750 "${STAGE_DIR}/rules.d" 2>/dev/null || true
   fi
 
-  # Atomic directory swap
-  if [ -d "/etc/audit" ]; then
-    mv /etc/audit "$BROKEN_DIR"
+  # Atomic directory swap with explicit boundary verification
+  SWAP_STEP1_OK=1
+  if [ -d "$AUDIT_DIR" ]; then
+    if [ "${SIEM_SIMULATE_SWAP_BOUNDARY_1_FAIL:-0}" = "1" ]; then
+      echo "  [!] TEST HOOK: Simulating rename Boundary 1 failure (moving ${AUDIT_DIR} -> ${BROKEN_DIR})" >&2
+      SWAP_STEP1_OK=0
+    elif ! mv "$AUDIT_DIR" "$BROKEN_DIR" 2>/dev/null; then
+      echo "  [!] FATAL: Boundary 1 failed: Could not rename ${AUDIT_DIR} to ${BROKEN_DIR}!" >&2
+      SWAP_STEP1_OK=0
+    fi
   fi
 
-  if mv "$STAGE_DIR" /etc/audit; then
-    echo "  [✓] Replaced entire /etc/audit configuration directory from verified baseline." >&2
-  else
-    echo "  [!] FATAL: Failed to move staging rollback directory to /etc/audit!" >&2
-    if [ -d "$BROKEN_DIR" ]; then
-      mv "$BROKEN_DIR" /etc/audit
-    fi
+  if [ "$SWAP_STEP1_OK" -eq 0 ]; then
+    echo "  [-] Rollback aborted at Boundary 1. Active configuration preserved in prior state." >&2
+    rm -rf "$STAGE_DIR"
     ROLLBACK_FAILED=1
+  else
+    SWAP_STEP2_OK=1
+    if [ "${SIEM_SIMULATE_SWAP_BOUNDARY_2_FAIL:-0}" = "1" ]; then
+      echo "  [!] TEST HOOK: Simulating rename Boundary 2 failure (moving ${STAGE_DIR} -> ${AUDIT_DIR})" >&2
+      SWAP_STEP2_OK=0
+    elif ! mv "$STAGE_DIR" "$AUDIT_DIR" 2>/dev/null; then
+      echo "  [!] FATAL: Boundary 2 failed: Could not rename ${STAGE_DIR} to ${AUDIT_DIR}!" >&2
+      SWAP_STEP2_OK=0
+    fi
+
+    if [ "$SWAP_STEP2_OK" -eq 1 ]; then
+      echo "  [✓] Replaced entire ${AUDIT_DIR} configuration directory from verified baseline (metadata & permissions preserved)." >&2
+    else
+      echo "  [!] Attempting emergency recovery from ${BROKEN_DIR} back to ${AUDIT_DIR}..." >&2
+      if [ -d "$BROKEN_DIR" ]; then
+        mv "$BROKEN_DIR" "$AUDIT_DIR" 2>/dev/null || true
+      fi
+      rm -rf "$STAGE_DIR"
+      ROLLBACK_FAILED=1
+    fi
   fi
 fi
 
@@ -132,15 +180,15 @@ fi
 # Step 7A: Full Filesystem Audit Configuration Parity Assertion
 if [ -d "${BACKUP_DIR}/audit" ]; then
   echo "  [*] Comparing full filesystem audit configuration against baseline..." >&2
-  if ! diff -r "${BACKUP_DIR}/audit" /etc/audit >&2; then
+  if ! diff -r "${BACKUP_DIR}/audit" "$AUDIT_DIR" >&2; then
     echo "  [!] ERROR: Filesystem audit configuration mismatch between baseline and post-rollback state!" >&2
     ROLLBACK_FAILED=1
   else
     echo "  [✓] Filesystem audit configuration parity verified: 100% identical to baseline." >&2
   fi
 elif [ -d "${BACKUP_DIR}/rules.d" ]; then
-  echo "  [*] Comparing /etc/audit/rules.d/ against baseline..." >&2
-  if ! diff -r "${BACKUP_DIR}/rules.d" /etc/audit/rules.d >&2; then
+  echo "  [*] Comparing ${AUDIT_DIR}/rules.d/ against baseline..." >&2
+  if ! diff -r "${BACKUP_DIR}/rules.d" "${AUDIT_DIR}/rules.d" >&2; then
     echo "  [!] ERROR: Audit rules directory mismatch between baseline and post-rollback state!" >&2
     ROLLBACK_FAILED=1
   else

@@ -143,7 +143,9 @@ def verify_live_gcp_iam(project_id: str = "siem-detection-lab"):
     print("=" * 65)
     print(f"  [*] Querying live IAM policy & ancestors for project: {project_id}...")
 
-    target_sa_pattern = "siem-lab-honeypot-sa"
+    expected_sa_email = f"siem-lab-honeypot-sa@{project_id}.iam.gserviceaccount.com"
+    expected_sa_member = f"serviceAccount:{expected_sa_email}"
+    print(f"  [*] Target Honeypot Service Account: {expected_sa_email}")
 
     # 1. Project-level IAM bindings
     cmd_proj = ["gcloud", "projects", "get-iam-policy", project_id, "--format=json"]
@@ -157,12 +159,16 @@ def verify_live_gcp_iam(project_id: str = "siem-detection-lab"):
             role = binding.get("role", "")
             members = binding.get("members", [])
             for m in members:
-                if target_sa_pattern in m:
+                m_clean = m.strip().lower()
+                # Exact service-account email matching
+                if m_clean == expected_sa_member.lower():
                     honeypot_roles.append(role)
+                elif f"serviceAccount:siem-lab-honeypot-sa@" in m_clean or f"siem-lab-honeypot-sa@{project_id}" in m_clean:
+                    honeypot_roles.append(f"{role} (alias: {m})")
 
-        print(f"  Direct Project Roles for {target_sa_pattern}: {honeypot_roles or 'NONE (Zero Privilege Enforced)'}")
+        print(f"  Direct Project Roles for {expected_sa_email}: {honeypot_roles or 'NONE (Zero Privilege Enforced)'}")
         assert len(honeypot_roles) == 0, (
-            f"SECURITY VIOLATION: Honeypot service account holds unauthorized roles: {honeypot_roles}!"
+            f"SECURITY VIOLATION: Honeypot service account holds unauthorized direct roles: {honeypot_roles}!"
         )
         print("  [✓] Live GCP Direct IAM Policy: Zero project-level permissions confirmed.")
     except FileNotFoundError:
@@ -172,28 +178,52 @@ def verify_live_gcp_iam(project_id: str = "siem-detection-lab"):
         print(f"  [-] FATAL: gcloud projects get-iam-policy failed: {e.stderr.strip()}. Failing closed.")
         return False
 
-    # 2. Inherited Ancestor Permissions Check (Folder & Organization level)
+    # 2. Inherited Ancestor Permissions Check (Folder & Organization level) with Hierarchy Validation
     cmd_ancestors = ["gcloud", "projects", "get-ancestors-iam-policy", project_id, "--format=json"]
     try:
         res_anc = subprocess.run(cmd_ancestors, capture_output=True, text=True, check=True)
         ancestor_policies = json.loads(res_anc.stdout)
+
+        assert isinstance(ancestor_policies, list), "get-ancestors-iam-policy output must be a JSON array"
+        assert len(ancestor_policies) >= 1, "Ancestor policy hierarchy must contain at least 1 resource (the project itself)"
+
+        print(f"  [*] Validating resource hierarchy structure for project '{project_id}'...")
+        # Validate leaf node corresponds to the target project
+        project_node = ancestor_policies[0]
+        assert project_node.get("id") == project_id, (
+            f"Hierarchy leaf mismatch: expected project ID '{project_id}', got '{project_node.get('id')}'"
+        )
+        assert project_node.get("type") in ("project", None), (
+            f"Expected resource type 'project' for leaf node, got '{project_node.get('type')}'"
+        )
+
+        valid_types = {"project", "folder", "organization"}
         inherited_roles = []
-        for p in ancestor_policies:
+        for idx, p in enumerate(ancestor_policies):
+            anc_id = p.get("id")
+            anc_type = p.get("type", "unknown")
+            assert anc_id, f"Ancestor at level {idx} has an empty or null resource ID!"
+            assert anc_type in valid_types, f"Ancestor at level {idx} ({anc_id}) has unknown type '{anc_type}'!"
+            print(f"  [✓] Ancestor Hierarchy Level {idx}: type={anc_type}, id={anc_id}")
+
             policy_data = p.get("policy", {})
             for b in policy_data.get("bindings", []):
                 role = b.get("role", "")
                 members = b.get("members", [])
                 for m in members:
-                    if target_sa_pattern in m:
-                        inherited_roles.append(f"{role} (from {p.get('id')})")
+                    m_clean = m.strip().lower()
+                    if m_clean == expected_sa_member.lower():
+                        inherited_roles.append(f"{role} (inherited from {anc_type}/{anc_id})")
+                    elif f"serviceAccount:siem-lab-honeypot-sa@" in m_clean or f"siem-lab-honeypot-sa@{project_id}" in m_clean:
+                        inherited_roles.append(f"{role} (alias {m} inherited from {anc_type}/{anc_id})")
 
-        print(f"  Inherited Ancestor Roles for {target_sa_pattern}: {inherited_roles or 'NONE (Zero Privilege Enforced)'}")
+        print(f"  Inherited Ancestor Roles for {expected_sa_email}: {inherited_roles or 'NONE (Zero Privilege Enforced)'}")
         assert len(inherited_roles) == 0, (
             f"SECURITY VIOLATION: Honeypot service account holds inherited ancestor roles: {inherited_roles}!"
         )
         print("  [✓] Live GCP Inherited IAM Policy: Zero inherited ancestor permissions confirmed.")
-    except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError) as e:
-        print(f"  [-] FATAL: Failed to query ancestor IAM policies for {project_id}: {e}. Failing closed.")
+    except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError, AssertionError) as e:
+        print(f"  [-] FATAL: Failed to query or validate ancestor IAM policies for {project_id}: {e}. Failing closed.")
         return False
 
     print("[+] Live Google Cloud control-plane IAM isolation verified.")

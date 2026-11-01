@@ -54,7 +54,7 @@ def test_negative_cli_assertions():
         return subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, env=env)
 
     # ── Test 1: Full CLI — Unlocked Bucket Policy Rejected ───────────────────
-    print("[1/14] Testing CLI fail-closed on unlocked WORM bucket policy...")
+    print("[1/16] Testing CLI fail-closed on unlocked WORM bucket policy...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_repo = Path(tmp_dir) / "repo"
         shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
@@ -71,7 +71,7 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: Unlocked bucket policy rejected with exit code {res.returncode}.")
 
     # ── Test 2: Full CLI — Insufficient Retention Duration (< 30 days) ───────
-    print("[2/14] Testing CLI fail-closed on sub-30-day retention duration...")
+    print("[2/16] Testing CLI fail-closed on sub-30-day retention duration...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_repo = Path(tmp_dir) / "repo"
         shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
@@ -88,7 +88,7 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: Sub-30-day retention rejected with exit code {res.returncode}.")
 
     # ── Test 3: Full CLI — Object SHA-256 Checksum Tampering ─────────────────
-    print("[3/14] Testing CLI fail-closed on object SHA-256 hash tampering...")
+    print("[3/16] Testing CLI fail-closed on object SHA-256 hash tampering...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_repo = Path(tmp_dir) / "repo"
         shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
@@ -105,7 +105,7 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: Tampered object hash rejected with exit code {res.returncode}.")
 
     # ── Test 4: Full CLI — Missing Required Local Evidence Archive ───────────
-    print("[4/14] Testing CLI fail-closed when local evidence archive is missing...")
+    print("[4/16] Testing CLI fail-closed when local evidence archive is missing...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_repo = Path(tmp_dir) / "repo"
         shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
@@ -118,7 +118,7 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: Missing local evidence archive rejected with exit code {res.returncode}.")
 
     # ── Test 5: Full CLI — Missing Detached Digital Signature File ────────────
-    print("[5/14] Testing CLI fail-closed when detached signature file is missing...")
+    print("[5/16] Testing CLI fail-closed when detached signature file is missing...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_repo = Path(tmp_dir) / "repo"
         shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
@@ -131,7 +131,7 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: Missing signature file rejected with exit code {res.returncode}.")
 
     # ── Test 6: Full CLI — Corrupted RSA Detached Digital Signature ───────────
-    print("[6/14] Testing CLI fail-closed on corrupted digital signature...")
+    print("[6/16] Testing CLI fail-closed on corrupted digital signature...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_repo = Path(tmp_dir) / "repo"
         shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
@@ -156,7 +156,7 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: Corrupted signature rejected with exit code {res.returncode}.")
 
     # ── Test 7: Full CLI — Missing Trusted Signer Pins File ───────────────────
-    print("[7/14] Testing CLI fail-closed when TRUSTED_SIGNER_PINS.txt is missing...")
+    print("[7/16] Testing CLI fail-closed when TRUSTED_SIGNER_PINS.txt is missing...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_repo = Path(tmp_dir) / "repo"
         shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
@@ -169,7 +169,7 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: Missing trusted signer pins rejected with exit code {res.returncode}.")
 
     # ── Test 8: Full CLI — Tampered Host Key Pin Fingerprint Mismatch ─────────
-    print("[8/14] Testing CLI fail-closed on tampered host key pin...")
+    print("[8/16] Testing CLI fail-closed on tampered host key pin...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_repo = Path(tmp_dir) / "repo"
         shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
@@ -184,7 +184,7 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: Tampered host key pin rejected with exit code {res.returncode}.")
 
     # ── Test 9: Full CLI — Serial Record Internal Parity Mismatch ────────────
-    print("[9/14] Testing CLI fail-closed on serial log record self-consistency error...")
+    print("[9/16] Testing CLI fail-closed on serial log record self-consistency error...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_repo = Path(tmp_dir) / "repo"
         shutil.copytree(REPO_ROOT, tmp_repo, ignore=shutil.ignore_patterns(".git", "*.pyc", "__pycache__"))
@@ -203,7 +203,7 @@ def test_negative_cli_assertions():
         print(f"  [✓] PASSED: Serial log record discrepancy rejected with exit code {res.returncode}.")
 
     # ── Test 10: Full CLI — External Trust Anchor Hash Mismatch ───────────────
-    print("[10/14] Testing CLI fail-closed on external trust anchor mismatch...")
+    print("[10/16] Testing CLI fail-closed on external trust anchor mismatch...")
     with tempfile.TemporaryDirectory() as tmp_dir:
         bogus_anchor = Path(tmp_dir) / "bogus_anchor.txt"
         bogus_anchor.write_text("SHA256:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef | serial_console_host_keys.log\n")
@@ -214,22 +214,72 @@ def test_negative_cli_assertions():
         assert "EXTERNAL TRUST ANCHOR MISMATCH" in res.stderr or "AssertionError" in res.stderr
         print(f"  [✓] PASSED: External trust anchor mismatch rejected with exit code {res.returncode}.")
 
-    # ── Test 11: Acceptance CLI --live-gcp Fails Closed on Missing Tool ───────
-    print("[11/14] Testing CLI acceptance --live-gcp fails closed on missing tool/API...")
-    res = subprocess.run([python_bin, "tests/verify_host_keys_acceptance.py", "--live-gcp"], cwd=str(REPO_ROOT), capture_output=True, text=True)
-    assert res.returncode != 0, "Expected non-zero exit code on acceptance --live-gcp failure!"
-    assert "ACCEPTANCE VERIFICATION FAILED (Fail Closed)" in res.stdout or "FATAL" in res.stdout
-    print(f"  [✓] PASSED: Acceptance CLI --live-gcp returned exit code {res.returncode} (Fail Closed).")
+    # ── Test 11: Deployment Acceptance Mode Mandatory External Trust Anchor ───
+    print("[11/16] Testing CLI fail-closed when external trust anchor is missing in deployment acceptance mode...")
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        nonexistent_anchor = Path(tmp_dir) / "missing_anchor.txt"
+        env = {
+            "SIEM_EXTERNAL_SERIAL_ANCHOR": str(nonexistent_anchor),
+            "SIEM_DEPLOYMENT_ACCEPTANCE": "1"
+        }
+        res = run_acceptance_cli(env_overrides=env)
+        assert res.returncode != 0, "Expected non-zero exit code when external anchor is missing in deployment acceptance mode!"
+        assert "is MANDATORY in deployment acceptance mode" in res.stderr or "FATAL" in res.stdout or "AssertionError" in res.stderr
+        print(f"  [✓] PASSED: Missing external trust anchor in deployment acceptance mode rejected with exit code {res.returncode}.")
 
-    # ── Test 12: IAM Isolation CLI --live-gcp Fails Closed on Missing Tool ────
-    print("[12/14] Testing CLI IAM isolation --live-gcp fails closed on missing tool/API...")
-    res = subprocess.run([python_bin, "tests/integration/test_gcp_iam_isolation.py", "--live-gcp"], cwd=str(REPO_ROOT), capture_output=True, text=True)
-    assert res.returncode != 0, "Expected non-zero exit code on IAM isolation --live-gcp failure!"
-    assert "GCP IAM ISOLATION CHECKS FAILED (Fail Closed)" in res.stdout or "FATAL" in res.stdout
-    print(f"  [✓] PASSED: IAM Isolation CLI --live-gcp returned exit code {res.returncode} (Fail Closed).")
+    # ── Helper for Deterministic Mock gcloud Executable ───────────────────────
+    def make_mock_gcloud(bin_dir: Path, fail_msg: str = "Live GCP API simulated failure: PERMISSION_DENIED", exit_code: int = 1):
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        # Windows batch & cmd wrappers
+        bat = f"@echo off\r\necho ERROR: (gcloud) {fail_msg} 1>&2\r\nexit /b {exit_code}\r\n"
+        (bin_dir / "gcloud.bat").write_text(bat, encoding="utf-8")
+        (bin_dir / "gcloud.cmd").write_text(bat, encoding="utf-8")
+        # Unix/Linux shell wrapper
+        sh = f"#!/bin/sh\necho 'ERROR: (gcloud) {fail_msg}' >&2\nexit {exit_code}\n"
+        sh_file = bin_dir / "gcloud"
+        sh_file.write_text(sh, encoding="utf-8")
+        try:
+            os.chmod(str(sh_file), 0o755)
+        except Exception:
+            pass
 
-    # ── Test 13: Case Manager SIEM_TEST_IDENTITY Rejection in Production Mode ─
-    print("[13/14] Testing case manager strict rejection of SIEM_TEST_IDENTITY in production...")
+    # ── Test 12: Acceptance CLI --live-gcp Deterministic Mocked Failure ───────
+    print("[12/16] Testing CLI acceptance --live-gcp deterministic failure with mocked gcloud...")
+    with tempfile.TemporaryDirectory() as mock_dir:
+        mock_bin = Path(mock_dir) / "mock_bin"
+        make_mock_gcloud(mock_bin, fail_msg="Live GCP API simulated failure: PERMISSION_DENIED", exit_code=1)
+        mock_env = os.environ.copy()
+        mock_env["PATH"] = str(mock_bin) + os.pathsep + mock_env.get("PATH", "")
+
+        res = subprocess.run([python_bin, "tests/verify_host_keys_acceptance.py", "--live-gcp"], cwd=str(REPO_ROOT), env=mock_env, capture_output=True, text=True)
+        assert res.returncode != 0, "Expected non-zero exit code on acceptance --live-gcp failure!"
+        assert "Live GCP API query failed" in res.stdout or "Live GCP virtual serial port" in res.stdout or "ACCEPTANCE VERIFICATION FAILED (Fail Closed)" in res.stdout or "FATAL" in res.stdout
+        print(f"  [✓] PASSED: Acceptance CLI --live-gcp deterministically failed closed with exit code {res.returncode}.")
+
+    # ── Test 13: IAM Isolation CLI --live-gcp Deterministic Mocked Failure ────
+    print("[13/16] Testing CLI IAM isolation --live-gcp deterministic failure with mocked gcloud...")
+    with tempfile.TemporaryDirectory() as mock_dir:
+        mock_bin = Path(mock_dir) / "mock_bin"
+        make_mock_gcloud(mock_bin, fail_msg="Live GCP API simulated failure: PERMISSION_DENIED", exit_code=1)
+        mock_env = os.environ.copy()
+        mock_env["PATH"] = str(mock_bin) + os.pathsep + mock_env.get("PATH", "")
+
+        res = subprocess.run([python_bin, "tests/integration/test_gcp_iam_isolation.py", "--live-gcp"], cwd=str(REPO_ROOT), env=mock_env, capture_output=True, text=True)
+        assert res.returncode != 0, "Expected non-zero exit code on IAM isolation --live-gcp failure!"
+        assert "gcloud projects get-iam-policy failed" in res.stdout or "GCP IAM ISOLATION CHECKS FAILED (Fail Closed)" in res.stdout or "FATAL" in res.stdout
+        print(f"  [✓] PASSED: IAM Isolation CLI --live-gcp deterministically failed closed with exit code {res.returncode}.")
+
+    # ── Test 14: Deterministic Missing Tool (PATH Without gcloud) ──────────────
+    print("[14/16] Testing CLI --live-gcp deterministic failure when gcloud is missing from PATH...")
+    env_no_gcloud = os.environ.copy()
+    env_no_gcloud["PATH"] = os.path.dirname(python_bin)
+    res = subprocess.run([python_bin, "tests/verify_host_keys_acceptance.py", "--live-gcp"], cwd=str(REPO_ROOT), env=env_no_gcloud, capture_output=True, text=True)
+    assert res.returncode != 0, "Expected non-zero exit code when gcloud CLI is missing!"
+    assert "'gcloud' CLI was not found on PATH" in res.stdout or "ACCEPTANCE VERIFICATION FAILED" in res.stdout
+    print(f"  [✓] PASSED: Missing gcloud executable deterministically failed closed with exit code {res.returncode}.")
+
+    # ── Test 15: Case Manager SIEM_TEST_IDENTITY Rejection in Production Mode ─
+    print("[15/16] Testing case manager strict rejection of SIEM_TEST_IDENTITY in production...")
     cmd_prod_auth = [
         python_bin, "-c",
         "import os, sys; from pathlib import Path; sys.path.insert(0, r'" + str(REPO_ROOT) + "'); os.environ['SIEM_ENV']='production'; os.environ['SIEM_TEST_IDENTITY']='fake'; import incident_management.case_manager as cm; cm.get_caller_identity()"
@@ -239,15 +289,15 @@ def test_negative_cli_assertions():
     assert "PermissionError" in res.stderr or "strictly prohibited in production" in res.stderr
     print(f"  [✓] PASSED: Production identity override rejected with exit code {res.returncode} (Fail Closed).")
 
-    # ── Test 14: Live Auditd Rollback Script Rejection Without Confirmation Flag
-    print("[14/14] Testing live auditd integration script blocks without --force-live-danger...")
+    # ── Test 16: Live Auditd Rollback Script Rejection Without Confirmation Flag
+    print("[16/16] Testing live auditd integration script blocks without --force-live-danger...")
     res = subprocess.run(["bash", "tests/integration/test_auditd_live_rollback.sh"], cwd=str(REPO_ROOT), capture_output=True, text=True)
     assert res.returncode != 0, "Expected non-zero exit code on live auditd test without confirmation flag!"
     assert "SAFETY BLOCKED" in res.stderr
     print(f"  [✓] PASSED: Live auditd integration test safely blocked with exit code {res.returncode}.")
 
     print("\n" + "=" * 65)
-    print(" [✓] ALL 14 NEGATIVE & MISSING-EVIDENCE CLI ASSERTIONS PASSED.")
+    print(" [✓] ALL 16 NEGATIVE & MISSING-EVIDENCE CLI ASSERTIONS PASSED.")
     print("=" * 65)
 
 if __name__ == "__main__":

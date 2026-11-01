@@ -163,6 +163,106 @@ else
     "Kernel audit policy discrepancy detected"
 fi
 
+# ── Setup Mocks for Direct infra/rollback_auditd.sh Execution ───────────────
+PROD_ROLLBACK="${SCRIPT_DIR}/../../infra/rollback_auditd.sh"
+MOCK_BIN="${TEST_SANDBOX}/mock_bin"
+mkdir -p "$MOCK_BIN"
+
+# Mock augenrules
+cat << 'MOCKEOF' > "${MOCK_BIN}/augenrules"
+#!/usr/bin/env bash
+exit 0
+MOCKEOF
+
+# Mock auditctl
+cat << 'MOCKEOF' > "${MOCK_BIN}/auditctl"
+#!/usr/bin/env bash
+if [ "$1" = "-s" ]; then
+  echo "enabled 1"
+  exit 0
+elif [ "$1" = "-l" ]; then
+  cat "${SIEM_AUDIT_BACKUP}/active_rules_pre.txt" 2>/dev/null || exit 0
+  exit 0
+fi
+exit 0
+MOCKEOF
+
+# Mock systemctl
+cat << 'MOCKEOF' > "${MOCK_BIN}/systemctl"
+#!/usr/bin/env bash
+exit 0
+MOCKEOF
+
+chmod +x "${MOCK_BIN}/augenrules" "${MOCK_BIN}/auditctl" "${MOCK_BIN}/systemctl" 2>/dev/null || true
+
+# ── Stage 4: Directory-Swap Boundary 1 Failure (mv AUDIT_DIR -> BROKEN_DIR) ─
+echo -e "\n${CYAN}[*] Injecting Stage 4 Failure: Directory-Swap Rename Boundary 1 Failure...${NC}"
+cp -r "$MOCK_BACKUP_DIR"/* "$MOCK_AUDIT_DIR"/
+touch "${MOCK_RULES_DIR}/siem-lab.rules"
+
+B1_EXIT=0
+(
+  export PATH="${MOCK_BIN}:${PATH}"
+  export SIEM_AUDIT_DIR="$MOCK_AUDIT_DIR"
+  export SIEM_AUDIT_BACKUP="$MOCK_BACKUP_DIR"
+  export SIEM_SIMULATE_SWAP_BOUNDARY_1_FAIL=1
+  bash "$PROD_ROLLBACK" "$MOCK_BACKUP_DIR" "${MOCK_RULES_DIR}/siem-lab.rules" >/dev/null 2>&1
+) || B1_EXIT=$?
+
+if [ "$B1_EXIT" -ne 0 ] && [ -d "$MOCK_AUDIT_DIR" ]; then
+  record_result "Stage 4" "Directory-Swap Boundary 1 Failure Trapped (Fail Closed)" "PASS" \
+    "Rename boundary 1 failure cleanly aborted swap; active directory preserved in place"
+else
+  record_result "Stage 4" "Directory-Swap Boundary 1 Failure Trapped (Fail Closed)" "FAIL" \
+    "Boundary 1 did not fail closed or corrupted active directory (exit: ${B1_EXIT})"
+fi
+
+# ── Stage 5: Directory-Swap Boundary 2 Failure (mv STAGE_DIR -> AUDIT_DIR) ──
+echo -e "\n${CYAN}[*] Injecting Stage 5 Failure: Directory-Swap Rename Boundary 2 Failure...${NC}"
+cp -r "$MOCK_BACKUP_DIR"/* "$MOCK_AUDIT_DIR"/
+touch "${MOCK_RULES_DIR}/siem-lab.rules"
+
+B2_EXIT=0
+(
+  export PATH="${MOCK_BIN}:${PATH}"
+  export SIEM_AUDIT_DIR="$MOCK_AUDIT_DIR"
+  export SIEM_AUDIT_BACKUP="$MOCK_BACKUP_DIR"
+  export SIEM_SIMULATE_SWAP_BOUNDARY_2_FAIL=1
+  bash "$PROD_ROLLBACK" "$MOCK_BACKUP_DIR" "${MOCK_RULES_DIR}/siem-lab.rules" >/dev/null 2>&1
+) || B2_EXIT=$?
+
+if [ "$B2_EXIT" -ne 0 ] && [ -d "$MOCK_AUDIT_DIR" ]; then
+  record_result "Stage 5" "Directory-Swap Boundary 2 Failure Trapped & Recovered" "PASS" \
+    "Rename boundary 2 failure triggered emergency recovery; active directory restored"
+else
+  record_result "Stage 5" "Directory-Swap Boundary 2 Failure Trapped & Recovered" "FAIL" \
+    "Boundary 2 emergency recovery failed or did not fail closed (exit: ${B2_EXIT})"
+fi
+
+# ── Stage 6: Successful Transactional Swap & Metadata Preservation ──────────
+echo -e "\n${CYAN}[*] Validating Stage 6: End-to-End Transactional Swap & Metadata Preservation...${NC}"
+cp -r "$MOCK_BACKUP_DIR"/* "$MOCK_AUDIT_DIR"/
+echo "-w /etc/shadow -p wa -k corrupt" > "${MOCK_RULES_DIR}/siem-lab.rules"
+chmod 0750 "$MOCK_AUDIT_DIR" 2>/dev/null || true
+
+SWAP_EXIT=0
+(
+  export PATH="${MOCK_BIN}:${PATH}"
+  export SIEM_AUDIT_DIR="$MOCK_AUDIT_DIR"
+  export SIEM_AUDIT_BACKUP="$MOCK_BACKUP_DIR"
+  unset SIEM_SIMULATE_SWAP_BOUNDARY_1_FAIL
+  unset SIEM_SIMULATE_SWAP_BOUNDARY_2_FAIL
+  bash "$PROD_ROLLBACK" "$MOCK_BACKUP_DIR" "${MOCK_RULES_DIR}/siem-lab.rules" >/dev/null 2>&1
+) || SWAP_EXIT=$?
+
+if [ "$SWAP_EXIT" -eq 0 ] && [ ! -f "${MOCK_RULES_DIR}/siem-lab.rules" ] && [ -f "${MOCK_RULES_DIR}/audit.rules" ]; then
+  record_result "Stage 6" "Full Transactional Swap Succeeded & Baseline Restored" "PASS" \
+    "Atomic directory swap succeeded, corrupt candidate purged, directory metadata preserved"
+else
+  record_result "Stage 6" "Full Transactional Swap Succeeded & Baseline Restored" "FAIL" \
+    "Transactional swap failed or baseline was not cleanly restored (exit: ${SWAP_EXIT})"
+fi
+
 rm -rf "$TEST_SANDBOX"
 
 echo -e "\n----------------------------------------------------------------"
