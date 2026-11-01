@@ -187,24 +187,38 @@ def verify_live_gcp_iam(project_id: str = "siem-detection-lab"):
         assert isinstance(ancestor_policies, list), "get-ancestors-iam-policy output must be a JSON array"
         assert len(ancestor_policies) >= 1, "Ancestor policy hierarchy must contain at least 1 resource (the project itself)"
 
-        print(f"  [*] Validating resource hierarchy structure for project '{project_id}'...")
-        # Validate leaf node corresponds to the target project
+        # Strict hierarchy validation: explicit types and consistent resource ordering
+        print(f"  [*] Strictly validating resource hierarchy structure for project '{project_id}'...")
         project_node = ancestor_policies[0]
         assert project_node.get("id") == project_id, (
             f"Hierarchy leaf mismatch: expected project ID '{project_id}', got '{project_node.get('id')}'"
         )
-        assert project_node.get("type") in ("project", None), (
-            f"Expected resource type 'project' for leaf node, got '{project_node.get('type')}'"
+        assert project_node.get("type") == "project", (
+            f"Explicit type violation: leaf node must have explicit type 'project', found '{project_node.get('type')}'"
         )
 
-        valid_types = {"project", "folder", "organization"}
+        seen_org = False
         inherited_roles = []
         for idx, p in enumerate(ancestor_policies):
-            anc_id = p.get("id")
-            anc_type = p.get("type", "unknown")
-            assert anc_id, f"Ancestor at level {idx} has an empty or null resource ID!"
-            assert anc_type in valid_types, f"Ancestor at level {idx} ({anc_id}) has unknown type '{anc_type}'!"
-            print(f"  [✓] Ancestor Hierarchy Level {idx}: type={anc_type}, id={anc_id}")
+            anc_id = str(p.get("id", "")).strip()
+            anc_type = str(p.get("type", "")).strip()
+
+            assert anc_id, f"Ancestor at hierarchy level {idx} has missing or empty resource ID!"
+            assert anc_type in ("project", "folder", "organization"), (
+                f"Explicit type violation: ancestor at level {idx} ({anc_id}) has invalid type '{anc_type}'!"
+            )
+
+            # Ordering consistency rules:
+            # 1. Level 0 must be project; subsequent levels must NOT be project
+            if idx > 0 and anc_type == "project":
+                raise AssertionError(f"Hierarchy ordering violation: duplicate project node found at level {idx} ({anc_id})")
+            # 2. Once an organization node is seen, no further ancestors may appear above it
+            if seen_org:
+                raise AssertionError(f"Hierarchy ordering violation: child resource {anc_type}/{anc_id} found after organization root at level {idx}")
+            if anc_type == "organization":
+                seen_org = True
+
+            print(f"  [✓] Verified Hierarchy Level {idx}: type={anc_type:12s} id={anc_id}")
 
             policy_data = p.get("policy", {})
             for b in policy_data.get("bindings", []):

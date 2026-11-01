@@ -30,6 +30,7 @@ import hashlib
 import json
 import re
 import subprocess
+import datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -50,6 +51,18 @@ EXTERNAL_SERIAL_ANCHOR = Path(os.environ.get(
     "SIEM_EXTERNAL_SERIAL_ANCHOR",
     Path.home() / ".config" / "siem-lab" / "trusted_serial_hashes.txt"
 ))
+
+def parse_timezone_aware_utc(ts_str: str) -> datetime.datetime:
+    """Parses an ISO 8601 string into a timezone-aware UTC datetime."""
+    s = ts_str.strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    dt = datetime.datetime.fromisoformat(s)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
+    else:
+        dt = dt.astimezone(datetime.timezone.utc)
+    return dt
 
 def calculate_openssh_fingerprint(base64_pubkey: str) -> str:
     """Calculates OpenSSH SHA256 fingerprint from base64-encoded binary public key."""
@@ -136,6 +149,7 @@ def verify_serial_console_evidence(verified_pins, live_gcp: bool = False, projec
         for entry in verified_pins:
             host = entry["host"]
             expected_fp = entry["fingerprint"]
+            expected_key = entry["pubkey"]
             zone = vm_zones.get(host, "us-central1-a")
 
             cmd = ["gcloud", "compute", "instances", "get-serial-port-output", host, f"--zone={zone}", "--port=1", f"--project={project_id}"]
@@ -143,21 +157,34 @@ def verify_serial_console_evidence(verified_pins, live_gcp: bool = False, projec
                 res = subprocess.run(cmd, capture_output=True, text=True, check=True)
                 console_output = res.stdout
 
-                # Parse live host key and fingerprint specifically from output
-                key_match = re.search(r"HostKey:\s+ssh-ed25519\s+(\S+)", console_output)
-                fp_match = re.search(r"HostKey Fingerprint:\s+(SHA256:\S+)", console_output)
+                # Strict Live Record Parsing: Key and fingerprint must be parsed within the same record block
+                record_match = re.search(
+                    r"HostKey:\s+ssh-ed25519\s+(?P<key>[A-Za-z0-9+/=]+)[^\n]*\n[^\n]*?HostKey Fingerprint:\s+\(?(?P<fp>SHA256:[A-Za-z0-9+/=]+)\)?",
+                    console_output
+                )
 
-                assert key_match, f"Live serial port 1 on {host} did NOT contain a HostKey ssh-ed25519 line!"
-                assert fp_match, f"Live serial port 1 on {host} did NOT contain a HostKey Fingerprint line!"
+                assert record_match, (
+                    f"Live virtual serial port 1 on {host} did NOT contain a coherent HostKey + Fingerprint record block!"
+                )
 
-                live_key = key_match.group(1)
-                live_fp = fp_match.group(1).rstrip(")")
+                live_key = record_match.group("key")
+                live_fp = record_match.group("fp")
 
+                # Validate internal mathematical parity within the same live record
                 calc_live_fp = calculate_openssh_fingerprint(live_key)
-                assert calc_live_fp == live_fp, f"Live serial key fingerprint mismatch on {host}!"
-                assert live_fp == expected_fp, f"Live serial fingerprint mismatch for {host}! Expected {expected_fp}, got {live_fp}"
+                assert calc_live_fp == live_fp, (
+                    f"Live record internal discrepancy on {host}: calculated {calc_live_fp} != claimed {live_fp}"
+                )
 
-                print(f"  [✓] {host:20s}: Live GCP virtual serial port 1 verified out-of-band ({expected_fp})")
+                # Validate against pre-provisioned trusted key and fingerprint
+                assert live_key == expected_key, (
+                    f"Live public key mismatch for {host}!\nExpected: {expected_key}\nFound:    {live_key}"
+                )
+                assert live_fp == expected_fp, (
+                    f"Live fingerprint mismatch for {host}!\nExpected: {expected_fp}\nFound:    {live_fp}"
+                )
+
+                print(f"  [✓] {host:20s}: Live serial record verified (Same-record key & SHA-256 match)")
             except FileNotFoundError:
                 print("  [-] FATAL: 'gcloud' CLI was not found on PATH. Live GCP serial verification failed closed.")
                 return False
@@ -314,10 +341,13 @@ def verify_worm_bucket_and_objects(live_gcp: bool = False, bucket_override: str 
                 expected_exp = obj_record.get("retentionExpirationTime")
                 assert expected_exp, f"Manifest object record for {obj_name} is missing retentionExpirationTime!"
                 assert live_exp, f"Missing retentionExpirationTime on live GCS object {obj_name}!"
-                assert live_exp == expected_exp, (
-                    f"Live GCS retentionExpirationTime mismatch for {obj_name}! Live={live_exp}, Expected={expected_exp}"
+
+                dt_live = parse_timezone_aware_utc(live_exp)
+                dt_expected = parse_timezone_aware_utc(expected_exp)
+                assert dt_live == dt_expected, (
+                    f"Live GCS retentionExpirationTime UTC mismatch for {obj_name}! Live={dt_live.isoformat()}, Expected={dt_expected.isoformat()}"
                 )
-                print(f"  [✓] Live GCS Object Verified Against Manifest ({obj_name}): Gen={live_gen}, MD5={live_md5}, Size={live_size}B, RetentionExpires={live_exp} (MATCH)")
+                print(f"  [✓] Live GCS Object Verified Against Manifest ({obj_name}): Gen={live_gen}, MD5={live_md5}, Size={live_size}B, RetentionExpiresUTC={dt_live.isoformat()} (MATCH)")
 
             print("[+] Live GCP WORM bucket and manifest object metadata successfully verified.")
             return True
@@ -358,6 +388,10 @@ def verify_worm_bucket_and_objects(live_gcp: bool = False, bucket_override: str 
 
         assert str(expected_gen).isdigit() and len(str(expected_gen)) >= 14, f"Invalid GCS generation: {expected_gen}"
         assert len(expected_sha256) == 64, f"Invalid SHA-256 for {obj_name}: {expected_sha256}"
+        expected_exp = obj_record.get("retentionExpirationTime")
+        assert expected_exp, f"Manifest object record for {obj_name} missing retentionExpirationTime!"
+        dt_exp = parse_timezone_aware_utc(expected_exp)
+        assert dt_exp.tzinfo is not None, f"retentionExpirationTime for {obj_name} must be timezone-aware!"
 
         local_file = EVIDENCE_DIR / obj_name
         assert local_file.exists(), f"FATAL: Required local evidence file {local_file} is MISSING! Skipping prohibited."

@@ -282,18 +282,27 @@ For full step-by-step instructions on provisioning, bootstrapping software, runn
 
 ## 8. Final Acceptance, Release Evidence & Deployment Limitations
 
-### 8.1 Release Acceptance Test Results (v1.0.0)
+### 8.1 Release Acceptance Test Results (v1.0.1 Hardening Release)
 
-All security, isolation, and detection capabilities are verified via automated test suites and cryptographic evidence:
+All security, isolation, and detection capabilities are verified via automated test suites, machine-readable provenance manifests, and cryptographic evidence:
 
 | Verification Suite | Target Component / Gate | Status | Key Verifications & Assertions |
 | :--- | :--- | :---: | :--- |
-| `verify_host_keys_acceptance.py --deployment-acceptance` | Deployment Acceptance & Out-of-Band Trust | **PASSED** | OpenSSH key math across 3 VMs; isolated serial console record parsing; out-of-band external trust anchors (`~/.config/siem-lab/`); 30-day GCS bucket lock; RSA-SHA256 detached signature. |
-| `test_live_verification_failures_negative.py` | Fail-Closed Negative CLI Matrix | **16/16 PASSED** | Validates non-zero exit codes on unlocked bucket policies, sub-30-day retention, tampered object hashes, missing evidence/signature/pins, corrupt RSA signatures, tampered host pins, serial record inconsistencies, external anchor mismatches, missing deployment anchors, deterministic mock `gcloud` failures, missing CLI binaries, and production identity spoofing. |
+| `verify_host_keys_acceptance.py --deployment-acceptance` | Deployment Acceptance & Out-of-Band Trust | **PASSED** | OpenSSH key math across 3 VMs; isolated serial console record parsing; out-of-band external trust anchors (`~/.config/siem-lab/`); 30-day GCS bucket lock; timezone-aware UTC retention matching; RSA-SHA256 detached signature. |
+| `verify_host_keys_acceptance.py --live-gcp` | GCS & Serial Console Fail-Closed Boundary | **FAIL-CLOSED VERIFIED** | **Fail-Closed Security Boundary Test:** Verifies immediate non-zero exit (`code 1`) when `gcloud` or cloud credentials are not present; eliminates silent fallback to static artifacts. |
+| `test_gcp_iam_isolation.py --live-gcp` | GCP IAM & Ancestor Hierarchy Fail-Closed Boundary | **FAIL-CLOSED VERIFIED** | **Fail-Closed Security Boundary Test:** Verifies immediate non-zero exit (`code 1`) when querying ancestor policy hierarchy without credentials; strictly validates explicit types (`project`, `folder`, `organization`) and ordering. |
+| `test_auditd_live_rollback.sh` | Workstation Safety Guard | **SAFETY-GUARD VERIFIED** | **Workstation Safety-Guard Test:** Confirms live kernel audit modification is blocked with exit code 1 on non-disposable hosts, protecting workstation auditd configurations. |
 | `test_auditd_rollback.sh` | Transactional Rollback Engine | **6/6 PASSED** | Validates candidate syntax corruption trapping, service restart failure recovery, kernel rule status assertions, rename boundary 1 failure trapping, rename boundary 2 emergency recovery, and bit-for-bit directory metadata/permission preservation. |
-| `test_gcp_iam_isolation.py` | Control Plane & Honeypot SA Isolation | **PASSED** | Dedicated zero-privilege honeypot service account (`siem-lab-honeypot-sa`), minimal logging OAuth scope, zero ambient roles in Terraform HCL, zero instance SA in state, and fail-closed live API/ancestor policy checking. |
+| `test_live_verification_failures_negative.py` | Fail-Closed Negative CLI Matrix | **16/16 PASSED** | Validates non-zero exit codes on unlocked bucket policies, sub-30-day retention, tampered object hashes, missing evidence/signature/pins, corrupt RSA signatures, tampered host pins, serial record inconsistencies, external anchor mismatches, missing deployment anchors, deterministic mock `gcloud` failures, missing CLI binaries, and production identity spoofing. |
 | `run_rule_unit_tests.sh` | Detection Engineering & Rules | **15/15 PASSED** | 100% test coverage across brute-force, privilege escalation, and execution detection rules against Wazuh logtest. |
 | `test_security_gate_negative.py` & `security_scan.py` | Repository Security & Secrets Gate | **4/4 PASSED** | Fail-closed inspection across all tracked files, working directory, and entire Git commit history. Zero credentials or leaked keys. |
+
+### 8.2 Machine-Readable Provenance & Release Evidence Manifest
+
+Release evidence is stored in [`evidence/release_evidence/`](evidence/release_evidence/):
+- **Structured Test Results:** [`test_results.json`](evidence/release_evidence/test_results.json) (schema version 1.0.0) recording structured execution results, exit codes, and SHA-256 digests.
+- **Cryptographic Log Hashes:** [`RELEASE_LOG_HASHES.sha256`](evidence/release_evidence/RELEASE_LOG_HASHES.sha256) sealing all raw logs.
+- **Signed Git Provenance:** Release `v1.0.1` commits and annotated tags are cryptographically signed with the lab administrator's authorized SSH key and verifiable against [`allowed_signers`](evidence/release_evidence/allowed_signers).
 
 ### 8.2 Deployment Limitations & Operational Boundaries
 

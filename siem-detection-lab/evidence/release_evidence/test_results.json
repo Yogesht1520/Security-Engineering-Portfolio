@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0.0",
+  "release_version": "v1.0.1",
+  "project_id": "siem-detection-lab",
+  "generated_at_utc": "2026-11-01T19:57:33.447618+00:00",
+  "verification_environment": {
+    "platform": "Windows-11",
+    "python_version": "3.13.3",
+    "git_branch": "main"
+  },
+  "results_summary": {
+    "total_suites": 7,
+    "deployment_acceptance_passed": true,
+    "security_gates_passed": true,
+    "fail_closed_boundaries_verified": true,
+    "workstation_safety_guards_verified": true
+  },
+  "suites": [
+    {
+      "id": "deployment_acceptance",
+      "name": "Deployment Acceptance & Host Key / WORM Verification",
+      "command": "python tests/verify_host_keys_acceptance.py --deployment-acceptance",
+      "classification": "DEPLOYMENT_ACCEPTANCE_TEST",
+      "status": "PASSED",
+      "exit_code": 0,
+      "summary": "Validated pre-provisioned OpenSSH host keys, out-of-band serial hashes against external trust anchors (~/.config/siem-lab/), 30-day WORM bucket lock, and detached RSA-SHA256 signatures.",
+      "log_file": "deployment_acceptance.log",
+      "log_sha256": "c0e6ae819f875dc1ac9bd46b8f1f12226fc7e8796196471947a01ab9bfd3d574"
+    },
+    {
+      "id": "live_gcp_acceptance_fail_closed",
+      "name": "GCP Storage & Serial Console Fail-Closed Security Boundary Test",
+      "command": "python tests/verify_host_keys_acceptance.py --live-gcp",
+      "classification": "FAIL_CLOSED_SECURITY_BOUNDARY_TEST",
+      "status": "FAIL_CLOSED_VERIFIED",
+      "exit_code": 1,
+      "summary": "Verified fail-closed security boundary: missing gcloud CLI or cloud credentials halts immediately with exit code 1; silent fallback to static artifacts is strictly prohibited.",
+      "log_file": "live_gcp_acceptance_fail_closed.log",
+      "log_sha256": "b5bdb8968c1fd813be987cf86396aba5911371868b87a1c2224fb17cfd808658"
+    },
+    {
+      "id": "live_gcp_iam_fail_closed",
+      "name": "GCP IAM Isolation & Ancestor Hierarchy Fail-Closed Security Boundary Test",
+      "command": "python tests/integration/test_gcp_iam_isolation.py --live-gcp",
+      "classification": "FAIL_CLOSED_SECURITY_BOUNDARY_TEST",
+      "status": "FAIL_CLOSED_VERIFIED",
+      "exit_code": 1,
+      "summary": "Verified fail-closed security boundary: missing gcloud CLI or cloud credentials halts immediately with exit code 1; prohibits silent skip of ancestor policy hierarchy.",
+      "log_file": "live_gcp_iam_fail_closed.log",
+      "log_sha256": "dc6962eb22e14411d96939498e1a2c772a1d7d08703b27c3818f31a698c84d9b"
+    },
+    {
+      "id": "live_auditd_workstation_safety_guard",
+      "name": "Live Auditd Workstation Safety Guard Test",
+      "command": "bash tests/integration/test_auditd_live_rollback.sh",
+      "classification": "WORKSTATION_SAFETY_GUARD_TEST",
+      "status": "SAFETY_GUARD_VERIFIED",
+      "exit_code": 1,
+      "summary": "Verified workstation protection guard: destructive live kernel audit modifications are blocked with exit code 1 unless executed as root with --force-live-danger on a disposable VM.",
+      "log_file": "live_auditd_safety_guard.log",
+      "log_sha256": "26edc2773d6f418b561b0b2f14a96f9f1d9b46901a6c5c33646b90e60b2e8f53"
+    },
+    {
+      "id": "auditd_rollback_simulation",
+      "name": "Auditd Transactional Rollback Simulation Engine",
+      "command": "bash tests/unit/test_auditd_rollback.sh",
+      "classification": "UNIT_SIMULATION_TEST",
+      "status": "PASSED",
+      "exit_code": 0,
+      "summary": "6/6 stages passed: candidate syntax error trapping, service restart failure recovery, kernel status assertions, rename boundary 1 failure trapping, rename boundary 2 emergency recovery, and metadata preservation.",
+      "log_file": "auditd_rollback_simulation.log",
+      "log_sha256": "4e63468af6d8e0ddfadb7cddbe2efa1909cb698dcbf81f46d377e48aaf554bf2"
+    },
+    {
+      "id": "negative_cli_matrix",
+      "name": "Comprehensive Negative & Missing-Evidence CLI Matrix",
+      "command": "python tests/unit/test_live_verification_failures_negative.py",
+      "classification": "NEGATIVE_SECURITY_TEST",
+      "status": "PASSED",
+      "exit_code": 0,
+      "summary": "16/16 negative assertions passed proving non-zero exit codes on unlocked policies, sub-30-day retention, tampered hashes, corrupt signatures, mock GCP errors, and identity spoofing.",
+      "log_file": "negative_cli_matrix.log",
+      "log_sha256": "b2a1297a9a47607d3054816b9e13c1b54b34c769d34334f7d7d9eed5b2692abc"
+    },
+    {
+      "id": "security_scan",
+      "name": "Repository Security & Secret History Audit Gate",
+      "command": "python tests/security_scan.py",
+      "classification": "SECURITY_GATE_TEST",
+      "status": "PASSED",
+      "exit_code": 0,
+      "summary": "4/4 security gates passed: zero prohibited filenames, zero working directory secrets/keys, zero leaked credentials across full Git commit history, and active gitignore enforcement.",
+      "log_file": "security_scan.log",
+      "log_sha256": "ac749884d7c90c80e2e648d7c609b0ed230370cde08cf8844975ddf6ad44eaa7"
+    }
+  ]
+}
