@@ -75,6 +75,7 @@ Every detection capability and incident response workflow in this lab is backed 
 | **Static Rule Audit** | `python tests/validate_rules.py` | Validates XML syntax, duplicate rule IDs, and ID range enforcement (**10/10 Passed**). |
 | **Security Leak Gate** | `python tests/security_scan.py` | Full-history git commit and workspace audit for credentials, Slack tokens, JWTs, and `.tfstate` (**Zero Leaks — Fail Closed**). |
 | **Negative Security Tests** | [`tests/unit/test_security_gate_negative.py`](tests/unit/test_security_gate_negative.py) | Negative assertion test suite confirming security gate catches simulated private keys and forbidden files (**Passing**). |
+| **Fail-Closed Negative Suite** | [`tests/unit/test_live_verification_failures_negative.py`](tests/unit/test_live_verification_failures_negative.py) | Negative assertion test suite proving 11 failure scenarios produce non-zero exit codes (unlocked WORM policy, tampered SHA-256, corrupt signatures, rogue IAM roles, live GCP failures, and prod identity overrides). |
 
 ---
 

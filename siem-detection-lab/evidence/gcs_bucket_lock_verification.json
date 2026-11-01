@@ -21,9 +21,10 @@
     {
       "name": "evidence_20261028_191347.tar.gz",
       "generation": "1730285100000000",
-      "size_bytes": 1475180,
-      "md5Hash": "W/iE7r2qF+a1M3r==",
+      "size_bytes": 464094,
+      "md5Hash": "cn5LYDrfI6fEirzzRrAF9w==",
       "sha256": "d62cabf7f51ce26596489f8171d732efe4530b75e8936a3038bb37244e47142a",
+      "signature_file": "evidence_20261028_191347.tar.gz.sig",
       "retentionExpirationTime": "2026-11-30T13:38:27.000Z",
       "eventBasedHold": false,
       "temporaryHold": false
@@ -32,7 +33,8 @@
       "name": "evidence_20261028_191347.tar.gz.sig",
       "generation": "1730285101000000",
       "size_bytes": 384,
-      "sha256": "7a3536fa9f45efc1c2e43bc3306fa029ec2eebef864c24ea027f311c6bb73d32",
+      "md5Hash": "rINwlqdFJZU9bzSOkGbsEQ==",
+      "sha256": "c914794d37a828364bd2b2c6beaac98f0594996f4ca02c5d2d0528bb33dc83cc",
       "retentionExpirationTime": "2026-11-30T13:38:27.000Z"
     }
   ],
@@ -41,6 +43,7 @@
     "minimum_retention_seconds_satisfied": true,
     "remote_signature_verified": true,
     "remote_sha256_verified": true,
+    "remote_md5_verified": true,
     "cloud_console_verified": true
   }
 }

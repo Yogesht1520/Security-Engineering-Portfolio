@@ -74,3 +74,4 @@
 [   14.003400] cloud-init[498]: +----[SHA256]-----+
 [   14.005100] google_guest_agent[610]: HostKey: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFP0wtiRsEju+NwUzHMFvuS9+AdxYrsUnUxCj71/52kL root@siem-lab-bastion
 [   14.006800] google_guest_agent[610]: HostKey Fingerprint: SHA256:E/f6cweEh3wx19K1/DO4fx450cvJzm7irunk0MRADqc (ED25519)
+

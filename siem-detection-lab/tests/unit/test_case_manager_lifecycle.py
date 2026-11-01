@@ -108,6 +108,7 @@ def test_case_lifecycle_and_reopen():
         unauth_env["USERNAME"] = "unauthorized_guest"
         unauth_env["LOGNAME"] = "unauthorized_guest"
         unauth_env["SIEM_TEST_IDENTITY"] = "unauthorized_guest"
+        unauth_env["SIEM_TEST_HARNESS_ACTIVE"] = "1"
         cmd_rbac_unauth = [
             sys.executable, "incident_management/case_manager.py",
             "--reopen", test_case_id,
@@ -118,6 +119,21 @@ def test_case_lifecycle_and_reopen():
         assert res.returncode != 0, "Expected failure when caller lacks RBAC assignment in rbac_policy.json!"
         assert "lacks verified RBAC assignment" in res.stdout
         print("  [✓] Negative Test PASSED: Principal without RBAC assignment correctly rejected (identity binding enforced).")
+
+        # Step E3: Negative Test — SIEM_TEST_IDENTITY is strictly rejected in production environment
+        prod_tamper_env = test_env.copy()
+        prod_tamper_env["SIEM_ENV"] = "production"
+        prod_tamper_env["SIEM_TEST_IDENTITY"] = "attacker_spoofed_admin"
+        cmd_prod_tamper = [
+            sys.executable, "incident_management/case_manager.py",
+            "--reopen", test_case_id,
+            "--authorizer", "SOC Lead",
+            "--justification", "Attempting test identity override in production"
+        ]
+        res = subprocess.run(cmd_prod_tamper, cwd=str(REPO_ROOT), capture_output=True, text=True, env=prod_tamper_env)
+        assert res.returncode != 0, "Expected failure when SIEM_TEST_IDENTITY is presented in production!"
+        assert "PermissionError" in res.stderr or "strictly prohibited in production" in res.stderr
+        print("  [✓] Negative Test PASSED: SIEM_TEST_IDENTITY strictly isolated and rejected in production.")
 
         # Step F: Negative Test — Attempt reopen with trivial justification
         cmd_reopen_short_just = [sys.executable, "incident_management/case_manager.py", "--reopen", test_case_id, "--authorizer", "SOC Lead Alice", "--justification", "short"]

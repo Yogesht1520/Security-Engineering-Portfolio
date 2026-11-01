@@ -57,6 +57,9 @@ jobs:
       - name: 7. Run GCP IAM Least-Privilege Isolation Static Gate
         run: python tests/integration/test_gcp_iam_isolation.py
 
+      - name: 8. Run Live Verification Fail-Closed Negative Suite
+        run: python tests/unit/test_live_verification_failures_negative.py
+
   wazuh-logtest-regression:
     name: Wazuh Rule Unit Test Suite (15 Test Cases)
     runs-on: ubuntu-latest

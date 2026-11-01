@@ -162,19 +162,26 @@ else
   fi
 fi
 
-# Assert live recovery
+# Assert live recovery: Both filesystem configuration and active kernel rules
 CURRENT_RULES=$(auditctl -l 2>/dev/null || true)
 PRE_RULES=$(cat "${INT_BACKUP}/active_rules_pre.txt" 2>/dev/null || true)
+FS_PARITY=true
+if [ -d "${INT_BACKUP}/audit" ]; then
+  if ! diff -r "${INT_BACKUP}/audit" /etc/audit >/dev/null 2>&1; then
+    FS_PARITY=false
+  fi
+fi
 
-if [ "$DEPLOY_FAILED" = true ] && [ "$CURRENT_RULES" = "$PRE_RULES" ] && [ "$CLEANUP_FAILED" -eq 0 ]; then
-  echo -e "\n${GREEN}[PASS] Live VM Integration: Kernel Audit Policy Parity & Candidate Purge${NC}"
-  echo "       Corrupt rule purged/restored, kernel rules restored bit-for-bit"
+if [ "$DEPLOY_FAILED" = true ] && [ "$CURRENT_RULES" = "$PRE_RULES" ] && [ "$FS_PARITY" = true ] && [ "$CLEANUP_FAILED" -eq 0 ]; then
+  echo -e "\n${GREEN}[PASS] Live VM Integration: Full Filesystem & Kernel Audit Parity Verified${NC}"
+  echo "       Corrupt candidate purged, /etc/audit/ restored bit-for-bit, active kernel policy identical"
   echo -e "\n================================================================"
   echo -e "Live Integration Result: PASSED [ALL PASS]"
   echo -e "================================================================\n"
   exit 0
 else
-  echo -e "\n${RED}[FAIL] Live VM Integration: Kernel Audit Policy Parity & Candidate Purge${NC}"
-  echo "       Discrepancy detected between initial kernel rules and post-rollback policy"
+  echo -e "\n${RED}[FAIL] Live VM Integration: Audit Configuration or Kernel Rule Parity Discrepancy${NC}"
+  echo "       Discrepancy detected between initial baseline and post-rollback state (FS Parity: $FS_PARITY)"
   exit 1
 fi
+

@@ -106,9 +106,16 @@ def get_caller_identity() -> str:
     - Windows: Resolves authenticated token principal via Advapi32:GetUserNameW
     - Test Harness: Explicitly accepts SIEM_TEST_IDENTITY only during isolated unit tests.
     """
-    # 0. Controlled test harness override for isolated negative testing
-    if "SIEM_TEST_IDENTITY" in os.environ:
-        return os.environ["SIEM_TEST_IDENTITY"]
+    # 0. Strict Production Isolation: SIEM_TEST_IDENTITY is strictly prohibited in production.
+    if os.environ.get("SIEM_ENV", "").lower() in ["production", "prod"]:
+        if "SIEM_TEST_IDENTITY" in os.environ:
+            raise PermissionError("Security Violation: SIEM_TEST_IDENTITY test override is strictly prohibited in production environment!")
+
+    # Controlled unit test harness isolation: ONLY accepted when SIEM_TEST_HARNESS_ACTIVE == "1"
+    # AND SIEM_ENV is NOT production.
+    if os.environ.get("SIEM_TEST_HARNESS_ACTIVE") == "1" and os.environ.get("SIEM_ENV", "").lower() not in ["production", "prod"]:
+        if "SIEM_TEST_IDENTITY" in os.environ:
+            return os.environ["SIEM_TEST_IDENTITY"]
 
     # 1. POSIX kernel effective UID check (reflects privilege escalation / sudo / seteuid)
     if hasattr(os, "geteuid"):
@@ -150,16 +157,29 @@ def get_caller_identity() -> str:
     )
 
 def generate_rbac_token(
-    subject: str = "yoges",
-    role: str = "soc lead",
-    secret: str = "secret",
+    subject: str,
+    role: str,
+    secret: str,
     ttl_seconds: int = 300,
     iss: str = "siem-lab-auth-authority",
     aud: str = "siem-lab-case-manager",
     nbf_offset: int = 0,
     custom_claims: dict = None
 ) -> str:
-    """Generates an HMAC-SHA256 bearer token with configurable claims for production and test suites."""
+    """Generates an HMAC-SHA256 bearer token with configurable claims for production and test suites.
+    
+    Zero Default Credentials Security Boundary:
+    subject, role, and secret are mandatory explicit parameters with zero fallback defaults.
+    """
+    if not subject or not str(subject).strip():
+        raise ValueError("generate_rbac_token: 'subject' must be a non-empty string.")
+    if not role or not str(role).strip():
+        raise ValueError("generate_rbac_token: 'role' must be a non-empty string.")
+    if not secret or not str(secret).strip():
+        raise ValueError("generate_rbac_token: 'secret' must be a non-empty signing key.")
+    if str(secret).strip().lower() in ["secret", "password", "default", "admin", "123456"]:
+        if os.environ.get("SIEM_ENV", "").lower() in ["production", "prod"]:
+            raise ValueError(f"generate_rbac_token: Trivial signing secret '{secret}' is prohibited in production!")
     now = int(datetime.now(timezone.utc).timestamp())
     payload = {
         "sub": subject,

@@ -80,6 +80,7 @@ Thumbs.db
 *.swo
 *.tmp
 *.bak
+*.flock
 .vscode/
 .idea/
 *.exe

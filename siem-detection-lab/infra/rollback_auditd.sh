@@ -93,7 +93,26 @@ else
   echo "  [✓] Audit daemon status verified: active and enabled (enabled 1)." >&2
 fi
 
-# Step 7: Kernel Rule Parity Assertion (diff baseline vs post-rollback)
+# Step 7A: Full Filesystem Audit Configuration Parity Assertion
+if [ -d "${BACKUP_DIR}/audit" ]; then
+  echo "  [*] Comparing full filesystem audit configuration against baseline..." >&2
+  if ! diff -r "${BACKUP_DIR}/audit" /etc/audit >&2; then
+    echo "  [!] ERROR: Filesystem audit configuration mismatch between baseline and post-rollback state!" >&2
+    ROLLBACK_FAILED=1
+  else
+    echo "  [✓] Filesystem audit configuration parity verified: 100% identical to baseline." >&2
+  fi
+elif [ -d "${BACKUP_DIR}/rules.d" ]; then
+  echo "  [*] Comparing /etc/audit/rules.d/ against baseline..." >&2
+  if ! diff -r "${BACKUP_DIR}/rules.d" /etc/audit/rules.d >&2; then
+    echo "  [!] ERROR: Audit rules directory mismatch between baseline and post-rollback state!" >&2
+    ROLLBACK_FAILED=1
+  else
+    echo "  [✓] Audit rules directory parity verified: 100% identical to baseline." >&2
+  fi
+fi
+
+# Step 7B: Kernel Rule Parity Assertion (diff baseline vs post-rollback)
 if [ -s "${BACKUP_DIR}/active_rules_pre.txt" ]; then
   POST_RULES_FILE="${BACKUP_DIR}/active_rules_post_rollback.txt"
   if ! auditctl -l > "$POST_RULES_FILE" 2>/dev/null || [ ! -s "$POST_RULES_FILE" ]; then
