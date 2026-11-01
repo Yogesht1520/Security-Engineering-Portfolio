@@ -378,8 +378,7 @@ done
 
 # Send SIGTERM while child is confirmed in dirty state
 kill -s TERM "$CHILD_PID" 2>/dev/null || true
-CHILD_EXIT=0
-wait "$CHILD_PID" 2>/dev/null || CHILD_EXIT=$?
+wait "$CHILD_PID" 2>/dev/null || true
 
 if [ -f "$DIRTY_MARKER" ] && [ -f "$HANDLER_MARKER" ] && [ ! -f "${MOCK_RULES_DIR}/siem-lab.rules" ] && [ -f "${MOCK_RULES_DIR}/audit.rules" ]; then
   record_result "Stage 8" "Process Interruption in Dirty State Trapped & Recovery Verified" "PASS" \
