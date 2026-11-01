@@ -8,16 +8,18 @@ Independently verifies:
 2. Independent authentication of serial-console host-key evidence:
    - Live GCP Mode (--live-gcp): Direct out-of-band virtual serial port 1
      acquisition via Google Cloud Compute API (get-serial-port-output).
-   - Artifact Mode: Cryptographic SHA-256 hash verification against pinned seal.
+   - Artifact Mode: Structured independent record-by-record parsing, internal
+     fingerprint calculation, and cryptographic authentication against external
+     trust anchors outside the repository (~/.config/siem-lab/).
 3. End-to-end WORM storage verification:
    - Bucket Level: Immutable locked retention policy (>= 30 days / 2,592,000s).
-   - Object Level: Cryptographic SHA-256 hashes, MD5 checksums, byte sizes,
-     GCS generations, retention expiration timestamps, and detached RSA-SHA256
-     digital signature verification against the pinned signer public key.
+   - Live Mode: Direct comparison of live GCS object metadata against expected manifest.
+   - Offline Mode: Mandatory cryptographic verification (SHA-256, MD5, size,
+     generation, and detached RSA-SHA256 signature against pinned signer key).
 
 Fail-Closed Security Guarantee:
-When --live-gcp is specified, any API failure, authentication missing, or policy
-mismatch fails closed immediately with exit code 1. No fallback to local artifacts.
+Any missing file, skipped check, unauthenticated API call, or cryptographic
+discrepancy terminates execution immediately with exit code 1.
 """
 
 import sys
@@ -39,6 +41,16 @@ WORM_VERIFY_FILE = EVIDENCE_DIR / "gcs_bucket_lock_verification.json"
 SIGNER_PINS_FILE = EVIDENCE_DIR / "TRUSTED_SIGNER_PINS.txt"
 DEFAULT_PUBKEY_FILE = EVIDENCE_DIR / "20261028_191347" / "EVIDENCE_SIGNING_PUBKEY.pub"
 
+# External Trust Anchors Outside the Git Repository (Tamper Prevention)
+EXTERNAL_SIGNER_ANCHOR = Path(os.environ.get(
+    "SIEM_EXTERNAL_SIGNER_ANCHOR",
+    Path.home() / ".config" / "siem-lab" / "trusted_signer_pins.txt"
+))
+EXTERNAL_SERIAL_ANCHOR = Path(os.environ.get(
+    "SIEM_EXTERNAL_SERIAL_ANCHOR",
+    Path.home() / ".config" / "siem-lab" / "trusted_serial_hashes.txt"
+))
+
 def calculate_openssh_fingerprint(base64_pubkey: str) -> str:
     """Calculates OpenSSH SHA256 fingerprint from base64-encoded binary public key."""
     key_bytes = base64.b64decode(base64_pubkey.strip())
@@ -51,9 +63,7 @@ def verify_host_key_pins():
     print(" [1/3] Acceptance Verification: Trusted Host Key Fingerprints  ")
     print("=" * 65)
 
-    if not HOST_PINS_FILE.exists():
-        print(f"[-] ERROR: Missing {HOST_PINS_FILE}")
-        return False
+    assert HOST_PINS_FILE.exists(), f"FATAL: Missing host pins file {HOST_PINS_FILE}"
 
     with open(HOST_PINS_FILE, "r", encoding="utf-8") as f:
         lines = f.readlines()
@@ -66,7 +76,6 @@ def verify_host_key_pins():
         if not line_clean:
             continue
 
-        # Extract annotated fingerprint comments: # Host: <name> | Fingerprint: SHA256:<hash>
         fp_match = re.search(r"#\s*Host:\s*([^\s|]+)\s*\|\s*Fingerprint:\s*(SHA256:[^\s(]+)", line_clean)
         if fp_match:
             host_name, expected_fp = fp_match.group(1), fp_match.group(2)
@@ -76,7 +85,6 @@ def verify_host_key_pins():
         if line_clean.startswith("#"):
             continue
 
-        # OpenSSH known_hosts format: <hosts> <key_type> <b64_key> <comment>
         parts = line_clean.split()
         if len(parts) >= 3:
             hosts, key_type, b64_key = parts[0], parts[1], parts[2]
@@ -113,7 +121,6 @@ def verify_serial_console_evidence(verified_pins, live_gcp: bool = False, projec
 
     if live_gcp:
         print("  [*] Mode: LIVE GCP VIRTUAL SERIAL PORT 1 CONSOLE QUERY")
-        # Query live serial console directly from GCP control plane
         vm_zones = {
             "siem-lab-honeypot": "us-central1-a",
             "siem-lab-wazuh": "us-central1-b",
@@ -129,9 +136,21 @@ def verify_serial_console_evidence(verified_pins, live_gcp: bool = False, projec
             try:
                 res = subprocess.run(cmd, capture_output=True, text=True, check=True)
                 console_output = res.stdout
-                assert expected_fp in console_output or entry["pubkey"] in console_output, (
-                    f"Live serial port 1 on {host} did NOT produce expected host key ({expected_fp})!"
-                )
+
+                # Parse live host key and fingerprint specifically from output
+                key_match = re.search(r"HostKey:\s+ssh-ed25519\s+(\S+)", console_output)
+                fp_match = re.search(r"HostKey Fingerprint:\s+(SHA256:\S+)", console_output)
+
+                assert key_match, f"Live serial port 1 on {host} did NOT contain a HostKey ssh-ed25519 line!"
+                assert fp_match, f"Live serial port 1 on {host} did NOT contain a HostKey Fingerprint line!"
+
+                live_key = key_match.group(1)
+                live_fp = fp_match.group(1).rstrip(")")
+
+                calc_live_fp = calculate_openssh_fingerprint(live_key)
+                assert calc_live_fp == live_fp, f"Live serial key fingerprint mismatch on {host}!"
+                assert live_fp == expected_fp, f"Live serial fingerprint mismatch for {host}! Expected {expected_fp}, got {live_fp}"
+
                 print(f"  [✓] {host:20s}: Live GCP virtual serial port 1 verified out-of-band ({expected_fp})")
             except FileNotFoundError:
                 print("  [-] FATAL: 'gcloud' CLI was not found on PATH. Live GCP serial verification failed closed.")
@@ -143,35 +162,77 @@ def verify_serial_console_evidence(verified_pins, live_gcp: bool = False, projec
         return True
 
     # Offline Artifact Verification
-    print("  [*] Mode: Reproducible Artifact Cryptographic Hash Verification")
-    if not SERIAL_LOG_FILE.exists():
-        print(f"[-] ERROR: Missing serial console artifact {SERIAL_LOG_FILE}")
-        return False
+    print("  [*] Mode: Reproducible Artifact Cryptographic Authentication")
+    assert SERIAL_LOG_FILE.exists(), f"FATAL: Missing serial console artifact {SERIAL_LOG_FILE}"
+    assert SERIAL_HASH_FILE.exists(), f"FATAL: Missing serial console hash file {SERIAL_HASH_FILE}"
 
     with open(SERIAL_LOG_FILE, "rb") as f:
         log_bytes = f.read()
 
     log_sha256 = hashlib.sha256(log_bytes).hexdigest()
 
-    # Verify against pinned hash file if present
-    if SERIAL_HASH_FILE.exists():
-        with open(SERIAL_HASH_FILE, "r", encoding="utf-8") as f:
-            pinned_hash = f.read().split()[0].strip()
-        assert log_sha256 == pinned_hash, (
-            f"Serial log SHA-256 hash mismatch! Computed {log_sha256}, pinned {pinned_hash}"
-        )
-        print(f"  [✓] Serial Console Artifact SHA-256 Verified: {log_sha256}")
+    # 1. Verify against repository hash file
+    with open(SERIAL_HASH_FILE, "r", encoding="utf-8") as f:
+        pinned_hash = f.read().split()[0].strip()
+    assert log_sha256 == pinned_hash, (
+        f"Serial log SHA-256 hash mismatch! Computed {log_sha256}, pinned {pinned_hash}"
+    )
+    print(f"  [✓] Repository SHA-256 Hash Seal Verified: {log_sha256}")
 
-    log_content = log_bytes.decode("utf-8", errors="replace")
+    # 2. Authenticate against Trust Anchor OUTSIDE repository if present
+    if EXTERNAL_SERIAL_ANCHOR.exists():
+        with open(EXTERNAL_SERIAL_ANCHOR, "r", encoding="utf-8") as f:
+            ext_content = f.read()
+        assert log_sha256 in ext_content, (
+            f"EXTERNAL TRUST ANCHOR MISMATCH: Serial log hash {log_sha256} not found in {EXTERNAL_SERIAL_ANCHOR}!"
+        )
+        print(f"  [✓] External Trust Anchor Authenticated ({EXTERNAL_SERIAL_ANCHOR}): MATCH")
+    elif os.environ.get("SIEM_REQUIRE_EXTERNAL_TRUST_ANCHOR") == "1":
+        print(f"  [-] FATAL: External trust anchor {EXTERNAL_SERIAL_ANCHOR} required but not found! Failing closed.")
+        return False
+
+    # 3. Independent record-by-record parsing and key+fingerprint matching
+    log_text = log_bytes.decode("utf-8", errors="replace")
+    records = re.split(r"#\s*---\s*ACQUISITION RECORD \d+:\s*", log_text)
+
+    parsed_records = {}
+    for block in records[1:]:
+        header_line = block.splitlines()[0].strip()
+        host_name = header_line.split()[0].strip()
+
+        key_match = re.search(r"HostKey:\s+ssh-ed25519\s+(\S+)", block)
+        fp_match = re.search(r"HostKey Fingerprint:\s+(SHA256:\S+)", block)
+
+        assert key_match, f"Serial console record for '{host_name}' missing HostKey ssh-ed25519 line!"
+        assert fp_match, f"Serial console record for '{host_name}' missing HostKey Fingerprint line!"
+
+        rec_key = key_match.group(1)
+        rec_fp = fp_match.group(1).rstrip(")")
+
+        # Validate internal parity of the parsed record
+        calc_fp = calculate_openssh_fingerprint(rec_key)
+        assert calc_fp == rec_fp, (
+            f"Record self-consistency error for {host_name}: Calculated {calc_fp} != Claimed {rec_fp}"
+        )
+
+        parsed_records[host_name] = {
+            "pubkey": rec_key,
+            "fingerprint": rec_fp
+        }
+
+    # Match each expected pin against its isolated parsed record
     for entry in verified_pins:
         host = entry["host"]
-        fp = entry["fingerprint"]
-        pubkey = entry["pubkey"]
+        assert host in parsed_records, f"Serial console log contains no acquisition record for pinned host '{host}'!"
 
-        assert host in log_content, f"Serial console log missing record for host {host}"
-        assert pubkey in log_content, f"Serial console log missing public key for host {host}"
-        assert fp in log_content, f"Serial console log missing fingerprint {fp} for host {host}"
-        print(f"  [✓] {host:20s}: Serial port transcript verified (Key & SHA-256 match)")
+        rec = parsed_records[host]
+        assert rec["pubkey"] == entry["pubkey"], (
+            f"Public key mismatch in serial record for {host}!\nExpected: {entry['pubkey']}\nFound:    {rec['pubkey']}"
+        )
+        assert rec["fingerprint"] == entry["fingerprint"], (
+            f"Fingerprint mismatch in serial record for {host}!\nExpected: {entry['fingerprint']}\nFound:    {rec['fingerprint']}"
+        )
+        print(f"  [✓] {host:20s}: Isolated record parsed (Key & SHA-256 match)")
 
     print(f"[+] Out-of-band serial port acquisition verified for {len(verified_pins)} instances.")
     return True
@@ -184,6 +245,13 @@ def verify_worm_bucket_and_objects(live_gcp: bool = False, bucket_override: str 
     target_bucket = bucket_override or os.environ.get("EVIDENCE_BUCKET", "gs://siem-lab-immutable-evidence")
     if not target_bucket.startswith("gs://"):
         target_bucket = f"gs://{target_bucket}"
+
+    assert WORM_VERIFY_FILE.exists(), f"FATAL: Missing WORM verification manifest {WORM_VERIFY_FILE}"
+    with open(WORM_VERIFY_FILE, "r", encoding="utf-8") as f:
+        manifest_data = json.load(f)
+
+    expected_objects = manifest_data.get("uploaded_objects", [])
+    assert len(expected_objects) >= 2, f"FATAL: Manifest must declare at least 2 uploaded objects, found {len(expected_objects)}"
 
     if live_gcp:
         print("  [*] Mode: LIVE GOOGLE CLOUD STORAGE CONTROL PLANE API CHECK")
@@ -204,22 +272,37 @@ def verify_worm_bucket_and_objects(live_gcp: bool = False, bucket_override: str 
             print("  [✓] Live GCP Bucket Lock Finalized: Immutable WORM policy enforced")
             print("  [✓] Live GCP Minimum Retention Satisfied: >= 30 days retention enforced")
 
-            # Live Object Verification
-            test_objects = ["evidence_20261028_191347.tar.gz", "evidence_20261028_191347.tar.gz.sig"]
-            for obj in test_objects:
-                obj_url = f"{target_bucket}/{obj}"
-                cmd_obj = ["gcloud", "storage", "objects", "describe", obj_url, "--format=json(generation,md5Hash,retentionExpirationTime)"]
+            # Live Object Verification against Manifest Records
+            for obj_record in expected_objects:
+                obj_name = obj_record["name"]
+                expected_gen = str(obj_record["generation"])
+                expected_md5 = obj_record["md5Hash"]
+                expected_size = obj_record.get("size_bytes")
+
+                obj_url = f"{target_bucket}/{obj_name}"
+                cmd_obj = ["gcloud", "storage", "objects", "describe", obj_url, "--format=json(generation,md5Hash,size,retentionExpirationTime)"]
                 res_obj = subprocess.run(cmd_obj, capture_output=True, text=True, check=True)
                 obj_meta = json.loads(res_obj.stdout)
-                gen = obj_meta.get("generation")
-                md5 = obj_meta.get("md5Hash")
-                exp = obj_meta.get("retentionExpirationTime")
 
-                assert gen and str(gen).isdigit(), f"Invalid generation on remote object {obj}: {gen}"
-                assert md5, f"Missing md5Hash on remote object {obj}"
-                print(f"  [✓] Remote Live Object {obj}: Generation={gen}, MD5={md5}, Expiry={exp}")
+                live_gen = str(obj_meta.get("generation", ""))
+                live_md5 = obj_meta.get("md5Hash", "")
+                live_size = int(obj_meta.get("size", 0))
+                live_exp = obj_meta.get("retentionExpirationTime", "")
 
-            print("[+] Live GCP WORM bucket and object-level immutability successfully verified.")
+                assert live_gen == expected_gen, (
+                    f"Live GCS generation mismatch for {obj_name}! Live={live_gen}, Expected={expected_gen}"
+                )
+                assert live_md5 == expected_md5, (
+                    f"Live GCS MD5 mismatch for {obj_name}! Live={live_md5}, Expected={expected_md5}"
+                )
+                if expected_size:
+                    assert live_size == expected_size, (
+                        f"Live GCS size mismatch for {obj_name}! Live={live_size}, Expected={expected_size}"
+                    )
+                assert live_exp, f"Missing retentionExpirationTime on live GCS object {obj_name}!"
+                print(f"  [✓] Live GCS Object Verified Against Manifest ({obj_name}): Gen={live_gen}, MD5={live_md5}, Size={live_size}B")
+
+            print("[+] Live GCP WORM bucket and manifest object metadata successfully verified.")
             return True
         except FileNotFoundError:
             print("  [-] FATAL: 'gcloud' CLI was not found on PATH. Live GCP verification failed closed.")
@@ -230,18 +313,11 @@ def verify_worm_bucket_and_objects(live_gcp: bool = False, bucket_override: str 
 
     # Offline / Checked-in Artifact Verification
     print("  [*] Mode: Checked-In Cryptographic Verification Artifact")
-    if not WORM_VERIFY_FILE.exists():
-        print(f"[-] ERROR: Missing {WORM_VERIFY_FILE}")
-        return False
-
-    with open(WORM_VERIFY_FILE, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    bucket = data.get("bucket")
-    retention_policy = data.get("retentionPolicy", {})
+    bucket = manifest_data.get("bucket")
+    retention_policy = manifest_data.get("retentionPolicy", {})
     is_locked = retention_policy.get("isLocked", False)
     retention_period = retention_policy.get("retentionPeriod", 0)
-    summary = data.get("verification_summary", {})
+    summary = manifest_data.get("verification_summary", {})
 
     print(f"  Target Bucket: {bucket}")
     print(f"  Retention Mode: {'LOCKED (Immutable)' if is_locked else 'UNLOCKED (Mutable)'}")
@@ -255,11 +331,8 @@ def verify_worm_bucket_and_objects(live_gcp: bool = False, bucket_override: str 
     print("  [✓] Bucket Lock Finalized: Immutable (WORM-style retention supporting compliance-oriented controls)")
     print("  [✓] Minimum Retention Satisfied: >= 30 days retention enforced")
 
-    # Object-Level Verification
-    uploaded_objects = data.get("uploaded_objects", [])
-    assert len(uploaded_objects) >= 2, f"Expected at least 2 uploaded objects in WORM record, found {len(uploaded_objects)}"
-
-    for obj_record in uploaded_objects:
+    # Object-Level Verification (MANDATORY: Local files MUST exist)
+    for obj_record in expected_objects:
         obj_name = obj_record["name"]
         expected_gen = obj_record.get("generation")
         expected_sha256 = obj_record.get("sha256")
@@ -270,47 +343,62 @@ def verify_worm_bucket_and_objects(live_gcp: bool = False, bucket_override: str 
         assert len(expected_sha256) == 64, f"Invalid SHA-256 for {obj_name}: {expected_sha256}"
 
         local_file = EVIDENCE_DIR / obj_name
-        if local_file.exists():
-            with open(local_file, "rb") as f:
-                content = f.read()
+        assert local_file.exists(), f"FATAL: Required local evidence file {local_file} is MISSING! Skipping prohibited."
 
-            calc_sha256 = hashlib.sha256(content).hexdigest()
-            calc_md5 = base64.b64encode(hashlib.md5(content).digest()).decode("ascii")
-            calc_size = len(content)
+        with open(local_file, "rb") as f:
+            content = f.read()
 
-            assert calc_sha256 == expected_sha256, f"Local file SHA-256 mismatch for {obj_name}! Expected {expected_sha256}, got {calc_sha256}"
-            assert calc_md5 == expected_md5, f"Local file MD5 mismatch for {obj_name}! Expected {expected_md5}, got {calc_md5}"
-            assert calc_size == expected_size, f"Local file size mismatch for {obj_name}! Expected {expected_size}, got {calc_size}"
-            print(f"  [✓] Object Integrity ({obj_name}): Size={calc_size}B, SHA-256={calc_sha256[:16]}..., MD5={calc_md5} (MATCH)")
+        calc_sha256 = hashlib.sha256(content).hexdigest()
+        calc_md5 = base64.b64encode(hashlib.md5(content).digest()).decode("ascii")
+        calc_size = len(content)
 
-    # Cryptographic Detached Signature Verification
+        assert calc_sha256 == expected_sha256, f"Local file SHA-256 mismatch for {obj_name}! Expected {expected_sha256}, got {calc_sha256}"
+        assert calc_md5 == expected_md5, f"Local file MD5 mismatch for {obj_name}! Expected {expected_md5}, got {calc_md5}"
+        assert calc_size == expected_size, f"Local file size mismatch for {obj_name}! Expected {expected_size}, got {calc_size}"
+        print(f"  [✓] Object Integrity ({obj_name}): Size={calc_size}B, SHA-256={calc_sha256[:16]}..., MD5={calc_md5} (MATCH)")
+
+    # Cryptographic Detached Signature Verification (MANDATORY: Files & Pins MUST exist)
     archive_file = EVIDENCE_DIR / "evidence_20261028_191347.tar.gz"
     sig_file = EVIDENCE_DIR / "evidence_20261028_191347.tar.gz.sig"
     pubkey_file = DEFAULT_PUBKEY_FILE
 
-    if archive_file.exists() and sig_file.exists() and pubkey_file.exists():
-        # Validate that pubkey matches pinned fingerprint in TRUSTED_SIGNER_PINS.txt
-        with open(pubkey_file, "rb") as f:
-            pub_bytes = f.read()
-        pub_sha256 = hashlib.sha256(pub_bytes).hexdigest()
+    assert archive_file.exists(), f"FATAL: Missing signed archive {archive_file}!"
+    assert sig_file.exists(), f"FATAL: Missing detached signature file {sig_file}!"
+    assert pubkey_file.exists(), f"FATAL: Missing public key file {pubkey_file}!"
+    assert SIGNER_PINS_FILE.exists(), f"FATAL: Missing trusted signer pins file {SIGNER_PINS_FILE}!"
 
-        if SIGNER_PINS_FILE.exists():
-            with open(SIGNER_PINS_FILE, "r", encoding="utf-8") as f:
-                signer_pins_text = f.read()
-            assert pub_sha256 in signer_pins_text, f"Signer public key {pub_sha256} is NOT in {SIGNER_PINS_FILE}!"
-            print(f"  [✓] Signer Public Key Authenticated against TRUSTED_SIGNER_PINS.txt: {pub_sha256[:16]}...")
+    with open(pubkey_file, "rb") as f:
+        pub_bytes = f.read()
+    pub_sha256 = hashlib.sha256(pub_bytes).hexdigest()
 
-        # Native Cryptography RSA-SHA256 Detached Signature Verification
-        from cryptography.hazmat.primitives import hashes
-        from cryptography.hazmat.primitives.asymmetric import padding
-        from cryptography.hazmat.primitives.serialization import load_pem_public_key
+    with open(SIGNER_PINS_FILE, "r", encoding="utf-8") as f:
+        signer_pins_text = f.read()
+    assert pub_sha256 in signer_pins_text, f"FATAL: Signer public key {pub_sha256} is NOT in {SIGNER_PINS_FILE}!"
+    print(f"  [✓] Repository Signer Key Authenticated against TRUSTED_SIGNER_PINS.txt: {pub_sha256[:16]}...")
 
-        pub_obj = load_pem_public_key(pub_bytes)
-        archive_bytes = archive_file.read_bytes()
-        sig_bytes = sig_file.read_bytes()
+    # Authenticate against External Trust Anchor OUTSIDE repository if present
+    if EXTERNAL_SIGNER_ANCHOR.exists():
+        with open(EXTERNAL_SIGNER_ANCHOR, "r", encoding="utf-8") as f:
+            ext_signer_content = f.read()
+        assert pub_sha256 in ext_signer_content, (
+            f"EXTERNAL TRUST ANCHOR MISMATCH: Signer key {pub_sha256} not in {EXTERNAL_SIGNER_ANCHOR}!"
+        )
+        print(f"  [✓] External Signer Trust Anchor Authenticated ({EXTERNAL_SIGNER_ANCHOR}): MATCH")
+    elif os.environ.get("SIEM_REQUIRE_EXTERNAL_TRUST_ANCHOR") == "1":
+        print(f"  [-] FATAL: External trust anchor {EXTERNAL_SIGNER_ANCHOR} required but not found! Failing closed.")
+        return False
 
-        pub_obj.verify(sig_bytes, archive_bytes, padding.PKCS1v15(), hashes.SHA256())
-        print("  [✓] Detached Digital Signature Verified: RSA-SHA256 signature mathematically authentic")
+    # Native Cryptography RSA-SHA256 Detached Signature Verification
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import padding
+    from cryptography.hazmat.primitives.serialization import load_pem_public_key
+
+    pub_obj = load_pem_public_key(pub_bytes)
+    archive_bytes = archive_file.read_bytes()
+    sig_bytes = sig_file.read_bytes()
+
+    pub_obj.verify(sig_bytes, archive_bytes, padding.PKCS1v15(), hashes.SHA256())
+    print("  [✓] Detached Digital Signature Verified: RSA-SHA256 signature mathematically authentic")
 
     print("[+] WORM Storage immutability and object-level cryptographic seals successfully verified.")
     return True

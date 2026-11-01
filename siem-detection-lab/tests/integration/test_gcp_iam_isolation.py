@@ -192,8 +192,9 @@ def verify_live_gcp_iam(project_id: str = "siem-detection-lab"):
             f"SECURITY VIOLATION: Honeypot service account holds inherited ancestor roles: {inherited_roles}!"
         )
         print("  [✓] Live GCP Inherited IAM Policy: Zero inherited ancestor permissions confirmed.")
-    except subprocess.CalledProcessError as e:
-        print(f"  [i] Note: get-ancestors-iam-policy skipped (requires resourcemanager.organizations.getIamPolicy): {e.stderr.strip()[:100]}")
+    except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError) as e:
+        print(f"  [-] FATAL: Failed to query ancestor IAM policies for {project_id}: {e}. Failing closed.")
+        return False
 
     print("[+] Live Google Cloud control-plane IAM isolation verified.")
     return True

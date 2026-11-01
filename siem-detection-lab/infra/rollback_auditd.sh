@@ -40,13 +40,49 @@ if [ -f "$CANDIDATE_FILE" ]; then
   echo "  [✓] Purged candidate audit rules file: ${CANDIDATE_FILE}" >&2
 fi
 
-# Step 2: Restore previous audit configuration files
+# Step 2: Safely and transactionally replace the entire /etc/audit configuration directory
+SOURCE_AUDIT_DIR=""
 if [ -d "${BACKUP_DIR}/audit" ]; then
-  cp -r "${BACKUP_DIR}"/audit/* /etc/audit/
+  SOURCE_AUDIT_DIR="${BACKUP_DIR}/audit"
 elif [ -d "${BACKUP_DIR}/rules.d" ]; then
-  cp -r "${BACKUP_DIR}"/* /etc/audit/
+  SOURCE_AUDIT_DIR="${BACKUP_DIR}"
 fi
-echo "  [✓] Restored configuration files from ${BACKUP_DIR}" >&2
+
+BROKEN_DIR="/etc/audit.failed.$$"
+if [ -n "$SOURCE_AUDIT_DIR" ]; then
+  echo "  [*] Transactionally replacing entire /etc/audit configuration from ${SOURCE_AUDIT_DIR}..." >&2
+  STAGE_DIR="/etc/audit.rollback.$$"
+  rm -rf "$STAGE_DIR" "$BROKEN_DIR"
+  mkdir -p "$STAGE_DIR"
+
+  # Copy clean baseline into staging directory
+  cp -a "${SOURCE_AUDIT_DIR}/." "$STAGE_DIR/"
+
+  # Ensure candidate corrupt rule file is eradicated from staging rules.d
+  CANDIDATE_NAME="$(basename "$CANDIDATE_FILE")"
+  rm -f "${STAGE_DIR}/rules.d/${CANDIDATE_NAME}"
+
+  # Set secure root permissions
+  chmod 0750 "$STAGE_DIR" 2>/dev/null || true
+  if [ -d "${STAGE_DIR}/rules.d" ]; then
+    chmod 0750 "${STAGE_DIR}/rules.d" 2>/dev/null || true
+  fi
+
+  # Atomic directory swap
+  if [ -d "/etc/audit" ]; then
+    mv /etc/audit "$BROKEN_DIR"
+  fi
+
+  if mv "$STAGE_DIR" /etc/audit; then
+    echo "  [✓] Replaced entire /etc/audit configuration directory from verified baseline." >&2
+  else
+    echo "  [!] FATAL: Failed to move staging rollback directory to /etc/audit!" >&2
+    if [ -d "$BROKEN_DIR" ]; then
+      mv "$BROKEN_DIR" /etc/audit
+    fi
+    ROLLBACK_FAILED=1
+  fi
+fi
 
 # Step 3: Recompile audit rules (fail-closed if augenrules fails)
 echo "  [*] Recompiling audit rules via augenrules..." >&2
@@ -129,8 +165,15 @@ if [ -s "${BACKUP_DIR}/active_rules_pre.txt" ]; then
 fi
 
 if [ "$ROLLBACK_FAILED" -ne 0 ]; then
+  if [ -n "${BROKEN_DIR:-}" ] && [ -d "${BROKEN_DIR:-}" ]; then
+    echo "  [!] Preserving broken configuration for forensic diagnosis: ${BROKEN_DIR}" >&2
+  fi
   echo "[-] TRANSACTIONAL ROLLBACK FAILED TO RESTORE VERIFIED BASELINE!" >&2
   exit 1
+fi
+
+if [ -n "${BROKEN_DIR:-}" ] && [ -d "${BROKEN_DIR:-}" ]; then
+  rm -rf "$BROKEN_DIR"
 fi
 
 echo "[+] TRANSACTIONAL ROLLBACK COMPLETED AND VERIFIED SUCCESSFULLY." >&2
