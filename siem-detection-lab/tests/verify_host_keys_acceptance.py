@@ -53,16 +53,18 @@ EXTERNAL_SERIAL_ANCHOR = Path(os.environ.get(
 ))
 
 def parse_timezone_aware_utc(ts_str: str) -> datetime.datetime:
-    """Parses an ISO 8601 string into a timezone-aware UTC datetime."""
+    """Parses an ISO 8601 string into a timezone-aware UTC datetime.
+    Strictly rejects naive timestamps lacking explicit timezone offsets.
+    """
     s = ts_str.strip()
     if s.endswith("Z"):
         s = s[:-1] + "+00:00"
     dt = datetime.datetime.fromisoformat(s)
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=datetime.timezone.utc)
-    else:
-        dt = dt.astimezone(datetime.timezone.utc)
-    return dt
+        raise ValueError(
+            f"REJECTED NAIVE TIMESTAMP: '{ts_str}' lacks explicit timezone information (must specify 'Z' or '+/-HH:MM' offset)!"
+        )
+    return dt.astimezone(datetime.timezone.utc)
 
 def calculate_openssh_fingerprint(base64_pubkey: str) -> str:
     """Calculates OpenSSH SHA256 fingerprint from base64-encoded binary public key."""
@@ -158,17 +160,24 @@ def verify_serial_console_evidence(verified_pins, live_gcp: bool = False, projec
                 console_output = res.stdout
 
                 # Strict Live Record Parsing: Key and fingerprint must be parsed within the same record block
-                record_match = re.search(
-                    r"HostKey:\s+ssh-ed25519\s+(?P<key>[A-Za-z0-9+/=]+)[^\n]*\n[^\n]*?HostKey Fingerprint:\s+\(?(?P<fp>SHA256:[A-Za-z0-9+/=]+)\)?",
-                    console_output
-                )
-
-                assert record_match, (
+                record_pattern = r"HostKey:\s+ssh-ed25519\s+(?P<key>[A-Za-z0-9+/=]+)[^\n]*\n[^\n]*?HostKey Fingerprint:\s+\(?(?P<fp>SHA256:[A-Za-z0-9+/=]+)\)?"
+                all_records = list(re.finditer(record_pattern, console_output))
+                assert len(all_records) > 0, (
                     f"Live virtual serial port 1 on {host} did NOT contain a coherent HostKey + Fingerprint record block!"
                 )
 
-                live_key = record_match.group("key")
-                live_fp = record_match.group("fp")
+                # Reject ambiguous or conflicting records across the serial stream
+                distinct_pairs = {(m.group("key"), m.group("fp")) for m in all_records}
+                assert len(distinct_pairs) == 1, (
+                    f"AMBIGUOUS SERIAL RECORDS: Detected {len(distinct_pairs)} differing key/fingerprint records on {host}: {distinct_pairs}"
+                )
+
+                # Validate acquisition identity: Console output must belong to the target host
+                assert host in console_output or f"Linux {host}" in console_output, (
+                    f"Acquisition identity mismatch: console stream did not identify target host '{host}'!"
+                )
+
+                live_key, live_fp = next(iter(distinct_pairs))
 
                 # Validate internal mathematical parity within the same live record
                 calc_live_fp = calculate_openssh_fingerprint(live_key)
@@ -184,7 +193,7 @@ def verify_serial_console_evidence(verified_pins, live_gcp: bool = False, projec
                     f"Live fingerprint mismatch for {host}!\nExpected: {expected_fp}\nFound:    {live_fp}"
                 )
 
-                print(f"  [✓] {host:20s}: Live serial record verified (Same-record key & SHA-256 match)")
+                print(f"  [✓] {host:20s}: Live serial record verified (Same-record key & SHA-256 match, identity confirmed)")
             except FileNotFoundError:
                 print("  [-] FATAL: 'gcloud' CLI was not found on PATH. Live GCP serial verification failed closed.")
                 return False
@@ -228,10 +237,18 @@ def verify_serial_console_evidence(verified_pins, live_gcp: bool = False, projec
     log_text = log_bytes.decode("utf-8", errors="replace")
     records = re.split(r"#\s*---\s*ACQUISITION RECORD \d+:\s*", log_text)
 
+    valid_host_names = {entry["host"] for entry in verified_pins}
     parsed_records = {}
     for block in records[1:]:
         header_line = block.splitlines()[0].strip()
         host_name = header_line.split()[0].strip()
+
+        assert host_name in valid_host_names, (
+            f"Unrecognized or invalid acquisition identity in serial log: '{host_name}'!"
+        )
+        assert host_name not in parsed_records, (
+            f"AMBIGUOUS / DUPLICATE RECORD: Multiple acquisition records detected for host '{host_name}'!"
+        )
 
         key_match = re.search(r"HostKey:\s+ssh-ed25519\s+(\S+)", block)
         fp_match = re.search(r"HostKey Fingerprint:\s+(SHA256:\S+)", block)

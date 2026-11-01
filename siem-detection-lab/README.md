@@ -293,7 +293,7 @@ All security, isolation, and detection capabilities are verified via automated t
 | `test_gcp_iam_isolation.py --live-gcp` | GCP IAM & Ancestor Hierarchy Fail-Closed Boundary | **FAIL-CLOSED VERIFIED** | **Fail-Closed Security Boundary Test:** Verifies immediate non-zero exit (`code 1`) when querying ancestor policy hierarchy without credentials; strictly validates explicit types (`project`, `folder`, `organization`) and ordering. |
 | `test_auditd_live_rollback.sh` | Workstation Safety Guard | **SAFETY-GUARD VERIFIED** | **Workstation Safety-Guard Test:** Confirms live kernel audit modification is blocked with exit code 1 on non-disposable hosts, protecting workstation auditd configurations. |
 | `test_auditd_rollback.sh` | Transactional Rollback Engine | **6/6 PASSED** | Validates candidate syntax corruption trapping, service restart failure recovery, kernel rule status assertions, rename boundary 1 failure trapping, rename boundary 2 emergency recovery, and bit-for-bit directory metadata/permission preservation. |
-| `test_live_verification_failures_negative.py` | Fail-Closed Negative CLI Matrix | **16/16 PASSED** | Validates non-zero exit codes on unlocked bucket policies, sub-30-day retention, tampered object hashes, missing evidence/signature/pins, corrupt RSA signatures, tampered host pins, serial record inconsistencies, external anchor mismatches, missing deployment anchors, deterministic mock `gcloud` failures, missing CLI binaries, and production identity spoofing. |
+| `test_live_verification_failures_negative.py` | Fail-Closed Negative CLI Matrix | **19/19 PASSED** | Validates non-zero exit codes on unlocked bucket policies, sub-30-day retention, tampered object hashes, missing evidence/signature/pins, corrupt RSA signatures, tampered host pins, serial record inconsistencies, external anchor mismatches, missing deployment anchors, deterministic mock `gcloud` failures, missing CLI binaries, production identity spoofing, naive timestamps, duplicate IAM hierarchy IDs, and ambiguous serial records. |
 | `run_rule_unit_tests.sh` | Detection Engineering & Rules | **15/15 PASSED** | 100% test coverage across brute-force, privilege escalation, and execution detection rules against Wazuh logtest. |
 | `test_security_gate_negative.py` & `security_scan.py` | Repository Security & Secrets Gate | **4/4 PASSED** | Fail-closed inspection across all tracked files, working directory, and entire Git commit history. Zero credentials or leaked keys. |
 
@@ -302,9 +302,13 @@ All security, isolation, and detection capabilities are verified via automated t
 Release evidence is stored in [`evidence/release_evidence/`](evidence/release_evidence/):
 - **Structured Test Results:** [`test_results.json`](evidence/release_evidence/test_results.json) (schema version 1.0.0) recording structured execution results, exit codes, and SHA-256 digests.
 - **Cryptographic Log Hashes:** [`RELEASE_LOG_HASHES.sha256`](evidence/release_evidence/RELEASE_LOG_HASHES.sha256) sealing all raw logs.
-- **Signed Git Provenance:** Release `v1.0.1` commits and annotated tags are cryptographically signed with the lab administrator's authorized SSH key and verifiable against [`allowed_signers`](evidence/release_evidence/allowed_signers).
+- **Independent Manifest Signature:** [`RELEASE_LOG_HASHES.sha256.sig`](evidence/release_evidence/RELEASE_LOG_HASHES.sha256.sig) providing detached SSH cryptographic signature verification:
+  ```bash
+  ssh-keygen -Y verify -f evidence/release_evidence/allowed_signers -I yogesht1520@gmail.com -n file -s evidence/release_evidence/RELEASE_LOG_HASHES.sha256.sig < evidence/release_evidence/RELEASE_LOG_HASHES.sha256
+  ```
+- **Signed Git Provenance:** Release `v1.0.1` commits and annotated tags are cryptographically signed with the administrator's authorized SSH key and verifiable against [`allowed_signers`](evidence/release_evidence/allowed_signers). Note: GitHub's web UI displays commits as 'Unverified / unknown_key' unless the public signing key is added to the GitHub account under Settings -> SSH Signing Keys; local verification via `git tag -v` and `allowed_signers` provides independent non-repudiation.
 
-### 8.2 Deployment Limitations & Operational Boundaries
+### 8.3 Deployment Limitations & Operational Boundaries
 
 1. **Live Google Cloud API Verification (`--live-gcp`)**:
    - Querying live Google Cloud Storage bucket lock policies, object metadata, virtual serial ports, and IAM ancestor policies requires an authenticated Google Cloud SDK (`gcloud`) environment with `roles/storage.admin`, `roles/compute.viewer`, and `resourcemanager.organizationViewer` permissions.
@@ -312,9 +316,11 @@ Release evidence is stored in [`evidence/release_evidence/`](evidence/release_ev
 2. **Live Kernel Auditd Integration (`test_auditd_live_rollback.sh`)**:
    - Modifies `/etc/audit/rules.d/` and reloads live Linux kernel auditctl rules; strictly prohibited on developer workstations, shared CI runners, and production hosts.
    - Requires an isolated, disposable Linux virtual machine, effective root privileges (`EUID == 0`), and explicit `--force-live-danger` confirmation.
-3. **Mandatory External Trust Anchors in Deployment Mode**:
+3. **Terraform Static IAM Audit Scope**:
+   - The static check `verify_terraform_iam_isolation()` performs regex pattern validation against checked-in `main.tf` HCL code to catch unauthorized grants and enforce honeypot service account bindings. It is a baseline lint gate, not a full AST Terraform HCL parser or dynamic binding evaluator; complete least-privilege isolation is verified via Terraform state inspection and live control-plane ancestor policy queries.
+4. **Mandatory External Trust Anchors in Deployment Mode**:
    - When running `verify_host_keys_acceptance.py --deployment-acceptance`, the verifier enforces that out-of-band trust anchors exist outside the repository at `~/.config/siem-lab/trusted_serial_hashes.txt` (virtual serial port 1 transcript SHA-256 seal) and `~/.config/siem-lab/trusted_signer_pins.txt` (forensic evidence signer public key hash).
    - This eliminates circular trust and prevents repository-contained tampering.
-4. **WORM Storage Compliance Framing**:
+5. **WORM Storage Compliance Framing**:
    - Google Cloud Storage bucket retention lock enforces technical immutability (Write-Once-Read-Many) by preventing modification or premature deletion of forensic bundles during the 30-day retention window.
    - This implementation provides technical controls supporting compliance-oriented preservation objectives (such as SEC Rule 17a-4 and FINRA Rule 4511 technical immutability goals), ensuring non-repudiation and evidence integrity without claiming independent regulatory accreditation.

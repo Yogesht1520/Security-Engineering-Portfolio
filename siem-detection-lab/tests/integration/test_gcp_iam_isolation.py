@@ -30,6 +30,13 @@ TERRAFORM_MAIN = REPO_ROOT / "infra" / "terraform" / "main.tf"
 TERRAFORM_STATE = REPO_ROOT / "infra" / "terraform" / "terraform.tfstate"
 
 def verify_terraform_iam_isolation():
+    """
+    Performs baseline static pattern linting of checked-in main.tf HCL.
+    NOTE: This is a regex-based architectural gate checking declared resources,
+    not a full AST Terraform HCL parser or dynamic binding evaluator. Complete IAM
+    enforcement is verified control-plane-side via Terraform state inspection and
+    live GCP get-ancestors-iam-policy audits.
+    """
     print("=" * 65)
     print(" [1/3] IAM Isolation: Terraform HCL Static Architecture Gate     ")
     print("=" * 65)
@@ -197,6 +204,7 @@ def verify_live_gcp_iam(project_id: str = "siem-detection-lab"):
             f"Explicit type violation: leaf node must have explicit type 'project', found '{project_node.get('type')}'"
         )
 
+        seen_ids = set()
         seen_org = False
         inherited_roles = []
         for idx, p in enumerate(ancestor_policies):
@@ -204,6 +212,10 @@ def verify_live_gcp_iam(project_id: str = "siem-detection-lab"):
             anc_type = str(p.get("type", "")).strip()
 
             assert anc_id, f"Ancestor at hierarchy level {idx} has missing or empty resource ID!"
+            assert anc_id not in seen_ids, (
+                f"Hierarchy duplicate ID violation: resource ID '{anc_id}' appears multiple times in ancestor chain!"
+            )
+            seen_ids.add(anc_id)
             assert anc_type in ("project", "folder", "organization"), (
                 f"Explicit type violation: ancestor at level {idx} ({anc_id}) has invalid type '{anc_type}'!"
             )

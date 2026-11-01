@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "release_version": "v1.0.1",
   "project_id": "siem-detection-lab",
-  "generated_at_utc": "2026-11-01T19:57:33.447618+00:00",
+  "generated_at_utc": "2026-11-01T20:15:46.763461+00:00",
   "verification_environment": {
     "platform": "Windows-11",
     "python_version": "3.13.3",
@@ -78,9 +78,11 @@
       "classification": "NEGATIVE_SECURITY_TEST",
       "status": "PASSED",
       "exit_code": 0,
-      "summary": "16/16 negative assertions passed proving non-zero exit codes on unlocked policies, sub-30-day retention, tampered hashes, corrupt signatures, mock GCP errors, and identity spoofing.",
+      "summary": "19/19 negative assertions passed proving non-zero exit codes on unlocked policies, sub-30-day retention, tampered hashes, corrupt signatures, mock GCP errors, identity spoofing, naive timestamps, duplicate hierarchy IDs, and ambiguous serial records.",
       "log_file": "negative_cli_matrix.log",
-      "log_sha256": "b2a1297a9a47607d3054816b9e13c1b54b34c769d34334f7d7d9eed5b2692abc"
+      "log_sha256": "f0e33445fe5c71c0055b2c04647265d3c5cfc8675d3a9a0d90b0bacf6153708d",
+      "assertions_passed": 19,
+      "assertions_total": 19
     },
     {
       "id": "security_scan",
