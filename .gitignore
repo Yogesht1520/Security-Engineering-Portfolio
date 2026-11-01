@@ -1,0 +1,97 @@
+# =============================================================================
+# Root .gitignore — Security Engineering Portfolio
+# Comprehensive repository-wide security exclusions for credentials, secrets,
+# cloud state, forensic dumps, local environments, and AI artifacts
+# =============================================================================
+
+# ── 1. Confidential Lab Access & Operator Credentials ──────────────────────
+docs/LAB_ACCESS_DETAILS.md
+*LAB_ACCESS_DETAILS.md
+*password*.txt
+*credentials*.txt
+*secret*.txt
+wazuh-passwords.txt
+
+# ── 2. Cloud Service Accounts, Secrets & Cryptographic Keys ────────────────
+service-account-*.json
+siem-detection-lab-*.json
+*credential*.json
+*secret*.json
+*token*.json
+*-sa-key.json
+gcp-key*.json
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ── 3. SSH Private & Operator Keys ─────────────────────────────────────────
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+siem_lab_key
+siem_lab_key.pub
+*.key.pub
+
+# ── 4. Terraform — Infrastructure State & Populated Variables ──────────────
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform/
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# ── 5. Forensic VM Disks & Raw Memory Dumps ────────────────────────────────
+*.raw
+*.dmp
+*.vdi
+*.vmdk
+*.vhdx
+*.iso
+
+# ── 6. Agentic AI Instructions, Plans & Internal Artifacts ─────────────────
+*PLAN*.md
+*REMEDIATION*.md
+*GAP_ANALYSIS*.md
+*SCRATCHPAD*
+scratch/
+.agents/
+AGENTS.md
+GEMINI.md
+.gemini/
+.cursor/
+.claude/
+antigravity*
+.system_generated/
+prompt*.md
+instructions*.md
+
+# ── 7. Python Bytecode, Caches & Virtual Environments ──────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+venv/
+.venv/
+.env
+.env.*
+!*.env.example
+
+# ── 8. OS, Editor & Temporary Files ────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.tmp
+*.bak
+*.flock
+.vscode/
+.idea/
+*.exe
