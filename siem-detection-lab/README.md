@@ -67,7 +67,9 @@ Every detection capability and incident response workflow in this lab is backed 
 | :--- | :--- | :--- |
 | **Forensic Evidence Bundle** | [`evidence/20261028_191347/`](evidence/20261028_191347/) | Local post-migration snapshot: `honeypot_audit.log` (6.18MB), `honeypot_auth.log` (326KB), `wazuh_alerts.json` (2.00MB), zero-metadata `honeypot_system_state.txt`, and verified `honeypot_defense_posture.txt`. |
 | **Cryptographic Manifest & Sigs** | [`evidence/.../EVIDENCE_MANIFEST.json`](evidence/20261028_191347/EVIDENCE_MANIFEST.json) | Structured JSON provenance manifest for local evidence snapshot with collector identity, UTC timestamps, SHA-256 hashes, and detached `.sig` digital signatures. |
-| **WORM Bucket Lock Policy** | [`evidence/gcs_bucket_lock_verification.json`](evidence/gcs_bucket_lock_verification.json) | Independent verification of GCP Cloud Storage locked WORM retention policy (30-day immutability enforced on `gs://siem-lab-immutable-evidence`). |
+| **WORM Bucket Lock Policy** | [`evidence/gcs_bucket_lock_verification.json`](evidence/gcs_bucket_lock_verification.json) | Independent verification of GCP Cloud Storage locked WORM retention policy (30-day technical immutability supporting compliance-oriented evidence preservation on `gs://siem-lab-immutable-evidence`). |
+| **Out-of-Band Host Key Pins & Serial Logs** | [`evidence/TRUSTED_HOST_PINS.txt`](evidence/TRUSTED_HOST_PINS.txt) & [`evidence/serial_console_host_keys.log`](evidence/serial_console_host_keys.log) | Pre-provisioned OpenSSH host keys acquired out-of-band via Google Cloud Serial Port 1 (`get-serial-port-output`) to prevent MitM and spoofing during evidence ingestion. |
+| **Host Key & WORM Acceptance Suite** | `python tests/verify_host_keys_acceptance.py` | Standalone acceptance test verifying host-key OpenSSH fingerprints, serial-console capture artifacts, and live or artifact-backed WORM bucket lock. |
 | **Active Incident Case** | [`incident_management/cases/CASE-2026-001.json`](incident_management/cases/CASE-2026-001.json) | High-severity case opened and contained against live attacker `209.99.190.186` (Zurich, Switzerland) with strict FSM lifecycle enforcement and enterprise RBAC authorization. |
 | **Unit Test Suite Results** | [`tests/results/unit_test_latest.json`](tests/results/unit_test_latest.json) | Automated execution of 15 detection unit tests against `wazuh-logtest` (**15/15 Passed — 100% Rule, Boundary & Negative Coverage**). Tests execute against live `/var/ossec/bin/wazuh-logtest` on SIEM Manager, or deterministic `mock_logtest.py` in CI. |
 | **Static Rule Audit** | `python tests/validate_rules.py` | Validates XML syntax, duplicate rule IDs, and ID range enforcement (**10/10 Passed**). |
@@ -192,6 +194,9 @@ The following gallery organizes the verified cloud controls, access barriers, an
 #### D. Immutable WORM Retention & Storage Bucket Lock
 ![GCS WORM Bucket Lock](screenshots/gcs_worm_bucket_lock.png)
 *Figure 12: Google Cloud Storage bucket protection tab displaying 30-day compliance retention in finalized Locked mode for forensic chain-of-custody preservation.*
+
+> [!NOTE]
+> **WORM Storage & Compliance Architecture:** Google Cloud Storage bucket retention lock enforces technical immutability (Write-Once-Read-Many) by preventing modification or premature deletion of forensic bundles during the 30-day retention window. This implementation provides technical controls supporting compliance-oriented workflows (such as SEC Rule 17a-4 and FINRA Rule 4511 technical immutability objectives), ensuring non-repudiation and evidence integrity without claiming independent regulatory certification.
 
 #### E. CI/CD Governance & Continuous Regression Matrix
 ![GitHub Actions All Passing](screenshots/github_actions_all_passing.png)

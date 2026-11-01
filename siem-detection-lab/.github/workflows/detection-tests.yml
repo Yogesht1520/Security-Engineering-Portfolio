@@ -51,6 +51,12 @@ jobs:
       - name: 5. Run GeoIP Bounded Cache & TTL Concurrency Suite
         run: python tests/unit/test_geoip_cache.py
 
+      - name: 6. Run Host-Key Pinning & WORM Storage Acceptance Suite
+        run: python tests/verify_host_keys_acceptance.py
+
+      - name: 7. Run GCP IAM Least-Privilege Isolation Static Gate
+        run: python tests/integration/test_gcp_iam_isolation.py
+
   wazuh-logtest-regression:
     name: Wazuh Rule Unit Test Suite (15 Test Cases)
     runs-on: ubuntu-latest

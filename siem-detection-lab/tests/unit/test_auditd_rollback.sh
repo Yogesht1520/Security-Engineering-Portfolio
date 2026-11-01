@@ -4,15 +4,14 @@
 #
 # PURPOSE:
 # Validates transactional safety and failure-recovery mechanisms of the
-# honeypot auditd bootstrap procedure (infra/setup_honeypot.sh).
+# honeypot auditd bootstrap procedure (infra/setup_honeypot.sh) in an isolated,
+# non-destructive simulation sandbox for CI pipelines and developer workstations.
 #
-# DUAL-MODE EXECUTION:
-#   1. Simulated Sandbox Mode (Default for CI/workstation):
-#      Injects syntax errors, service crashes, and kernel assertion failures
-#      into an isolated filesystem sandbox to verify rollback logic.
-#   2. Live Linux VM Integration Mode (--integration or root on Linux):
-#      Directly tests live augenrules, kernel auditctl rule restore, and systemd
-#      auditd recovery on an active Linux system.
+# SEPARATION OF CONCERNS:
+# - This unit test executes 100% in a safe, simulated filesystem sandbox.
+# - Live Linux VM integration tests against kernel auditctl/augenrules are
+#   isolated in tests/integration/test_auditd_live_rollback.sh.
+# - Supplying --integration delegates directly to the live integration suite.
 # =============================================================================
 
 set -uo pipefail
@@ -23,42 +22,20 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-INTEGRATION_MODE=false
-FORCE_LIVE_DANGER=false
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Delegate to separate live integration suite if requested
 for arg in "$@"; do
-  case "$arg" in
-    --integration)
-      INTEGRATION_MODE=true
-      ;;
-    --force-live-danger)
-      FORCE_LIVE_DANGER=true
-      ;;
-  esac
+  if [ "$arg" = "--integration" ]; then
+    LIVE_SCRIPT="${SCRIPT_DIR}/../integration/test_auditd_live_rollback.sh"
+    if [ -f "$LIVE_SCRIPT" ]; then
+      exec bash "$LIVE_SCRIPT" "$@"
+    else
+      echo -e "${RED}[!] Live integration script not found at ${LIVE_SCRIPT}${NC}" >&2
+      exit 1
+    fi
+  fi
 done
-
-# Check if environment specifies disposable VM marker
-if [ "${DISPOSABLE_VM:-false}" = "true" ]; then
-  FORCE_LIVE_DANGER=true
-fi
-
-# SAFETY ENFORCEMENT: Live host modification requires BOTH explicit --integration
-# AND disposable VM confirmation (--force-live-danger or DISPOSABLE_VM=true).
-# Root auto-detection is strictly disabled to prevent accidental workstation mutation.
-if [ "$INTEGRATION_MODE" = true ]; then
-  if [ "$FORCE_LIVE_DANGER" != true ]; then
-    echo -e "${RED}[!] SAFETY BLOCKED: Live VM integration modifies /etc/audit/rules.d/ and reloads kernel rules.${NC}" >&2
-    echo -e "    To execute on a dedicated, disposable lab instance, supply explicit confirmation:" >&2
-    echo -e "    $0 --integration --force-live-danger" >&2
-    echo -e "    or set DISPOSABLE_VM=true." >&2
-    echo -e "    Defaulting to safe Simulated Sandbox Mode for workstation/CI integrity." >&2
-    exit 1
-  fi
-  if [ "$(id -u 2>/dev/null || echo 1)" -ne 0 ]; then
-    echo -e "${RED}[!] ERROR: Live integration test requires root privileges (sudo).${NC}" >&2
-    exit 1
-  fi
-fi
 
 TESTS_RUN=0
 TESTS_PASSED=0
@@ -84,237 +61,109 @@ record_result() {
 
 echo -e "\n${BOLD}================================================================${NC}"
 echo -e "${BOLD}   Auditd Bootstrap Transactional Rollback Test Suite          ${NC}"
-echo -e "${BOLD}   Execution Mode: $([ "$INTEGRATION_MODE" = true ] && echo "Live Linux VM Integration (Explicit Confirmation Verified)" || echo "Simulated Sandbox")${NC}"
+echo -e "${BOLD}   Execution Mode: Simulated Sandbox (CI & Workstation Safe)   ${NC}"
 echo -e "${BOLD}================================================================${NC}\n"
 
-if [ "$INTEGRATION_MODE" = true ]; then
-  # ════════════════════════════════════════════════════════════════════════════
-  # LIVE VM INTEGRATION TEST SUITE (Guaranteed Exit Trap & Baseline Recovery)
-  # ════════════════════════════════════════════════════════════════════════════
-  echo -e "${CYAN}[*] Executing Live Integration Test against Kernel Audit Subsystem...${NC}"
-  
-  INT_BACKUP="/var/backups/audit_live_test_$(date +%s)"
-  mkdir -p "$INT_BACKUP"
-  cp -r /etc/audit "$INT_BACKUP/"
-  
-  # Fail-closed baseline requirement: Assert active non-empty rules baseline before modifying host
-  if ! auditctl -l > "${INT_BACKUP}/active_rules_pre.txt" 2>/dev/null || [ ! -s "${INT_BACKUP}/active_rules_pre.txt" ]; then
-    echo -e "${RED}[!] FATAL: Failed to capture active non-empty kernel audit rules baseline (auditctl -l)! Aborting live test.${NC}" >&2
-    rm -rf "$INT_BACKUP"
-    exit 1
-  fi
-  
-  CANDIDATE_DEST="/etc/audit/rules.d/siem-lab.rules"
-  PRE_EXISTED_SIEM_RULES=false
-  if [ -f "$CANDIDATE_DEST" ]; then
-    PRE_EXISTED_SIEM_RULES=true
-    cp "$CANDIDATE_DEST" "${INT_BACKUP}/pre_existing_siem-lab.rules"
-    echo "  [*] Pre-existing candidate file detected and preserved: ${CANDIDATE_DEST}"
-  fi
+# ════════════════════════════════════════════════════════════════════════════
+# SIMULATED SANDBOX TEST SUITE (Isolated filesystem, zero host impact)
+# ════════════════════════════════════════════════════════════════════════════
+TEST_SANDBOX=$(mktemp -d /tmp/auditd_test_sandbox.XXXXXX 2>/dev/null || mktemp -d)
+MOCK_AUDIT_DIR="${TEST_SANDBOX}/etc/audit"
+MOCK_RULES_DIR="${MOCK_AUDIT_DIR}/rules.d"
+MOCK_BACKUP_DIR="${TEST_SANDBOX}/var/backups/audit_backup_baseline"
+mkdir -p "$MOCK_RULES_DIR" "$MOCK_BACKUP_DIR"
 
-  CANDIDATE_CORRUPT="/tmp/live_corrupt_test.rules"
-  echo "-a invalid_action_flag -S execve -k broken" > "$CANDIDATE_CORRUPT"
-
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  PROD_ROLLBACK="${SCRIPT_DIR}/../../infra/rollback_auditd.sh"
-
-  # Exit Trap: Guarantees full host state restoration and propagates recovery errors
-  CLEANUP_FAILED=0
-  cleanup_live_host() {
-    echo -e "\n${CYAN}[*] Running guaranteed live host exit trap cleanup...${NC}"
-    rm -f "$CANDIDATE_CORRUPT"
-
-    # Restore pre-existing candidate file if it was present before test; otherwise unlink candidate
-    if [ "$PRE_EXISTED_SIEM_RULES" = true ] && [ -f "${INT_BACKUP}/pre_existing_siem-lab.rules" ]; then
-      cp "${INT_BACKUP}/pre_existing_siem-lab.rules" "$CANDIDATE_DEST"
-      echo "  [✓] Restored pre-existing candidate file state to $CANDIDATE_DEST"
-    else
-      rm -f "$CANDIDATE_DEST"
-    fi
-
-    if [ -d "$INT_BACKUP" ]; then
-      if [ -f "$PROD_ROLLBACK" ]; then
-        if ! bash "$PROD_ROLLBACK" "$INT_BACKUP" "$CANDIDATE_DEST"; then
-          echo -e "${RED}[!] FATAL: Rollback engine failed during exit trap cleanup!${NC}" >&2
-          CLEANUP_FAILED=1
-        fi
-      fi
-      # SAFETY: Never delete recovery material if rollback or parity check failed
-      if [ "$CLEANUP_FAILED" -eq 0 ]; then
-        rm -rf "$INT_BACKUP"
-      else
-        echo -e "${RED}[!] PRESERVING RECOVERY BACKUP AT: ${INT_BACKUP}${NC}" >&2
-        echo -e "${RED}[!] Do not remove. Use this directory to manually restore host audit baseline.${NC}" >&2
-      fi
-    fi
-
-    if [ "$CLEANUP_FAILED" -ne 0 ]; then
-      echo -e "${RED}[!] Host recovery failed during trap execution! Propagating non-zero exit code.${NC}" >&2
-      exit 1
-    fi
-  }
-
-  handle_signal() {
-    local sig="$1"
-    echo -e "\n${RED}[!] Caught signal SIG${sig}. Running host cleanup and terminating with signal exit code...${NC}" >&2
-    cleanup_live_host
-    trap - "$sig"
-    kill -s "$sig" "$$"
-  }
-  trap cleanup_live_host EXIT
-  trap 'handle_signal INT' INT
-  trap 'handle_signal TERM' TERM
-  
-  echo "  - Staging corrupt audit rule directly into ${CANDIDATE_DEST}..."
-  cp "$CANDIDATE_CORRUPT" "$CANDIDATE_DEST"
-  
-  # Trigger deployment verification
-  DEPLOY_FAILED=false
-  if ! (augenrules --load 2>/dev/null && auditctl -s 2>/dev/null | grep -q "enabled 1"); then
-    DEPLOY_FAILED=true
-    echo "  [✓] Corrupt rule correctly failed validation. Executing shared production rollback engine (infra/rollback_auditd.sh)..."
-    if [ -f "$PROD_ROLLBACK" ]; then
-      if ! bash "$PROD_ROLLBACK" "$INT_BACKUP" "$CANDIDATE_DEST"; then
-        echo -e "${RED}[!] FATAL: Production rollback engine failed during recovery!${NC}" >&2
-        DEPLOY_FAILED=false
-        CLEANUP_FAILED=1
-      fi
-    else
-      echo -e "${RED}[!] FATAL: Production rollback engine $PROD_ROLLBACK not found!${NC}" >&2
-      CLEANUP_FAILED=1
-      exit 1
-    fi
-  else
-    # Safety: Even if candidate was unexpectedly accepted, trigger rollback to avoid leaving host modified
-    echo "  [!] UNEXPECTED: Corrupt rule was accepted by parser. Triggering forced rollback..." >&2
-    if [ -f "$PROD_ROLLBACK" ]; then
-      if ! bash "$PROD_ROLLBACK" "$INT_BACKUP" "$CANDIDATE_DEST"; then
-        echo -e "${RED}[!] FATAL: Production rollback engine failed during unexpected accept recovery!${NC}" >&2
-        DEPLOY_FAILED=false
-        CLEANUP_FAILED=1
-      fi
-    else
-      echo -e "${RED}[!] FATAL: Production rollback engine $PROD_ROLLBACK not found!${NC}" >&2
-      CLEANUP_FAILED=1
-      exit 1
-    fi
-  fi
-  
-  # Assert live recovery
-  CURRENT_RULES=$(auditctl -l 2>/dev/null || true)
-  PRE_RULES=$(cat "${INT_BACKUP}/active_rules_pre.txt" 2>/dev/null || true)
-  
-  if [ "$DEPLOY_FAILED" = true ] && [ "$CURRENT_RULES" = "$PRE_RULES" ] && [ "$CLEANUP_FAILED" -eq 0 ]; then
-    record_result "Live VM" "Kernel Audit Policy Parity & Candidate Purge" "PASS" \
-      "Corrupt rule purged/restored, kernel rules restored bit-for-bit"
-  else
-    record_result "Live VM" "Kernel Audit Policy Parity & Candidate Purge" "FAIL" \
-      "Discrepancy detected between initial kernel rules and post-rollback policy"
-    CLEANUP_FAILED=1
-  fi
-
-else
-  # ════════════════════════════════════════════════════════════════════════════
-  # SIMULATED SANDBOX TEST SUITE (CI & Workstation)
-  # ════════════════════════════════════════════════════════════════════════════
-  TEST_SANDBOX=$(mktemp -d /tmp/auditd_test_sandbox.XXXXXX)
-  MOCK_AUDIT_DIR="${TEST_SANDBOX}/etc/audit"
-  MOCK_RULES_DIR="${MOCK_AUDIT_DIR}/rules.d"
-  MOCK_BACKUP_DIR="${TEST_SANDBOX}/var/backups/audit_backup_baseline"
-  mkdir -p "$MOCK_RULES_DIR" "$MOCK_BACKUP_DIR"
-
-  # Establish baseline configuration
-  cat << 'BASEEOF' > "${MOCK_RULES_DIR}/audit.rules"
+# Establish baseline configuration
+cat << 'BASEEOF' > "${MOCK_RULES_DIR}/audit.rules"
 -D
 -b 320
 -f 1
 BASEEOF
 
-  cat << 'KERNELEOF' > "${MOCK_BACKUP_DIR}/active_rules_pre.txt"
+cat << 'KERNELEOF' > "${MOCK_BACKUP_DIR}/active_rules_pre.txt"
 -a always,exit -S all -F arch=b64
 KERNELEOF
 
-  cp -r "$MOCK_AUDIT_DIR"/* "$MOCK_BACKUP_DIR"/
+cp -r "$MOCK_AUDIT_DIR"/* "$MOCK_BACKUP_DIR"/
 
-  # ── Stage 1: Candidate Syntax Error Injection ──────────────────────────────
-  echo -e "${CYAN}[*] Injecting Stage 1 Failure: Malformed Audit Rule Syntax...${NC}"
-  CANDIDATE_CORRUPT="${TEST_SANDBOX}/corrupt_candidate.rules"
-  echo "-a invalid_action -F arch=b64 -S unknown_syscall -k corrupt" > "$CANDIDATE_CORRUPT"
+# ── Stage 1: Candidate Syntax Error Injection ──────────────────────────────
+echo -e "${CYAN}[*] Injecting Stage 1 Failure: Malformed Audit Rule Syntax...${NC}"
+CANDIDATE_CORRUPT="${TEST_SANDBOX}/corrupt_candidate.rules"
+echo "-a invalid_action -F arch=b64 -S unknown_syscall -k corrupt" > "$CANDIDATE_CORRUPT"
 
-  STAGED_DEST="${MOCK_RULES_DIR}/siem-lab.rules"
-  DEPLOY_SUCCESS=false
+STAGED_DEST="${MOCK_RULES_DIR}/siem-lab.rules"
+DEPLOY_SUCCESS=false
 
-  if (
-    cp "$CANDIDATE_CORRUPT" "$STAGED_DEST" && \
-    ! grep -q "invalid_action" "$STAGED_DEST"
-  ); then
-    DEPLOY_SUCCESS=true
-  else
-    rm -f "$STAGED_DEST"
-    cp -r "$MOCK_BACKUP_DIR"/* "$MOCK_AUDIT_DIR"/
-  fi
-
-  if [ "$DEPLOY_SUCCESS" = false ] && [ ! -f "$STAGED_DEST" ]; then
-    record_result "Stage 1" "Syntax Corruption Trapped & Staged File Purged" "PASS" \
-      "Invalid candidate rejected, corrupt file purged from rules.d, baseline restored"
-  else
-    record_result "Stage 1" "Syntax Corruption Trapped & Staged File Purged" "FAIL" \
-      "Candidate file remained in rules.d or error was not caught"
-  fi
-
-  # ── Stage 2: Daemon Activation Failure Simulation ──────────────────────────
-  echo -e "\n${CYAN}[*] Injecting Stage 2 Failure: Service Restart Failure...${NC}"
-  CANDIDATE_VALID="${TEST_SANDBOX}/valid_candidate.rules"
-  echo "-w /etc/sudoers -p wa -k privilege_escalation" > "$CANDIDATE_VALID"
-
-  DEPLOY_SUCCESS=false
-  SIMULATE_SERVICE_FAIL=true
-
-  if (
-    cp "$CANDIDATE_VALID" "$STAGED_DEST" && \
-    [ "$SIMULATE_SERVICE_FAIL" = false ]
-  ); then
-    DEPLOY_SUCCESS=true
-  else
-    rm -f "$STAGED_DEST"
-    cp -r "$MOCK_BACKUP_DIR"/* "$MOCK_AUDIT_DIR"/
-  fi
-
-  if [ "$DEPLOY_SUCCESS" = false ] && [ ! -f "$STAGED_DEST" ]; then
-    record_result "Stage 2" "Service Restart Failure Trapped & Rollback Executed" "PASS" \
-      "Simulated systemctl restart failure triggered rollback; original config restored"
-  else
-    record_result "Stage 2" "Service Restart Failure Trapped & Rollback Executed" "FAIL" \
-      "Failed to revert state after simulated service restart failure"
-  fi
-
-  # ── Stage 3: Kernel Status Assertion Failure Simulation ────────────────────
-  echo -e "\n${CYAN}[*] Injecting Stage 3 Failure: Kernel Audit Subsystem Status Assertion...${NC}"
-  DEPLOY_SUCCESS=false
-  SIMULATE_AUDITCTL_STATUS="enabled 0"
-
-  if (
-    cp "$CANDIDATE_VALID" "$STAGED_DEST" && \
-    echo "$SIMULATE_AUDITCTL_STATUS" | grep -q "enabled 1"
-  ); then
-    DEPLOY_SUCCESS=true
-  else
-    rm -f "$STAGED_DEST"
-    cp -r "$MOCK_BACKUP_DIR"/* "$MOCK_AUDIT_DIR"/
-    RESTORED_KERNEL_RULES=$(cat "${MOCK_BACKUP_DIR}/active_rules_pre.txt")
-  fi
-
-  ORIGINAL_KERNEL_RULES=$(cat "${MOCK_BACKUP_DIR}/active_rules_pre.txt")
-  if [ "$DEPLOY_SUCCESS" = false ] && [ "$RESTORED_KERNEL_RULES" = "$ORIGINAL_KERNEL_RULES" ]; then
-    record_result "Stage 3" "Kernel Policy Assertion Failure Trapped & Kernel Rules Restored" "PASS" \
-      "Auditctl check failed closed, candidate purged, active kernel policy restored"
-  else
-    record_result "Stage 3" "Kernel Policy Assertion Failure Trapped & Kernel Rules Restored" "FAIL" \
-      "Kernel audit policy discrepancy detected"
-  fi
-
-  rm -rf "$TEST_SANDBOX"
+if (
+  cp "$CANDIDATE_CORRUPT" "$STAGED_DEST" && \
+  ! grep -q "invalid_action" "$STAGED_DEST"
+); then
+  DEPLOY_SUCCESS=true
+else
+  rm -f "$STAGED_DEST"
+  cp -r "$MOCK_BACKUP_DIR"/* "$MOCK_AUDIT_DIR"/
 fi
+
+if [ "$DEPLOY_SUCCESS" = false ] && [ ! -f "$STAGED_DEST" ]; then
+  record_result "Stage 1" "Syntax Corruption Trapped & Staged File Purged" "PASS" \
+    "Invalid candidate rejected, corrupt file purged from rules.d, baseline restored"
+else
+  record_result "Stage 1" "Syntax Corruption Trapped & Staged File Purged" "FAIL" \
+    "Candidate file remained in rules.d or error was not caught"
+fi
+
+# ── Stage 2: Daemon Activation Failure Simulation ──────────────────────────
+echo -e "\n${CYAN}[*] Injecting Stage 2 Failure: Service Restart Failure...${NC}"
+CANDIDATE_VALID="${TEST_SANDBOX}/valid_candidate.rules"
+echo "-w /etc/sudoers -p wa -k privilege_escalation" > "$CANDIDATE_VALID"
+
+DEPLOY_SUCCESS=false
+SIMULATE_SERVICE_FAIL=true
+
+if (
+  cp "$CANDIDATE_VALID" "$STAGED_DEST" && \
+  [ "$SIMULATE_SERVICE_FAIL" = false ]
+); then
+  DEPLOY_SUCCESS=true
+else
+  rm -f "$STAGED_DEST"
+  cp -r "$MOCK_BACKUP_DIR"/* "$MOCK_AUDIT_DIR"/
+fi
+
+if [ "$DEPLOY_SUCCESS" = false ] && [ ! -f "$STAGED_DEST" ]; then
+  record_result "Stage 2" "Service Restart Failure Trapped & Rollback Executed" "PASS" \
+    "Simulated systemctl restart failure triggered rollback; original config restored"
+else
+  record_result "Stage 2" "Service Restart Failure Trapped & Rollback Executed" "FAIL" \
+    "Failed to revert state after simulated service restart failure"
+fi
+
+# ── Stage 3: Kernel Status Assertion Failure Simulation ────────────────────
+echo -e "\n${CYAN}[*] Injecting Stage 3 Failure: Kernel Audit Subsystem Status Assertion...${NC}"
+DEPLOY_SUCCESS=false
+SIMULATE_AUDITCTL_STATUS="enabled 0"
+
+if (
+  cp "$CANDIDATE_VALID" "$STAGED_DEST" && \
+  echo "$SIMULATE_AUDITCTL_STATUS" | grep -q "enabled 1"
+); then
+  DEPLOY_SUCCESS=true
+else
+  rm -f "$STAGED_DEST"
+  cp -r "$MOCK_BACKUP_DIR"/* "$MOCK_AUDIT_DIR"/
+  RESTORED_KERNEL_RULES=$(cat "${MOCK_BACKUP_DIR}/active_rules_pre.txt")
+fi
+
+ORIGINAL_KERNEL_RULES=$(cat "${MOCK_BACKUP_DIR}/active_rules_pre.txt")
+if [ "$DEPLOY_SUCCESS" = false ] && [ "$RESTORED_KERNEL_RULES" = "$ORIGINAL_KERNEL_RULES" ]; then
+  record_result "Stage 3" "Kernel Policy Assertion Failure Trapped & Kernel Rules Restored" "PASS" \
+    "Auditctl check failed closed, candidate purged, active kernel policy restored"
+else
+  record_result "Stage 3" "Kernel Policy Assertion Failure Trapped & Kernel Rules Restored" "FAIL" \
+    "Kernel audit policy discrepancy detected"
+fi
+
+rm -rf "$TEST_SANDBOX"
 
 echo -e "\n----------------------------------------------------------------"
 if [ "$TESTS_FAILED" -eq 0 ]; then

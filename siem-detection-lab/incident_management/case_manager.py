@@ -100,7 +100,9 @@ def get_caller_identity() -> str:
     Security Guarantee:
     Does NOT rely on mutable process environment variables (USER/USERNAME/LOGNAME)
     which an attacker could spoof in userland. Uses kernel-level process security context:
-    - POSIX: Resolves process owner via kernel UID: pwd.getpwuid(os.getuid()).pw_name
+    - POSIX: Resolves process owner via kernel effective UID: pwd.getpwuid(os.geteuid()).pw_name
+      (falls back to os.getuid() if geteuid is unavailable). Effective UID semantics ensure
+      that privileged execution via setuid/seteuid/sudo is accurately recognized or constrained.
     - Windows: Resolves authenticated token principal via Advapi32:GetUserNameW
     - Test Harness: Explicitly accepts SIEM_TEST_IDENTITY only during isolated unit tests.
     """
@@ -108,8 +110,14 @@ def get_caller_identity() -> str:
     if "SIEM_TEST_IDENTITY" in os.environ:
         return os.environ["SIEM_TEST_IDENTITY"]
 
-    # 1. POSIX kernel UID check (unspoofable by userland environment alteration)
-    if hasattr(os, "getuid"):
+    # 1. POSIX kernel effective UID check (reflects privilege escalation / sudo / seteuid)
+    if hasattr(os, "geteuid"):
+        try:
+            import pwd
+            return pwd.getpwuid(os.geteuid()).pw_name
+        except Exception:
+            pass
+    elif hasattr(os, "getuid"):
         try:
             import pwd
             return pwd.getpwuid(os.getuid()).pw_name

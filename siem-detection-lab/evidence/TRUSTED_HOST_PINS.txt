@@ -1,6 +1,7 @@
 # =============================================================================
 # SIEM Lab — Pre-Provisioned Trusted Host Key Pins (Out-of-Band Verified)
 # Acquisition Channel: Google Cloud Serial Port Console (get-serial-port-output)
+# Reproducible Artifact: evidence/serial_console_host_keys.log
 # Verification Date: 2026-10-31T18:40:00Z | Authenticated GCP Control Plane
 # Prevents Machine-in-the-Middle (MitM) & Host Spoofing Attacks During Ingestion
 # Note: Laboratory demo configuration. Production pins rotate per security policy.
