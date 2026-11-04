@@ -13,9 +13,16 @@ export function exportSentinelAnalyticsRule(hunt: CatalogHunt): string {
   const connectorMap: Record<string, { id: string; dataTypes: string[] }> = {
     SigninLogs: { id: 'AzureActiveDirectory', dataTypes: ['SigninLogs'] },
     AuditLogs: { id: 'AzureActiveDirectory', dataTypes: ['AuditLogs'] },
+    AzureActivity: { id: 'AzureActivity', dataTypes: ['AzureActivity'] },
     DeviceProcessEvents: { id: 'MicrosoftDefenderAdvancedThreatProtection', dataTypes: ['DeviceProcessEvents'] },
     DeviceRegistryEvents: { id: 'MicrosoftDefenderAdvancedThreatProtection', dataTypes: ['DeviceRegistryEvents'] },
-    CloudAppEvents: { id: 'MicrosoftCloudAppSecurity', dataTypes: ['CloudAppEvents'] }
+    DeviceEvents: { id: 'MicrosoftDefenderAdvancedThreatProtection', dataTypes: ['DeviceEvents'] },
+    DeviceNetworkEvents: { id: 'MicrosoftDefenderAdvancedThreatProtection', dataTypes: ['DeviceNetworkEvents'] },
+    DeviceFileEvents: { id: 'MicrosoftDefenderAdvancedThreatProtection', dataTypes: ['DeviceFileEvents'] },
+    DeviceLogonEvents: { id: 'MicrosoftDefenderAdvancedThreatProtection', dataTypes: ['DeviceLogonEvents'] },
+    CloudAppEvents: { id: 'MicrosoftCloudAppSecurity', dataTypes: ['CloudAppEvents'] },
+    EmailAttachmentInfo: { id: 'MicrosoftDefenderForOffice365', dataTypes: ['EmailAttachmentInfo'] },
+    UrlClickEvents: { id: 'MicrosoftDefenderForOffice365', dataTypes: ['UrlClickEvents'] }
   };
 
   const connectors = hunt.tables.map(tbl => {
@@ -33,7 +40,22 @@ export function exportSentinelAnalyticsRule(hunt: CatalogHunt): string {
       entityType: 'IP',
       fieldMappings: [{ identifier: 'Address', columnName: 'IPAddress' }]
     });
-  } else if (hunt.tables.includes('DeviceProcessEvents') || hunt.tables.includes('DeviceRegistryEvents')) {
+  } else if (hunt.tables.includes('AzureActivity')) {
+    entityMappings.push({
+      entityType: 'Account',
+      fieldMappings: [{ identifier: 'FullName', columnName: 'Caller' }]
+    });
+    entityMappings.push({
+      entityType: 'IP',
+      fieldMappings: [{ identifier: 'Address', columnName: 'CallerIpAddress' }]
+    });
+  } else if (
+    hunt.tables.includes('DeviceProcessEvents') || 
+    hunt.tables.includes('DeviceRegistryEvents') ||
+    hunt.tables.includes('DeviceEvents') ||
+    hunt.tables.includes('DeviceFileEvents') ||
+    hunt.tables.includes('DeviceLogonEvents')
+  ) {
     entityMappings.push({
       entityType: 'Host',
       fieldMappings: [{ identifier: 'HostName', columnName: 'DeviceName' }]
@@ -41,6 +63,15 @@ export function exportSentinelAnalyticsRule(hunt: CatalogHunt): string {
     entityMappings.push({
       entityType: 'Account',
       fieldMappings: [{ identifier: 'Name', columnName: 'AccountName' }]
+    });
+  } else if (hunt.tables.includes('DeviceNetworkEvents')) {
+    entityMappings.push({
+      entityType: 'Host',
+      fieldMappings: [{ identifier: 'HostName', columnName: 'DeviceName' }]
+    });
+    entityMappings.push({
+      entityType: 'IP',
+      fieldMappings: [{ identifier: 'Address', columnName: 'RemoteIP' }]
     });
   } else if (hunt.tables.includes('CloudAppEvents')) {
     entityMappings.push({
@@ -50,6 +81,15 @@ export function exportSentinelAnalyticsRule(hunt: CatalogHunt): string {
     entityMappings.push({
       entityType: 'IP',
       fieldMappings: [{ identifier: 'Address', columnName: 'IPAddress' }]
+    });
+  } else if (hunt.tables.includes('UrlClickEvents')) {
+    entityMappings.push({
+      entityType: 'Account',
+      fieldMappings: [{ identifier: 'FullName', columnName: 'AccountUpn' }]
+    });
+    entityMappings.push({
+      entityType: 'Url',
+      fieldMappings: [{ identifier: 'Url', columnName: 'Url' }]
     });
   }
 

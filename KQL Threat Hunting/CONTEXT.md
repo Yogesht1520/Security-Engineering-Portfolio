@@ -1,7 +1,7 @@
 # Project Context: HuntBook
 
 > **Working name:** HuntBook (`kql-threat-hunting`)  
-> **Owner:** Yogesh Thakur · **Status:** Active Development · **Current Phase:** Phase 0 (Foundations and spike)  
+> **Owner:** Yogesh Thakur · **Status:** v1.0.0 Complete · **Current Phase:** Production Polish & Review Refinements  
 > This file is the authoritative project context and rules. If anything elsewhere conflicts with it, this file wins.
 
 ---

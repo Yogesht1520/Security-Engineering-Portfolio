@@ -5,8 +5,12 @@ CloudAppEvents
 | where Timestamp > ago(lookback)
 | where Application =~ "Microsoft Exchange Online"
 | where ActionType in~ ("New-InboxRule", "Set-InboxRule", "UpdateInboxRules")
-| extend Parameters = tostring(RawEventData.Parameters)
-| where Parameters has_any (
+| extend RuleParameters = coalesce(
+    tostring(RawEventData.Parameters),
+    tostring(RawEventData.ModifiedProperties),
+    tostring(RawEventData)
+)
+| where RuleParameters has_any (
     "ForwardTo", "ForwardAsAttachmentTo", "RedirectTo",
     "DeleteMessage", "MoveToFolder", "MarkAsRead"
 )
@@ -18,7 +22,6 @@ CloudAppEvents
     IPAddress,
     CountryCode,
     City,
-    Parameters,
+    RuleParameters,
     UserAgent
 | order by Timestamp desc
-

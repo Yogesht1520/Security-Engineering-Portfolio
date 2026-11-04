@@ -34,8 +34,11 @@ Given a sequence of connection timestamps $\{t_1, t_2, \dots, t_n\}$ to the same
 4. **Coefficient of Variation ($CV$ or Jitter Ratio):**
    $$CV = \frac{\sigma}{\mu}$$
 
-- **Human browsing / Benign bursty web traffic:** $CV > 0.8$ (highly variable deltas).
-- **Automated C2 beacon with low/medium jitter:** $CV \le 0.35$ (tight distribution centered around the configured sleep timer).
+- **Human browsing / Benign bursty web traffic:** $CV > 0.8$ (empirically observed high variation across baseline telemetry).
+- **Automated C2 beacon with low/medium jitter:** $CV \le 0.35$ (experimental heuristic threshold calibrated against synthetic beaconing datasets).
+
+> [!NOTE]
+> Jitter ratio thresholds ($0.35$ vs $0.80$) are **experimental heuristic parameters**, not universal physical constants. In enterprise environments, they must be baseline-calibrated against specific corporate proxy and endpoint application profiles to avoid false-positive alert bursts.
 
 ---
 
@@ -47,19 +50,24 @@ In SQL or basic Log Analytics, calculating row-to-previous-row deltas requires c
 let lookback = 24h;
 let minConnections = 15;
 let maxJitterRatio = 0.35;
-let privateSubnets = dynamic(["10.", "172.16.", "172.17.", "172.18.", "172.19.", "172.20.", 
-                              "172.21.", "172.22.", "172.23.", "172.24.", "172.25.", "172.26.", 
-                              "172.27.", "172.28.", "172.29.", "172.30.", "172.31.", "192.168.", "127."]);
 DeviceNetworkEvents
 | where Timestamp > ago(lookback)
 | where ActionType == "ConnectionSuccess"
 | where not(ipv4_is_private(RemoteIP))
-| project Timestamp, DeviceName, RemoteIP, RemotePort, RemoteUrl, InitiatingProcessFileName
-| sort by DeviceName asc, RemoteIP asc, RemotePort asc, Timestamp asc
+| project Timestamp, DeviceName, InitiatingProcessFileName, RemoteIP, RemotePort, RemoteUrl
+| sort by DeviceName asc, InitiatingProcessFileName asc, RemoteIP asc, RemotePort asc, Timestamp asc
 | serialize
-| extend PrevDevice = prev(DeviceName), PrevIP = prev(RemoteIP), PrevPort = prev(RemotePort), PrevTime = prev(Timestamp)
+| extend PrevDevice = prev(DeviceName),
+         PrevProc = prev(InitiatingProcessFileName),
+         PrevIP = prev(RemoteIP),
+         PrevPort = prev(RemotePort),
+         PrevTime = prev(Timestamp)
 | extend TimeDelta = datetime_diff('second', Timestamp, PrevTime)
-| where DeviceName == PrevDevice and RemoteIP == PrevIP and RemotePort == PrevPort and TimeDelta > 0
+| where DeviceName == PrevDevice 
+    and InitiatingProcessFileName == PrevProc 
+    and RemoteIP == PrevIP 
+    and RemotePort == PrevPort 
+    and TimeDelta > 0
 | summarize 
     FirstSeen = min(Timestamp),
     LastSeen = max(Timestamp),
@@ -68,14 +76,13 @@ DeviceNetworkEvents
     StdDevDelta = stdev(TimeDelta),
     MinDelta = min(TimeDelta),
     MaxDelta = max(TimeDelta),
-    Processes = make_set(InitiatingProcessFileName, 3),
     RemoteUrls = make_set(RemoteUrl, 3)
-    by DeviceName, RemoteIP, RemotePort
+    by DeviceName, InitiatingProcessFileName, RemoteIP, RemotePort
 | where TotalConnections >= minConnections
 | extend JitterRatio = iff(AvgDelta > 0, round(StdDevDelta / AvgDelta, 3), 1.0)
 | where JitterRatio <= maxJitterRatio
-| project FirstSeen, LastSeen, DeviceName, RemoteIP, RemotePort, RemoteUrls,
-          TotalConnections, AvgDelta, StdDevDelta, JitterRatio, Processes
+| project FirstSeen, LastSeen, DeviceName, InitiatingProcessFileName, RemoteIP, RemotePort, RemoteUrls,
+          TotalConnections, AvgDelta, StdDevDelta, JitterRatio
 | order by JitterRatio asc, TotalConnections desc
 ```
 

@@ -1,5 +1,5 @@
 id: HB-CL-002
-title: New OAuth application consent granted with sensitive scopes
+title: OAuth application consent or service principal granted sensitive scopes
 status: tested
 validation_level: synthetic
 platform: sentinel
@@ -10,15 +10,18 @@ attack:
   tactics:
     - initial-access
     - credential-access
+    - persistence
   techniques:
     - T1528
+    - T1098
 severity: high
 hypothesis: >
-  An adversary creates a malicious cloud app and conducts an Illicit Consent Grant attack, tricking an employee
-  into authorizing high-privilege Microsoft Graph API permissions to silently extract mail and files.
+  An adversary executes an Illicit Consent Grant (T1528) tricking users into authorizing permissions,
+  or abuses compromised administrative privileges to register rogue service principals and delegated grants (T1098)
+  with high-privilege Microsoft Graph API scopes (e.g. Mail.ReadWrite, Files.ReadWrite.All) for persistent exfiltration.
 logic_summary: >
-  Queries Entra ID AuditLogs for successful application consent operations under ApplicationManagement
-  where requested scopes include high-risk API permissions like Mail.ReadWrite or Files.ReadWrite.All.
+  Monitors Entra ID AuditLogs for successful application management events, categorizing direct consent grants (T1528)
+  versus service principal creations and delegated grants (T1098), filtering for sensitive data access permissions.
 parameters:
   - name: lookback
     default: 7d

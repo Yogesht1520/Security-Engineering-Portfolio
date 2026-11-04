@@ -29,6 +29,9 @@ parameters:
   - name: minFailures
     default: 10
     description: Minimum number of failed attempts prior to success
+  - name: followUpWindow
+    default: 2h
+    description: Window following brute-force failures to correlate subsequent successful sign-in
 false_positives:
   - A user who recently changed their password on their phone/laptop and forgot to update cached credentials on other apps
   - Automated enterprise sync service accounts experiencing temporary authentication desync

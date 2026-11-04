@@ -1,33 +1,45 @@
-// HB-ID-003 | T1078 | Impossible travel: consecutive sign-ins from distant locations in unrealistic time
-// Hypothesis: An attacker uses compromised credentials from a foreign location while the legitimate user is actively logged in from their home region.
+// Hunt: HB-ID-003 - Impossible Travel Between Distant Regions
+// MITRE ATT&CK: T1078 (Valid Accounts)
+// Platform: Microsoft Sentinel (SigninLogs)
+//
+// Description: Detects consecutive successful sign-ins for the same identity from distant
+// geographic locations within an unrealistic timeframe, calculating geodesic distance and
+// implied travel speed (> 800 km/h), with country-delta fallback for missing coordinates.
+
 let lookback = 1d;
-let maxTravelMinutes = 60;
+let maxTravelHours = 24.0;
+let maxAirplaneSpeedKph = 800.0;
 SigninLogs
 | where TimeGenerated > ago(lookback)
 | where ResultType == "0" // Only successful sign-ins represent actual session establishment
-| where isnotempty(Location) and isnotempty(UserPrincipalName)
-| project TimeGenerated, UserPrincipalName, IPAddress, Location, AppDisplayName, UserAgent
-| order by UserPrincipalName asc, TimeGenerated asc
+| where isnotempty(UserPrincipalName)
+| extend IdentityKey = coalesce(UserId, UserPrincipalName)
+| extend Lat = todouble(LocationDetails.geoCoordinates.latitude),
+         Lon = todouble(LocationDetails.geoCoordinates.longitude)
+| project TimeGenerated, IdentityKey, UserId, UserPrincipalName, IPAddress, Location, Lat, Lon, AppDisplayName, UserAgent
+| order by IdentityKey asc, TimeGenerated asc
 | serialize
-| extend PrevLocation = prev(Location),
+| extend PrevIdentity = prev(IdentityKey),
+         PrevLocation = prev(Location),
          PrevIP = prev(IPAddress),
          PrevTime = prev(TimeGenerated),
-         PrevUser = prev(UserPrincipalName),
-         PrevApp = prev(AppDisplayName)
-| where UserPrincipalName == PrevUser
-| where Location != PrevLocation and IPAddress != PrevIP
-| extend MinutesBetweenLogins = datetime_diff('minute', TimeGenerated, PrevTime)
-| where MinutesBetweenLogins > 0 and MinutesBetweenLogins <= maxTravelMinutes
-| project
-    TimeGenerated,
-    UserPrincipalName,
-    CurrentLocation = Location,
-    CurrentIP = IPAddress,
-    CurrentApp = AppDisplayName,
-    PrevLocation,
-    PrevIP,
-    PrevApp,
-    MinutesBetweenLogins,
-    UserAgent
-| order by MinutesBetweenLogins asc
-
+         PrevApp = prev(AppDisplayName),
+         PrevLat = prev(Lat),
+         PrevLon = prev(Lon)
+| where IdentityKey == PrevIdentity and IPAddress != PrevIP
+| extend TimeDeltaHours = datetime_diff('second', TimeGenerated, PrevTime) / 3600.0
+| where TimeDeltaHours > 0 and TimeDeltaHours <= maxTravelHours
+| extend CalculatedDistanceKm = iff(
+    isnotnull(Lat) and isnotnull(PrevLat) and (Lat != PrevLat or Lon != PrevLon),
+    geo_distance_2points(Lat, Lon, PrevLat, PrevLon) / 1000.0,
+    real(null)
+)
+| extend TravelSpeedKph = iff(TimeDeltaHours > 0 and isnotnull(CalculatedDistanceKm), round(CalculatedDistanceKm / TimeDeltaHours, 1), real(null))
+| where TravelSpeedKph > maxAirplaneSpeedKph 
+    or (isnull(TravelSpeedKph) and Location != PrevLocation and TimeDeltaHours <= 1.0)
+| project TimeGenerated, PrevTime, UserPrincipalName, UserId,
+          CurrentLocation = Location, PrevLocation,
+          CurrentIP = IPAddress, PrevIP,
+          CalculatedDistanceKm, TimeDeltaHours, TravelSpeedKph,
+          CurrentApp = AppDisplayName, PrevApp, UserAgent
+| order by TimeGenerated desc

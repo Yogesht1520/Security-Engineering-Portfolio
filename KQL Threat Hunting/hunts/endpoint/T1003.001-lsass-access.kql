@@ -3,19 +3,21 @@
 let lookback = 7d;
 DeviceEvents
 | where Timestamp > ago(lookback)
-| where ActionType =~ "OpenProcessApiCall"
-| where FileName =~ "lsass.exe"
+| where ActionType in~ ("OpenProcessApiCall", "ProcessAccess")
+| extend TargetProc = coalesce(FileName, tostring(AdditionalFields.TargetProcessFileName))
+| where TargetProc =~ "lsass.exe"
 | where InitiatingProcessFileName !in~ (
     "csrss.exe", "svchost.exe", "MsMpEng.exe", "Sense.exe",
     "winlogon.exe", "lsass.exe", "services.exe"
 )
+| extend DesiredAccess = tostring(AdditionalFields.DesiredAccess)
 | project
     Timestamp,
     DeviceName,
     AccountName,
-    TargetProcess = FileName,
+    TargetProcess = TargetProc,
+    DesiredAccess,
     InitiatingProcessFileName,
     InitiatingProcessCommandLine,
     AdditionalFields
 | order by Timestamp desc
-

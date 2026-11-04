@@ -29,6 +29,9 @@ parameters:
   - name: minDenials
     default: 3
     description: Minimum number of MFA prompt denials required
+  - name: followUpWindow
+    default: 30m
+    description: Sliding window following fatigue prompts to correlate subsequent successful login
 false_positives:
   - Flaky mobile cellular connectivity causing multiple failed authentication attempts
   - A user repeatedly denying an MFA prompt because they did not recognize the prompt, then realizing it was legitimate

@@ -15,10 +15,9 @@ let wmiActions = dynamic([
 DeviceEvents
 | where Timestamp > ago(lookback)
 | where ActionType in~ (wmiActions) or ActionType has "WmiEvent"
-| extend ConsumerName = tostring(AdditionalFields.ConsumerName)
-| extend FilterName = tostring(AdditionalFields.FilterName)
-| extend Query = tostring(AdditionalFields.Query)
+| extend ConsumerName = coalesce(tostring(AdditionalFields.ConsumerName), tostring(AdditionalFields.Consumer), tostring(AdditionalFields.Name))
+| extend FilterName = coalesce(tostring(AdditionalFields.FilterName), tostring(AdditionalFields.Filter))
+| extend Query = coalesce(tostring(AdditionalFields.Query), tostring(AdditionalFields.QueryText))
 | project Timestamp, DeviceName, ActionType, ConsumerName, FilterName, Query,
           InitiatingProcessFileName, InitiatingProcessCommandLine, AccountName, AdditionalFields
 | order by Timestamp desc
-

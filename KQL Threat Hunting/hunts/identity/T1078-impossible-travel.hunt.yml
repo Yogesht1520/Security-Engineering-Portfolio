@@ -24,9 +24,12 @@ parameters:
   - name: lookback
     default: 1d
     description: Historical search window to inspect
-  - name: maxTravelMinutes
-    default: 60
-    description: Maximum allowable time difference between different country logins
+  - name: maxTravelHours
+    default: 24.0
+    description: Maximum allowable time difference between consecutive logins
+  - name: maxAirplaneSpeedKph
+    default: 800.0
+    description: Maximum plausible commercial airliner speed threshold in km/h
 false_positives:
   - Users connecting to or disconnecting from enterprise VPN gateways or zero-trust reverse proxies
   - Cloud service principal / app proxy logins executing on behalf of users in international Azure datacenters

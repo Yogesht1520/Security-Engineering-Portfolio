@@ -6,43 +6,48 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   validate:
-    name: Validate Hunts & Schemas
+    name: Detection-as-Code Static & Synthetic Verification
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 # v4.0.0
         with:
-          version: 12
+          version: 10.5.2
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Node.js 22 LTS
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
           node-version: 22
           cache: 'pnpm'
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile=false
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
 
       - name: Build Core & CLI Packages
         run: |
           pnpm --filter @huntbook/core build
           pnpm --filter @huntbook/cli build
 
-      - name: Run HuntBook Detection-as-Code Validator
+      - name: Run HuntBook Detection-as-Code Static Validator (AST + JSON Schema)
         run: node packages/cli/dist/cli.js validate
 
-      - name: Run Synthetic Test Suite
+      - name: Run Synthetic Attack & Benign Baseline Test Suite
         run: node packages/cli/dist/cli.js test
 
-      - name: Run Unit Tests
+      - name: Run Workspace Unit & Exporter Tests
         run: pnpm test
 
-      - name: Build Catalog & Coverage Artifacts
+      - name: Build Distribution Catalog & ATT&CK Navigator Layer
         run: node packages/cli/dist/cli.js build
 
+      - name: Build SOC Console Web Application
+        run: pnpm --filter @huntbook/web build

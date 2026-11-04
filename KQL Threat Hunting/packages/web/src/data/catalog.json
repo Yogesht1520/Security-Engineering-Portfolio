@@ -1,10 +1,10 @@
 {
   "schemaVersion": "1.0.0",
-  "generated": "2026-11-04T21:04:40.664Z",
+  "generated": "2026-11-04T21:41:54.315Z",
   "attackVersion": "v17",
   "stats": {
     "huntCount": 30,
-    "techniqueCount": 28,
+    "techniqueCount": 29,
     "tacticCount": 11,
     "tableCount": 12,
     "validationBreakdown": {
@@ -34,7 +34,7 @@
       },
       "severity": "high",
       "hypothesis": "An implant or agent from an adversary C2 framework (e.g. Cobalt Strike, Sliver, Mythic) executes periodic HTTP/HTTPS or TCP beacon check-ins to an external listener, exhibiting low inter-arrival jitter.\n",
-      "logic_summary": "Applies KQL window serialization (serialize and prev) across chronological DeviceNetworkEvents to calculate the time delta between outbound connections, computing the coefficient of variation (jitter ratio) to flag periodic beaconing.\n",
+      "logic_summary": "Applies KQL window serialization (serialize and prev) grouped per device, initiating process, and remote destination to calculate the inter-arrival time deltas between outbound connections, computing the coefficient of variation (jitter ratio) to flag regular, low-jitter periodic beaconing.\n",
       "parameters": [
         {
           "name": "lookback",
@@ -49,7 +49,7 @@
         {
           "name": "maxJitterRatio",
           "default": 0.35,
-          "description": "Maximum allowable coefficient of variation (stdev / avg) to qualify as regular beaconing"
+          "description": "Experimental threshold for coefficient of variation (stdev / avg); calibrated against synthetic baseline noise"
         }
       ],
       "false_positives": [
@@ -58,7 +58,7 @@
       ],
       "tuning": [
         "Exclude verified enterprise proxy egress points and CDNs (e.g. Microsoft 365, AWS CloudFront, Cloudflare)",
-        "Lower maxJitterRatio threshold if noisy benign monitoring agents are triggering alerts"
+        "Lower maxJitterRatio threshold if noisy benign monitoring agents are triggering alerts (treat thresholds as experimental heuristics)"
       ],
       "triage_steps": [
         "Inspect RemoteIP and RemoteUrl reputation using threat intelligence lookups (VirusTotal, AlienVault OTX)",
@@ -77,7 +77,7 @@
           "url": "https://techcommunity.microsoft.com/t5/microsoft-sentinel-blog/hunting-for-c2-beacons-using-kql/ba-p/2275463"
         }
       ],
-      "query": "// Hunt: HB-C2-001 - Command and Control Periodic Beaconing Detection\n// MITRE ATT&CK: T1071 (Application Layer Protocol)\n// Platform: Microsoft Defender XDR (DeviceNetworkEvents)\n//\n// Description: Detects regular interval network callbacks (beacons) from endpoint processes\n// to external remote IPs by calculating inter-connection time deltas and the coefficient of\n// variation (jitter ratio) using KQL window serialization (serialize and prev).\n\nlet lookback = 24h;\nlet minConnections = 15;\nlet maxJitterRatio = 0.35;\nlet privateSubnets = dynamic([\"10.\", \"172.16.\", \"172.17.\", \"172.18.\", \"172.19.\", \"172.20.\", \n                              \"172.21.\", \"172.22.\", \"172.23.\", \"172.24.\", \"172.25.\", \"172.26.\", \n                              \"172.27.\", \"172.28.\", \"172.29.\", \"172.30.\", \"172.31.\", \"192.168.\", \"127.\"]);\nDeviceNetworkEvents\n| where Timestamp > ago(lookback)\n| where ActionType == \"ConnectionSuccess\"\n| where not(ipv4_is_private(RemoteIP))\n| project Timestamp, DeviceName, RemoteIP, RemotePort, RemoteUrl, InitiatingProcessFileName\n| sort by DeviceName asc, RemoteIP asc, RemotePort asc, Timestamp asc\n| serialize\n| extend PrevDevice = prev(DeviceName), PrevIP = prev(RemoteIP), PrevPort = prev(RemotePort), PrevTime = prev(Timestamp)\n| extend TimeDelta = datetime_diff('second', Timestamp, PrevTime)\n| where DeviceName == PrevDevice and RemoteIP == PrevIP and RemotePort == PrevPort and TimeDelta > 0\n| summarize \n    FirstSeen = min(Timestamp),\n    LastSeen = max(Timestamp),\n    TotalConnections = count(),\n    AvgDelta = avg(TimeDelta),\n    StdDevDelta = stdev(TimeDelta),\n    MinDelta = min(TimeDelta),\n    MaxDelta = max(TimeDelta),\n    Processes = make_set(InitiatingProcessFileName, 3),\n    RemoteUrls = make_set(RemoteUrl, 3)\n    by DeviceName, RemoteIP, RemotePort\n| where TotalConnections >= minConnections\n| extend JitterRatio = iff(AvgDelta > 0, round(StdDevDelta / AvgDelta, 3), 1.0)\n| where JitterRatio <= maxJitterRatio\n| project FirstSeen, LastSeen, DeviceName, RemoteIP, RemotePort, RemoteUrls,\n          TotalConnections, AvgDelta, StdDevDelta, JitterRatio, Processes\n| order by JitterRatio asc, TotalConnections desc\n",
+      "query": "// Hunt: HB-C2-001 - Command and Control Periodic Beaconing Detection\n// MITRE ATT&CK: T1071 (Application Layer Protocol)\n// Platform: Microsoft Defender XDR (DeviceNetworkEvents)\n//\n// Description: Detects regular interval network callbacks (beacons) from endpoint processes\n// to external remote IPs by calculating inter-connection time deltas and the coefficient of\n// variation (jitter ratio) using KQL window serialization (serialize and prev) grouped per process.\n\nlet lookback = 24h;\nlet minConnections = 15;\nlet maxJitterRatio = 0.35;\nDeviceNetworkEvents\n| where Timestamp > ago(lookback)\n| where ActionType == \"ConnectionSuccess\"\n| where not(ipv4_is_private(RemoteIP))\n| project Timestamp, DeviceName, InitiatingProcessFileName, RemoteIP, RemotePort, RemoteUrl\n| sort by DeviceName asc, InitiatingProcessFileName asc, RemoteIP asc, RemotePort asc, Timestamp asc\n| serialize\n| extend PrevDevice = prev(DeviceName),\n         PrevProc = prev(InitiatingProcessFileName),\n         PrevIP = prev(RemoteIP),\n         PrevPort = prev(RemotePort),\n         PrevTime = prev(Timestamp)\n| extend TimeDelta = datetime_diff('second', Timestamp, PrevTime)\n| where DeviceName == PrevDevice \n    and InitiatingProcessFileName == PrevProc \n    and RemoteIP == PrevIP \n    and RemotePort == PrevPort \n    and TimeDelta > 0\n| summarize \n    FirstSeen = min(Timestamp),\n    LastSeen = max(Timestamp),\n    TotalConnections = count(),\n    AvgDelta = avg(TimeDelta),\n    StdDevDelta = stdev(TimeDelta),\n    MinDelta = min(TimeDelta),\n    MaxDelta = max(TimeDelta),\n    RemoteUrls = make_set(RemoteUrl, 3)\n    by DeviceName, InitiatingProcessFileName, RemoteIP, RemotePort\n| where TotalConnections >= minConnections\n| extend JitterRatio = iff(AvgDelta > 0, round(StdDevDelta / AvgDelta, 3), 1.0)\n| where JitterRatio <= maxJitterRatio\n| project FirstSeen, LastSeen, DeviceName, InitiatingProcessFileName, RemoteIP, RemotePort, RemoteUrls,\n          TotalConnections, AvgDelta, StdDevDelta, JitterRatio\n| order by JitterRatio asc, TotalConnections desc\n",
       "tests": {
         "passed": 2,
         "total": 2
@@ -154,7 +154,7 @@
     },
     {
       "id": "HB-CL-002",
-      "title": "New OAuth application consent granted with sensitive scopes",
+      "title": "OAuth application consent or service principal granted sensitive scopes",
       "status": "tested",
       "validation_level": "synthetic",
       "platform": "sentinel",
@@ -165,15 +165,17 @@
       "attack": {
         "tactics": [
           "initial-access",
-          "credential-access"
+          "credential-access",
+          "persistence"
         ],
         "techniques": [
-          "T1528"
+          "T1528",
+          "T1098"
         ]
       },
       "severity": "high",
-      "hypothesis": "An adversary creates a malicious cloud app and conducts an Illicit Consent Grant attack, tricking an employee into authorizing high-privilege Microsoft Graph API permissions to silently extract mail and files.\n",
-      "logic_summary": "Queries Entra ID AuditLogs for successful application consent operations under ApplicationManagement where requested scopes include high-risk API permissions like Mail.ReadWrite or Files.ReadWrite.All.\n",
+      "hypothesis": "An adversary executes an Illicit Consent Grant (T1528) tricking users into authorizing permissions, or abuses compromised administrative privileges to register rogue service principals and delegated grants (T1098) with high-privilege Microsoft Graph API scopes (e.g. Mail.ReadWrite, Files.ReadWrite.All) for persistent exfiltration.\n",
+      "logic_summary": "Monitors Entra ID AuditLogs for successful application management events, categorizing direct consent grants (T1528) versus service principal creations and delegated grants (T1098), filtering for sensitive data access permissions.\n",
       "parameters": [
         {
           "name": "lookback",
@@ -205,7 +207,7 @@
           "url": "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/detect-and-remediate-illicit-consent-grants"
         }
       ],
-      "query": "// HB-CL-002 | T1528 | New OAuth application consent granted with sensitive scopes\n// Hypothesis: An attacker tricks a user into consenting to a rogue third-party OAuth app (Illicit Consent Grant) to gain API access to emails and cloud files.\nlet lookback = 7d;\nAuditLogs\n| where TimeGenerated > ago(lookback)\n| where Category =~ \"ApplicationManagement\"\n| where OperationName in~ (\n    \"Consent to application\",\n    \"Add delegated permission grant\",\n    \"Add service principal\"\n)\n| where Result =~ \"success\"\n| extend AppDisplayName = tostring(TargetResources[0].displayName)\n| extend AppId = tostring(TargetResources[0].id)\n| extend Actor = tostring(InitiatedBy.user.userPrincipalName)\n| extend Permissions = tostring(TargetResources[0].modifiedProperties[0].newValue)\n| where Permissions has_any (\n    \"Mail.Read\", \"Mail.ReadWrite\", \"MailboxSettings.ReadWrite\",\n    \"Files.ReadWrite.All\", \"offline_access\", \"User.ReadWrite.All\"\n)\n| project\n    TimeGenerated,\n    OperationName,\n    AppDisplayName,\n    AppId,\n    Actor,\n    Permissions,\n    ResultDescription\n| order by TimeGenerated desc\n",
+      "query": "// HB-CL-002 | T1528 / T1098 | OAuth application consent & permission grant with sensitive scopes\n// Hypothesis: An attacker conducts an Illicit Consent Grant (T1528) or creates a rogue Service Principal / Permission Grant (T1098)\n// to gain persistent API access to emails, user directories, and cloud files without requiring interactive user credentials.\nlet lookback = 7d;\nAuditLogs\n| where TimeGenerated > ago(lookback)\n| where Category =~ \"ApplicationManagement\"\n| where OperationName in~ (\n    \"Consent to application\",\n    \"Add delegated permission grant\",\n    \"Add service principal\"\n)\n| where Result =~ \"success\"\n| extend TargetJson = tostring(TargetResources)\n| where TargetJson has_any (\n    \"Mail.Read\", \"Mail.ReadWrite\", \"MailboxSettings.ReadWrite\",\n    \"Files.ReadWrite.All\", \"offline_access\", \"User.ReadWrite.All\"\n)\n| extend ActionCategory = case(\n    OperationName has \"Consent\", \"User / Admin Consent Grant (T1528)\",\n    OperationName has \"service principal\", \"Service Principal Registration (T1098)\",\n    OperationName has \"delegated permission\", \"Delegated Permission Grant (T1098)\",\n    \"Application Management\"\n)\n| extend AppDisplayName = coalesce(tostring(TargetResources[0].displayName), tostring(TargetResources[0].modifiedProperties[0].newValue))\n| extend AppId = tostring(TargetResources[0].id)\n| extend Actor = tostring(InitiatedBy.user.userPrincipalName)\n| project\n    TimeGenerated,\n    ActionCategory,\n    OperationName,\n    AppDisplayName,\n    AppId,\n    Actor,\n    TargetJson,\n    ResultDescription\n| order by TimeGenerated desc\n",
       "tests": {
         "passed": 2,
         "total": 2
@@ -224,14 +226,15 @@
       "attack": {
         "tactics": [
           "defense-evasion",
-          "command-and-control"
+          "initial-access"
         ],
         "techniques": [
-          "T1090"
+          "T1090",
+          "T1078"
         ]
       },
       "severity": "high",
-      "hypothesis": "An adversary routes interactive authentication traffic through Tor exit nodes or commercial anonymizing proxies to bypass geo-fencing Conditional Access rules and conceal their true geographic origin during credential stuffing.\n",
+      "hypothesis": "An adversary routes authentication attempts through Tor exit nodes or commercial anonymizers (T1090) to conceal their true geographic origin and bypass geo-blocking Conditional Access policies while attempting to authenticate with compromised Valid Accounts (T1078). In isolation, VPN traffic can be benign; it becomes actionable when paired with unusual sign-in hours, failure clusters, or sensitive app access.\n",
       "logic_summary": "Filters Entra ID SigninLogs for events where RiskDetail indicates an anonymous IP or Tor exit node, or where NetworkLocationDetails matches anonymizer tags, summarizing success versus failure counts per identity.\n",
       "parameters": [
         {
@@ -334,7 +337,7 @@
           "url": "https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/activity-log"
         }
       ],
-      "query": "// Hunt: HB-CL-004 - Azure Resource Deletion Burst\n// MITRE ATT&CK: T1485 (Data Destruction)\n// Platform: Microsoft Sentinel (AzureActivity)\n//\n// Description: Detects a rapid sequence of cloud resource deletions (VMs, storage accounts, \n// databases, key vaults) by a single identity within a short time window, indicating \n// potential cloud extortion, ransomware impact, or rogue administrator activity.\n\nlet lookback = 24h;\nlet burstWindow = 30m;\nlet deletionThreshold = 3;\nAzureActivity\n| where TimeGenerated > ago(lookback)\n| where ActivityStatusValue in~ (\"Success\", \"Succeeded\")\n| where OperationNameValue endswith \"/delete\"\n| summarize \n    FirstDeletion = min(TimeGenerated),\n    LastDeletion = max(TimeGenerated),\n    DeletionCount = count(),\n    DeletedOperations = make_set(OperationNameValue, 10),\n    ResourceGroups = make_set(ResourceGroup, 10),\n    SourceIPs = make_set(CallerIpAddress, 5)\n    by Caller, SubscriptionId, bin(TimeGenerated, burstWindow)\n| where DeletionCount >= deletionThreshold\n| extend DurationMinutes = datetime_diff('minute', LastDeletion, FirstDeletion)\n| project FirstDeletion, LastDeletion, DurationMinutes, Caller, SubscriptionId, DeletionCount, DeletedOperations, ResourceGroups, SourceIPs\n| order by DeletionCount desc\n",
+      "query": "// Hunt: HB-CL-004 - Azure Resource Deletion Burst\n// MITRE ATT&CK: T1485 (Data Destruction)\n// Platform: Microsoft Sentinel (AzureActivity)\n//\n// Description: Detects a rapid sequence of cloud resource deletions (VMs, storage accounts, \n// databases, key vaults) by a single identity within a short time window, indicating \n// potential cloud extortion, ransomware impact, or rogue administrator activity.\n\nlet lookback = 24h;\nlet burstWindow = 30m;\nlet deletionThreshold = 3;\nAzureActivity\n| where TimeGenerated > ago(lookback)\n| where ActivityStatusValue in~ (\"Success\", \"Succeeded\")\n| where OperationNameValue endswith \"/delete\"\n| summarize \n    FirstDeletion = min(TimeGenerated),\n    LastDeletion = max(TimeGenerated),\n    DeletionCount = count(),\n    DeletedOperations = make_set(OperationNameValue, 10),\n    ResourceGroups = make_set(ResourceGroup, 10),\n    SourceIPs = make_set(CallerIpAddress, 5)\n    by Caller, SubscriptionId, bin(TimeGenerated, burstWindow)\n| where DeletionCount >= deletionThreshold\n| extend DurationMinutes = datetime_diff('minute', LastDeletion, FirstDeletion)\n| project FirstDeletion, LastDeletion, DurationMinutes, Caller, SubscriptionId, DeletionCount, DeletedOperations, ResourceGroups, SourceIPs\n| order by DeletionCount desc\n\n",
       "tests": {
         "passed": 2,
         "total": 2
@@ -392,7 +395,7 @@
           "url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-emailattachmentinfo-table"
         }
       ],
-      "query": "// HB-EM-001 | T1566.001 | Inbound email delivered with high-risk executable or script attachment\n// Hypothesis: An attacker delivers phishing emails containing weaponized container files (ISO, VHD) or scripts (HTA, LNK, JS) to bypass gateway defenses.\nlet lookback = 7d;\nEmailAttachmentInfo\n| where Timestamp > ago(lookback)\n| where FileType in~ (\n    \"iso\", \"vhd\", \"hta\", \"lnk\", \"js\", \"vbs\", \"ps1\", \"wsf\", \"scr\", \"jar\", \"bat\", \"cmd\"\n)\n| project\n    Timestamp,\n    NetworkMessageId,\n    SenderFromAddress,\n    RecipientEmailAddress,\n    FileName,\n    FileType,\n    SHA256,\n    ThreatTypes,\n    DetectionMethods\n| order by Timestamp desc\n",
+      "query": "// HB-EM-001 | T1566.001 | Inbound email delivered with high-risk executable or script attachment\n// Hypothesis: An attacker delivers phishing emails containing weaponized container files (ISO, VHD) or scripts (HTA, LNK, JS) to bypass gateway defenses.\nlet lookback = 7d;\nEmailAttachmentInfo\n| where Timestamp > ago(lookback)\n| where FileType in~ (\n    \"iso\", \"vhd\", \"hta\", \"lnk\", \"js\", \"vbs\", \"ps1\", \"wsf\", \"scr\", \"jar\", \"bat\", \"cmd\"\n)\n| project\n    Timestamp,\n    NetworkMessageId,\n    SenderFromAddress,\n    RecipientEmailAddress,\n    FileName,\n    FileType,\n    SHA256,\n    ThreatTypes,\n    DetectionMethods\n| order by Timestamp desc\n\n",
       "tests": {
         "passed": 2,
         "total": 2
@@ -450,7 +453,7 @@
           "url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-urlclickevents-table"
         }
       ],
-      "query": "// HB-EM-002 | T1566.002 | Safe Links click on potential phishing URL or warning dismissed\n// Hypothesis: A user clicks an inbound email link to an external phishing or credential-harvesting site, potentially entering credentials or downloading malware.\nlet lookback = 7d;\nUrlClickEvents\n| where Timestamp > ago(lookback)\n| where ActionType in~ (\"ClickAllowed\", \"WarningDismissed\")\n| where ThreatTypes in~ (\"Phish\", \"Malware\")\n     or (ClickType =~ \"WarningDismissed\")\n| project\n    Timestamp,\n    AccountUpn,\n    IPAddress,\n    Url,\n    ClickType,\n    ActionType,\n    ThreatTypes,\n    NetworkMessageId\n| order by Timestamp desc\n",
+      "query": "// HB-EM-002 | T1566.002 | Safe Links click on potential phishing URL or warning dismissed\n// Hypothesis: A user clicks an inbound email link to an external phishing or credential-harvesting site, potentially entering credentials or downloading malware.\nlet lookback = 7d;\nUrlClickEvents\n| where Timestamp > ago(lookback)\n| where ActionType in~ (\"ClickAllowed\", \"WarningDismissed\")\n| where ThreatTypes in~ (\"Phish\", \"Malware\")\n     or (ClickType =~ \"WarningDismissed\")\n| project\n    Timestamp,\n    AccountUpn,\n    IPAddress,\n    Url,\n    ClickType,\n    ActionType,\n    ThreatTypes,\n    NetworkMessageId\n| order by Timestamp desc\n\n",
       "tests": {
         "passed": 2,
         "total": 2
@@ -509,7 +512,7 @@
           "url": "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/detect-and-remediate-illicit-consent-grants"
         }
       ],
-      "query": "// HB-EM-003 | T1114.003 | Suspicious email inbox rule created to forward or delete messages\n// Hypothesis: An attacker with compromised mailbox access creates inbox rules to exfiltrate emails or hide detection notices by forwarding or deleting incoming messages.\nlet lookback = 7d;\nCloudAppEvents\n| where Timestamp > ago(lookback)\n| where Application =~ \"Microsoft Exchange Online\"\n| where ActionType in~ (\"New-InboxRule\", \"Set-InboxRule\", \"UpdateInboxRules\")\n| extend Parameters = tostring(RawEventData.Parameters)\n| where Parameters has_any (\n    \"ForwardTo\", \"ForwardAsAttachmentTo\", \"RedirectTo\",\n    \"DeleteMessage\", \"MoveToFolder\", \"MarkAsRead\"\n)\n| project\n    Timestamp,\n    AccountDisplayName,\n    AccountId,\n    ActionType,\n    IPAddress,\n    CountryCode,\n    City,\n    Parameters,\n    UserAgent\n| order by Timestamp desc\n\n",
+      "query": "// HB-EM-003 | T1114.003 | Suspicious email inbox rule created to forward or delete messages\n// Hypothesis: An attacker with compromised mailbox access creates inbox rules to exfiltrate emails or hide detection notices by forwarding or deleting incoming messages.\nlet lookback = 7d;\nCloudAppEvents\n| where Timestamp > ago(lookback)\n| where Application =~ \"Microsoft Exchange Online\"\n| where ActionType in~ (\"New-InboxRule\", \"Set-InboxRule\", \"UpdateInboxRules\")\n| extend RuleParameters = coalesce(\n    tostring(RawEventData.Parameters),\n    tostring(RawEventData.ModifiedProperties),\n    tostring(RawEventData)\n)\n| where RuleParameters has_any (\n    \"ForwardTo\", \"ForwardAsAttachmentTo\", \"RedirectTo\",\n    \"DeleteMessage\", \"MoveToFolder\", \"MarkAsRead\"\n)\n| project\n    Timestamp,\n    AccountDisplayName,\n    AccountId,\n    ActionType,\n    IPAddress,\n    CountryCode,\n    City,\n    RuleParameters,\n    UserAgent\n| order by Timestamp desc\n",
       "tests": {
         "passed": 2,
         "total": 2
@@ -531,12 +534,13 @@
           "initial-access"
         ],
         "techniques": [
+          "T1059.001",
           "T1204.002"
         ]
       },
       "severity": "high",
-      "hypothesis": "An adversary sends a spearphishing email with a weaponized Office attachment (docm, xlsm) or malicious link that triggers macro code or an exploit, spawning cmd.exe, powershell.exe, or mshta.exe.\n",
-      "logic_summary": "Inspects DeviceProcessEvents in Defender for Endpoint where the parent process (InitiatingProcessFileName) is a Microsoft Office application and the newly spawned child process is a shell or scripting engine.\n",
+      "hypothesis": "An adversary delivers a weaponized Office attachment (docm, xlsm) via spearphishing. While T1204.002 describes the initial user execution of the document, this detection identifies the subsequent Command and Scripting Interpreter execution (T1059.001) where embedded VBA macro code or an exploit spawns cmd.exe, powershell.exe, or mshta.exe.\n",
+      "logic_summary": "Inspects DeviceProcessEvents in Defender for Endpoint where the parent process (InitiatingProcessFileName) is a Microsoft Office application and the newly spawned child process is an interactive shell or script engine.\n",
       "parameters": [
         {
           "name": "lookback",
@@ -749,7 +753,7 @@
           "url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceevents-table"
         }
       ],
-      "query": "// HB-EP-004 | T1003.001 | Suspicious process access targeting LSASS memory for credential dumping\n// Hypothesis: An attacker opens a handle to the lsass.exe process from an unusual utility or script to dump memory and harvest plaintext passwords or Kerberos tickets.\nlet lookback = 7d;\nDeviceEvents\n| where Timestamp > ago(lookback)\n| where ActionType =~ \"OpenProcessApiCall\"\n| where FileName =~ \"lsass.exe\"\n| where InitiatingProcessFileName !in~ (\n    \"csrss.exe\", \"svchost.exe\", \"MsMpEng.exe\", \"Sense.exe\",\n    \"winlogon.exe\", \"lsass.exe\", \"services.exe\"\n)\n| project\n    Timestamp,\n    DeviceName,\n    AccountName,\n    TargetProcess = FileName,\n    InitiatingProcessFileName,\n    InitiatingProcessCommandLine,\n    AdditionalFields\n| order by Timestamp desc\n\n",
+      "query": "// HB-EP-004 | T1003.001 | Suspicious process access targeting LSASS memory for credential dumping\n// Hypothesis: An attacker opens a handle to the lsass.exe process from an unusual utility or script to dump memory and harvest plaintext passwords or Kerberos tickets.\nlet lookback = 7d;\nDeviceEvents\n| where Timestamp > ago(lookback)\n| where ActionType in~ (\"OpenProcessApiCall\", \"ProcessAccess\")\n| extend TargetProc = coalesce(FileName, tostring(AdditionalFields.TargetProcessFileName))\n| where TargetProc =~ \"lsass.exe\"\n| where InitiatingProcessFileName !in~ (\n    \"csrss.exe\", \"svchost.exe\", \"MsMpEng.exe\", \"Sense.exe\",\n    \"winlogon.exe\", \"lsass.exe\", \"services.exe\"\n)\n| extend DesiredAccess = tostring(AdditionalFields.DesiredAccess)\n| project\n    Timestamp,\n    DeviceName,\n    AccountName,\n    TargetProcess = TargetProc,\n    DesiredAccess,\n    InitiatingProcessFileName,\n    InitiatingProcessCommandLine,\n    AdditionalFields\n| order by Timestamp desc\n",
       "tests": {
         "passed": 2,
         "total": 2
@@ -907,6 +911,11 @@
           "name": "minUsers",
           "default": 10,
           "description": "Minimum number of unique accounts targeted to trigger a hunting lead"
+        },
+        {
+          "name": "followUpWindow",
+          "default": "2h",
+          "description": "Window following spray failures to correlate successful sign-ins"
         }
       ],
       "false_positives": [
@@ -933,7 +942,7 @@
           "url": "https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-sign-ins-error-codes"
         }
       ],
-      "query": "// HB-ID-001 | T1110.003 | Password spray against multiple accounts from a single IP\n// Hypothesis: An adversary attempts a small list of commonly used passwords across many accounts from one source IP to stay below per-account lockout thresholds.\nlet lookback = 1d;\nlet window = 30m;\nlet minUsers = 10;\nSigninLogs\n| where TimeGenerated > ago(lookback)\n| where ResultType == \"50126\"\n| summarize\n    FailedUsers = dcount(UserPrincipalName),\n    Attempts = count(),\n    SampleUsers = make_set(UserPrincipalName, 20),\n    FirstSeen = min(TimeGenerated),\n    LastSeen = max(TimeGenerated)\n    by IPAddress, bin(TimeGenerated, window)\n| where FailedUsers >= minUsers\n| project\n    TimeGenerated,\n    IPAddress,\n    FailedUsers,\n    Attempts,\n    SampleUsers,\n    FirstSeen,\n    LastSeen\n| order by FailedUsers desc\n\n",
+      "query": "// Hunt: HB-ID-001 - Password Spray Against Multiple Accounts\n// MITRE ATT&CK: T1110.003 (Password Spraying)\n// Platform: Microsoft Sentinel (SigninLogs)\n//\n// Description: Detects a single IP address attempting passwords across multiple accounts,\n// performing two-stage correlation with subsequent successful sign-ins across the targeted\n// users to identify both failed spray probes and high-priority account compromises.\n\nlet lookback = 1d;\nlet window = 30m;\nlet minUsers = 10;\nlet followUpWindow = 2h;\nlet SprayFailures = SigninLogs\n| where TimeGenerated > ago(lookback)\n| where ResultType in (\"50126\", \"50053\")\n| summarize \n    FirstFailure = min(TimeGenerated),\n    LastFailure = max(TimeGenerated),\n    FailedUsers = dcount(UserPrincipalName),\n    Attempts = count(),\n    TargetUsers = make_set(UserPrincipalName, 50)\n    by SprayIP = IPAddress, bin(TimeGenerated, window)\n| where FailedUsers >= minUsers;\nlet SuccessLogins = SigninLogs\n| where TimeGenerated > ago(lookback)\n| where ResultType == \"0\"\n| project SuccessTime = TimeGenerated, UserPrincipalName, SuccessIP = IPAddress, AppDisplayName, UserAgent;\nSprayFailures\n| mv-expand TargetUser = TargetUsers to typeof(string)\n| join kind=leftouter (\n    SuccessLogins\n) on $left.TargetUser == $right.UserPrincipalName\n| where isempty(SuccessTime) or (SuccessTime between (FirstFailure .. (LastFailure + followUpWindow)))\n| summarize \n    FirstSpray = min(FirstFailure),\n    LastSpray = max(LastFailure),\n    SprayedAccounts = take_any(FailedUsers),\n    TotalAttempts = take_any(Attempts),\n    CompromisedAccounts = dcountif(TargetUser, isnotempty(SuccessTime)),\n    SuccessfulUsers = make_set_if(TargetUser, isnotempty(SuccessTime), 10),\n    SuccessIPs = make_set_if(SuccessIP, isnotempty(SuccessTime), 5),\n    SuccessApps = make_set_if(AppDisplayName, isnotempty(SuccessTime), 5)\n    by SprayIP, bin(TimeGenerated, window)\n| extend CompromiseStatus = case(\n    CompromisedAccounts > 0 and set_has_element(SuccessIPs, SprayIP), \"Direct Compromise (Same IP)\",\n    CompromisedAccounts > 0, \"Correlated Compromise (Different IP)\",\n    \"Spray Probing Only (No Success)\"\n)\n| project TimeGenerated, SprayIP, CompromiseStatus, SprayedAccounts, TotalAttempts, \n          CompromisedAccounts, SuccessfulUsers, SuccessIPs, SuccessApps, FirstSpray, LastSpray\n| order by CompromisedAccounts desc, SprayedAccounts desc\n",
       "tests": {
         "passed": 2,
         "total": 2
@@ -976,6 +985,11 @@
           "name": "minFailures",
           "default": 10,
           "description": "Minimum number of failed attempts prior to success"
+        },
+        {
+          "name": "followUpWindow",
+          "default": "2h",
+          "description": "Window following brute-force failures to correlate subsequent successful sign-in"
         }
       ],
       "false_positives": [
@@ -1002,7 +1016,7 @@
           "url": "https://learn.microsoft.com/en-us/entra/identity/authentication/howto-password-smart-lockout"
         }
       ],
-      "query": "// HB-ID-002 | T1110 | Targeted brute force against a single account followed by success\n// Hypothesis: An attacker performs repeated password guessing against a specific user account until finding the correct password and gaining access.\nlet lookback = 1d;\nlet window = 1h;\nlet minFailures = 10;\nSigninLogs\n| where TimeGenerated > ago(lookback)\n| summarize\n    FailedAttempts = countif(ResultType == \"50126\"),\n    SuccessfulLogins = countif(ResultType == \"0\"),\n    FirstFailure = minif(TimeGenerated, ResultType == \"50126\"),\n    LastSuccess = maxif(TimeGenerated, ResultType == \"0\"),\n    Apps = make_set(AppDisplayName, 5)\n    by UserPrincipalName, IPAddress, bin(TimeGenerated, window)\n| where FailedAttempts >= minFailures and SuccessfulLogins > 0\n| where LastSuccess > FirstFailure\n| project\n    TimeGenerated,\n    UserPrincipalName,\n    IPAddress,\n    FailedAttempts,\n    SuccessfulLogins,\n    FirstFailure,\n    LastSuccess,\n    Apps\n| order by FailedAttempts desc\n\n",
+      "query": "// Hunt: HB-ID-002 - Targeted Brute Force Against Single Account Followed by Success\n// MITRE ATT&CK: T1110 (Brute Force)\n// Platform: Microsoft Sentinel (SigninLogs)\n//\n// Description: Detects a concentrated burst of failed authentication attempts against a specific\n// user account followed chronologically by a successful sign-in within a follow-up window,\n// correlating whether success originated from the attack IP or an alternative egress point.\n\nlet lookback = 1d;\nlet window = 1h;\nlet minFailures = 10;\nlet followUpWindow = 2h;\nlet BruteForceFailures = SigninLogs\n| where TimeGenerated > ago(lookback)\n| where ResultType in (\"50126\", \"50053\")\n| summarize \n    FailureCount = count(),\n    FirstFailure = min(TimeGenerated),\n    LastFailure = max(TimeGenerated),\n    FailureIPs = make_set(IPAddress, 5)\n    by UserPrincipalName, bin(TimeGenerated, window)\n| where FailureCount >= minFailures;\nlet SuccessfulLogins = SigninLogs\n| where TimeGenerated > ago(lookback)\n| where ResultType == \"0\"\n| project SuccessTime = TimeGenerated, UserPrincipalName, SuccessIP = IPAddress, AppDisplayName, UserAgent;\nBruteForceFailures\n| join kind=inner (\n    SuccessfulLogins\n) on UserPrincipalName\n| where SuccessTime between (LastFailure .. (LastFailure + followUpWindow))\n| extend SuccessFromAttackIP = set_has_element(FailureIPs, SuccessIP)\n| project UserPrincipalName, FailureCount, FirstFailure, LastFailure, \n          SuccessTime, SuccessIP, FailureIPs, SuccessFromAttackIP, AppDisplayName, UserAgent\n| order by LastFailure desc\n",
       "tests": {
         "passed": 2,
         "total": 2
@@ -1037,9 +1051,14 @@
           "description": "Historical search window to inspect"
         },
         {
-          "name": "maxTravelMinutes",
-          "default": 60,
-          "description": "Maximum allowable time difference between different country logins"
+          "name": "maxTravelHours",
+          "default": 24,
+          "description": "Maximum allowable time difference between consecutive logins"
+        },
+        {
+          "name": "maxAirplaneSpeedKph",
+          "default": 800,
+          "description": "Maximum plausible commercial airliner speed threshold in km/h"
         }
       ],
       "false_positives": [
@@ -1066,7 +1085,7 @@
           "url": "https://learn.microsoft.com/en-us/entra/id-protection/concept-identity-protection-risks"
         }
       ],
-      "query": "// HB-ID-003 | T1078 | Impossible travel: consecutive sign-ins from distant locations in unrealistic time\n// Hypothesis: An attacker uses compromised credentials from a foreign location while the legitimate user is actively logged in from their home region.\nlet lookback = 1d;\nlet maxTravelMinutes = 60;\nSigninLogs\n| where TimeGenerated > ago(lookback)\n| where ResultType == \"0\" // Only successful sign-ins represent actual session establishment\n| where isnotempty(Location) and isnotempty(UserPrincipalName)\n| project TimeGenerated, UserPrincipalName, IPAddress, Location, AppDisplayName, UserAgent\n| order by UserPrincipalName asc, TimeGenerated asc\n| serialize\n| extend PrevLocation = prev(Location),\n         PrevIP = prev(IPAddress),\n         PrevTime = prev(TimeGenerated),\n         PrevUser = prev(UserPrincipalName),\n         PrevApp = prev(AppDisplayName)\n| where UserPrincipalName == PrevUser\n| where Location != PrevLocation and IPAddress != PrevIP\n| extend MinutesBetweenLogins = datetime_diff('minute', TimeGenerated, PrevTime)\n| where MinutesBetweenLogins > 0 and MinutesBetweenLogins <= maxTravelMinutes\n| project\n    TimeGenerated,\n    UserPrincipalName,\n    CurrentLocation = Location,\n    CurrentIP = IPAddress,\n    CurrentApp = AppDisplayName,\n    PrevLocation,\n    PrevIP,\n    PrevApp,\n    MinutesBetweenLogins,\n    UserAgent\n| order by MinutesBetweenLogins asc\n\n",
+      "query": "// Hunt: HB-ID-003 - Impossible Travel Between Distant Regions\n// MITRE ATT&CK: T1078 (Valid Accounts)\n// Platform: Microsoft Sentinel (SigninLogs)\n//\n// Description: Detects consecutive successful sign-ins for the same identity from distant\n// geographic locations within an unrealistic timeframe, calculating geodesic distance and\n// implied travel speed (> 800 km/h), with country-delta fallback for missing coordinates.\n\nlet lookback = 1d;\nlet maxTravelHours = 24.0;\nlet maxAirplaneSpeedKph = 800.0;\nSigninLogs\n| where TimeGenerated > ago(lookback)\n| where ResultType == \"0\" // Only successful sign-ins represent actual session establishment\n| where isnotempty(UserPrincipalName)\n| extend IdentityKey = coalesce(UserId, UserPrincipalName)\n| extend Lat = todouble(LocationDetails.geoCoordinates.latitude),\n         Lon = todouble(LocationDetails.geoCoordinates.longitude)\n| project TimeGenerated, IdentityKey, UserId, UserPrincipalName, IPAddress, Location, Lat, Lon, AppDisplayName, UserAgent\n| order by IdentityKey asc, TimeGenerated asc\n| serialize\n| extend PrevIdentity = prev(IdentityKey),\n         PrevLocation = prev(Location),\n         PrevIP = prev(IPAddress),\n         PrevTime = prev(TimeGenerated),\n         PrevApp = prev(AppDisplayName),\n         PrevLat = prev(Lat),\n         PrevLon = prev(Lon)\n| where IdentityKey == PrevIdentity and IPAddress != PrevIP\n| extend TimeDeltaHours = datetime_diff('second', TimeGenerated, PrevTime) / 3600.0\n| where TimeDeltaHours > 0 and TimeDeltaHours <= maxTravelHours\n| extend CalculatedDistanceKm = iff(\n    isnotnull(Lat) and isnotnull(PrevLat) and (Lat != PrevLat or Lon != PrevLon),\n    geo_distance_2points(Lat, Lon, PrevLat, PrevLon) / 1000.0,\n    real(null)\n)\n| extend TravelSpeedKph = iff(TimeDeltaHours > 0 and isnotnull(CalculatedDistanceKm), round(CalculatedDistanceKm / TimeDeltaHours, 1), real(null))\n| where TravelSpeedKph > maxAirplaneSpeedKph \n    or (isnull(TravelSpeedKph) and Location != PrevLocation and TimeDeltaHours <= 1.0)\n| project TimeGenerated, PrevTime, UserPrincipalName, UserId,\n          CurrentLocation = Location, PrevLocation,\n          CurrentIP = IPAddress, PrevIP,\n          CalculatedDistanceKm, TimeDeltaHours, TravelSpeedKph,\n          CurrentApp = AppDisplayName, PrevApp, UserAgent\n| order by TimeGenerated desc\n",
       "tests": {
         "passed": 2,
         "total": 2
@@ -1109,6 +1128,11 @@
           "name": "minDenials",
           "default": 3,
           "description": "Minimum number of MFA prompt denials required"
+        },
+        {
+          "name": "followUpWindow",
+          "default": "30m",
+          "description": "Sliding window following fatigue prompts to correlate subsequent successful login"
         }
       ],
       "false_positives": [
@@ -1135,7 +1159,7 @@
           "url": "https://techcommunity.microsoft.com/t5/security-compliance-and-identity/defending-against-mfa-fatigue/ba-p/3639144"
         }
       ],
-      "query": "// HB-ID-004 | T1621 | Multi-factor authentication fatigue attack followed by success\n// Hypothesis: An attacker with valid credentials repeatedly sends MFA push prompts until the victim user inadvertently accepts.\nlet lookback = 1d;\nlet window = 20m;\nlet minDenials = 3;\nSigninLogs\n| where TimeGenerated > ago(lookback)\n| summarize\n    MfaDenials = countif(ResultType == \"500121\"),\n    Successes = countif(ResultType == \"0\"),\n    FirstDenial = minif(TimeGenerated, ResultType == \"500121\"),\n    LastSuccess = maxif(TimeGenerated, ResultType == \"0\"),\n    IPs = make_set(IPAddress, 5)\n    by UserPrincipalName, bin(TimeGenerated, window)\n| where MfaDenials >= minDenials and Successes > 0\n| where LastSuccess > FirstDenial\n| project\n    TimeGenerated,\n    UserPrincipalName,\n    MfaDenials,\n    Successes,\n    FirstDenial,\n    LastSuccess,\n    IPs\n| order by MfaDenials desc\n\n",
+      "query": "// Hunt: HB-ID-004 - MFA Fatigue Attack Followed by Success\n// MITRE ATT&CK: T1621 (Multi-Factor Authentication Request Generation)\n// Platform: Microsoft Sentinel (SigninLogs)\n//\n// Description: Detects repeated multi-factor authentication push rejections or timeouts\n// (ResultType 500121 or MFA failure descriptions) against a user account followed chronologically\n// by a successful login within a sliding follow-up window, identifying MFA fatigue compromises\n// without tumbling bucket-boundary blindspots.\n\nlet lookback = 1d;\nlet window = 20m;\nlet minDenials = 3;\nlet followUpWindow = 30m;\nlet MfaDenials = SigninLogs\n| where TimeGenerated > ago(lookback)\n| where ResultType in (\"500121\", \"50074\") \n    or ResultDescription has_any (\"MFA denied\", \"declined the authentication\", \"mobile app notification\", \"fraud reported\")\n| summarize \n    DenialCount = count(),\n    FirstDenial = min(TimeGenerated),\n    LastDenial = max(TimeGenerated),\n    DenialIPs = make_set(IPAddress, 5),\n    FailureDescriptions = make_set(ResultDescription, 3)\n    by UserPrincipalName, bin(TimeGenerated, window)\n| where DenialCount >= minDenials;\nlet SuccessLogins = SigninLogs\n| where TimeGenerated > ago(lookback)\n| where ResultType == \"0\"\n| project SuccessTime = TimeGenerated, UserPrincipalName, SuccessIP = IPAddress, AppDisplayName, UserAgent;\nMfaDenials\n| join kind=inner (\n    SuccessLogins\n) on UserPrincipalName\n| where SuccessTime between (LastDenial .. (LastDenial + followUpWindow))\n| extend SuccessFromSameIP = set_has_element(DenialIPs, SuccessIP)\n| project UserPrincipalName, DenialCount, FirstDenial, LastDenial,\n          SuccessTime, SuccessIP, DenialIPs, SuccessFromSameIP,\n          AppDisplayName, UserAgent, FailureDescriptions\n| order by LastDenial desc\n",
       "tests": {
         "passed": 2,
         "total": 2
@@ -1321,7 +1345,7 @@
           "url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-devicelogonevents-table"
         }
       ],
-      "query": "// HB-LM-001 | T1021.001 | RDP lateral movement fan-out to multiple internal endpoints\n// Hypothesis: An attacker uses Remote Desktop Protocol (RDP) from a single compromised internal host to fan out and log into multiple target machines across the network.\nlet lookback = 3d;\nlet window = 2h;\nlet minHosts = 4;\nDeviceLogonEvents\n| where Timestamp > ago(lookback)\n| where ActionType =~ \"LogonSuccess\"\n| where LogonType =~ \"RemoteInteractive\"\n| where isnotempty(RemoteIP)\n| summarize\n    TargetHostsCount = dcount(DeviceName),\n    TargetHosts = make_set(DeviceName, 10),\n    FirstLogon = min(Timestamp),\n    LastLogon = max(Timestamp)\n    by RemoteIP, RemoteDeviceName, AccountName, bin(Timestamp, window)\n| where TargetHostsCount >= minHosts\n| project\n    Timestamp,\n    RemoteIP,\n    RemoteDeviceName,\n    AccountName,\n    TargetHostsCount,\n    TargetHosts,\n    FirstLogon,\n    LastLogon\n| order by TargetHostsCount desc\n\n",
+      "query": "// HB-LM-001 | T1021.001 | RDP lateral movement fan-out to multiple internal endpoints\n// Hypothesis: An attacker uses Remote Desktop Protocol (RDP) with administrative credentials from a single compromised internal host to fan out and log into multiple target machines across the network.\nlet lookback = 3d;\nlet window = 2h;\nlet minHosts = 4;\nDeviceLogonEvents\n| where Timestamp > ago(lookback)\n| where ActionType =~ \"LogonSuccess\"\n| where LogonType =~ \"RemoteInteractive\" // Type 10 (Remote Desktop Protocol)\n| where isnotempty(RemoteIP)\n| summarize\n    TargetHostsCount = dcount(DeviceName),\n    TargetHosts = make_set(DeviceName, 10),\n    FirstLogon = min(Timestamp),\n    LastLogon = max(Timestamp),\n    AdminSessionCount = countif(IsLocalAdmin == true)\n    by RemoteIP, RemoteDeviceName, AccountName, bin(Timestamp, window)\n| where TargetHostsCount >= minHosts\n| project\n    Timestamp,\n    RemoteIP,\n    RemoteDeviceName,\n    AccountName,\n    TargetHostsCount,\n    AdminSessionCount,\n    TargetHosts,\n    FirstLogon,\n    LastLogon\n| order by AdminSessionCount desc, TargetHostsCount desc\n",
       "tests": {
         "passed": 2,
         "total": 2
@@ -1448,7 +1472,7 @@
           "url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-devicenetworkevents-table"
         }
       ],
-      "query": "// HB-LM-003 | T1021.002 | SMB admin share access fan-out to multiple internal hosts\n// Hypothesis: An attacker uses SMB (port 445) to connect to admin shares (C$, ADMIN$) across multiple systems for lateral movement or staging.\nlet lookback = 3d;\nlet window = 1h;\nlet minTargets = 5;\nDeviceNetworkEvents\n| where Timestamp > ago(lookback)\n| where ActionType =~ \"ConnectionSuccess\"\n| where RemotePort == 445\n| summarize\n    DistinctTargets = dcount(RemoteIP),\n    TargetIPs = make_set(RemoteIP, 10),\n    FirstConnection = min(Timestamp),\n    LastConnection = max(Timestamp)\n    by DeviceName, InitiatingProcessFileName, InitiatingProcessAccountName, bin(Timestamp, window)\n| where DistinctTargets >= minTargets\n| project\n    Timestamp,\n    SourceDevice = DeviceName,\n    InitiatingProcessFileName,\n    InitiatingProcessAccountName,\n    DistinctTargets,\n    TargetIPs,\n    FirstConnection,\n    LastConnection\n| order by DistinctTargets desc\n",
+      "query": "// HB-LM-003 | T1021.002 | SMB admin share access fan-out to multiple internal hosts\n// Hypothesis: An attacker uses SMB (port 445) from an interactive script or utility to connect to admin shares (C$, ADMIN$) across multiple systems for lateral movement or staging.\nlet lookback = 3d;\nlet window = 1h;\nlet minTargets = 5;\nlet benignSystemProcs = dynamic([\"System\", \"spoolsv.exe\", \"SearchIndexer.exe\", \"dfsrs.exe\"]);\nDeviceNetworkEvents\n| where Timestamp > ago(lookback)\n| where ActionType =~ \"ConnectionSuccess\"\n| where RemotePort == 445\n| where not(InitiatingProcessFileName in~ (benignSystemProcs))\n| extend HasAdminSharePattern = iff(InitiatingProcessCommandLine has_any (\"C$\", \"ADMIN$\", \"IPC$\", \"net use\"), true, false)\n| summarize\n    DistinctTargets = dcount(RemoteIP),\n    TargetIPs = make_set(RemoteIP, 10),\n    FirstConnection = min(Timestamp),\n    LastConnection = max(Timestamp),\n    AdminShareHits = countif(HasAdminSharePattern)\n    by DeviceName, InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessAccountName, bin(Timestamp, window)\n| where DistinctTargets >= minTargets\n| project\n    Timestamp,\n    SourceDevice = DeviceName,\n    InitiatingProcessFileName,\n    InitiatingProcessCommandLine,\n    InitiatingProcessAccountName,\n    DistinctTargets,\n    TargetIPs,\n    AdminShareHits,\n    FirstConnection,\n    LastConnection\n| order by AdminShareHits desc, DistinctTargets desc\n",
       "tests": {
         "passed": 2,
         "total": 2
@@ -1624,7 +1648,7 @@
           "url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceevents-table"
         }
       ],
-      "query": "// HB-PS-003 | T1543.003 | New Windows service installed pointing to untrusted path\n// Hypothesis: An attacker installs a rogue Windows service to establish persistence with SYSTEM-level execution privileges.\nlet lookback = 7d;\nDeviceEvents\n| where Timestamp > ago(lookback)\n| where ActionType =~ \"ServiceInstalled\"\n| extend ServiceName = tostring(AdditionalFields.ServiceName)\n| extend ServiceFileName = tostring(AdditionalFields.ServiceFileName)\n| where ServiceFileName has_any (\n    @\"\\AppData\\\", @\"\\Temp\\\", @\"\\Users\\Public\\\", @\"C:\\ProgramData\\\",\n    \"powershell\", \"cmd.exe\", \"mshta\", \"rundll32\", \"certutil\"\n)\n| project\n    Timestamp,\n    DeviceName,\n    AccountName,\n    ServiceName,\n    ServiceFileName,\n    InitiatingProcessFileName,\n    InitiatingProcessCommandLine\n| order by Timestamp desc\n\n",
+      "query": "// HB-PS-003 | T1543.003 | New Windows service installed pointing to untrusted path\n// Hypothesis: An attacker installs a rogue Windows service to establish persistence with SYSTEM-level execution privileges.\nlet lookback = 7d;\nDeviceEvents\n| where Timestamp > ago(lookback)\n| where ActionType =~ \"ServiceInstalled\"\n| extend ServiceName = coalesce(tostring(AdditionalFields.ServiceName), tostring(AdditionalFields.Name))\n| extend ServiceBinary = coalesce(\n    tostring(AdditionalFields.ServiceFileName),\n    tostring(AdditionalFields.ImagePath),\n    FileName\n)\n| where ServiceBinary has_any (\n    @\"\\AppData\\\", @\"\\Temp\\\", @\"\\Users\\Public\\\", @\"C:\\ProgramData\\\",\n    \"powershell\", \"cmd.exe\", \"mshta\", \"rundll32\", \"certutil\"\n)\n| project\n    Timestamp,\n    DeviceName,\n    AccountName,\n    ServiceName,\n    ServiceBinary,\n    InitiatingProcessFileName,\n    InitiatingProcessCommandLine,\n    AdditionalFields\n| order by Timestamp desc\n",
       "tests": {
         "passed": 2,
         "total": 2
@@ -1684,7 +1708,7 @@
           "url": "https://learn.microsoft.com/en-us/microsoft-365/security/defender/advanced-hunting-deviceevents-table"
         }
       ],
-      "query": "// Hunt: HB-PS-004 - WMI Event Subscription Persistence\n// MITRE ATT&CK: T1546.003 (Event Triggered Execution: Windows Management Instrumentation Event Subscription)\n// Platform: Microsoft Defender XDR (DeviceEvents)\n//\n// Description: Detects the creation of permanent WMI event filters, consumers, and bindings.\n// Adversaries establish WMI subscriptions to maintain stealthy persistence and execute malicious code\n// upon specific OS triggers (e.g., system startup, network connection, user logon).\n\nlet lookback = 14d;\nlet wmiActions = dynamic([\n    \"WmiEventConsumerCreated\",\n    \"WmiEventFilterCreated\",\n    \"WmiEventConsumerToFilterCreated\"\n]);\nDeviceEvents\n| where Timestamp > ago(lookback)\n| where ActionType in~ (wmiActions) or ActionType has \"WmiEvent\"\n| extend ConsumerName = tostring(AdditionalFields.ConsumerName)\n| extend FilterName = tostring(AdditionalFields.FilterName)\n| extend Query = tostring(AdditionalFields.Query)\n| project Timestamp, DeviceName, ActionType, ConsumerName, FilterName, Query,\n          InitiatingProcessFileName, InitiatingProcessCommandLine, AccountName, AdditionalFields\n| order by Timestamp desc\n",
+      "query": "// Hunt: HB-PS-004 - WMI Event Subscription Persistence\n// MITRE ATT&CK: T1546.003 (Event Triggered Execution: Windows Management Instrumentation Event Subscription)\n// Platform: Microsoft Defender XDR (DeviceEvents)\n//\n// Description: Detects the creation of permanent WMI event filters, consumers, and bindings.\n// Adversaries establish WMI subscriptions to maintain stealthy persistence and execute malicious code\n// upon specific OS triggers (e.g., system startup, network connection, user logon).\n\nlet lookback = 14d;\nlet wmiActions = dynamic([\n    \"WmiEventConsumerCreated\",\n    \"WmiEventFilterCreated\",\n    \"WmiEventConsumerToFilterCreated\"\n]);\nDeviceEvents\n| where Timestamp > ago(lookback)\n| where ActionType in~ (wmiActions) or ActionType has \"WmiEvent\"\n| extend ConsumerName = coalesce(tostring(AdditionalFields.ConsumerName), tostring(AdditionalFields.Consumer), tostring(AdditionalFields.Name))\n| extend FilterName = coalesce(tostring(AdditionalFields.FilterName), tostring(AdditionalFields.Filter))\n| extend Query = coalesce(tostring(AdditionalFields.Query), tostring(AdditionalFields.QueryText))\n| project Timestamp, DeviceName, ActionType, ConsumerName, FilterName, Query,\n          InitiatingProcessFileName, InitiatingProcessCommandLine, AccountName, AdditionalFields\n| order by Timestamp desc\n",
       "tests": {
         "passed": 2,
         "total": 2
@@ -1768,8 +1792,8 @@
         ]
       },
       "severity": "high",
-      "hypothesis": "A ransomware binary is actively encrypting files across user documents and network shares, renaming files in rapid succession and appending known encryption extensions (.locked, .crypted, .enc) to render data unusable.\n",
-      "logic_summary": "Monitors DeviceFileEvents for FileRenamed operations, detecting rapid bursts exceeding 20 file renames within 10 minutes where original extensions change or match known ransomware extension patterns.\n",
+      "hypothesis": "A ransomware binary is actively encrypting files across user documents and network shares, renaming files in rapid succession and appending known encryption extensions or converting user documents (.docx, .pdf, .xlsx) to arbitrary extensions, serving as a critical behavioral indicator of encryption.\n",
+      "logic_summary": "Monitors DeviceFileEvents for FileRenamed operations, detecting rapid bursts exceeding 20 file renames within 10 minutes by untrusted processes where target document extensions transition into known ransomware extensions or non-document formats.\n",
       "parameters": [
         {
           "name": "lookback",
@@ -1792,8 +1816,8 @@
         "Developer batch build scripts or archive compression utilities renaming build artifacts"
       ],
       "tuning": [
-        "Exclude verified enterprise backup utilities and source code compilers (e.g. devenv.exe, msbuild.exe)",
-        "Adjust renameThreshold upward if large legitimate data migration jobs frequently run"
+        "Exclude verified enterprise backup utilities, source code compilers (e.g. msbuild.exe, devenv.exe), and sync agents",
+        "Note that mass file renaming is a behavioral indicator, not absolute proof of encryption; correlate with shadow copy deletion and ransom note file creations"
       ],
       "triage_steps": [
         "Inspect InitiatingProcessFileName and InitiatingProcessCommandLine to identify the encrypting binary or script",
@@ -1812,7 +1836,7 @@
           "url": "https://learn.microsoft.com/en-us/security/compass/human-operated-ransomware"
         }
       ],
-      "query": "// Hunt: HB-RW-002 - Ransomware Mass File Rename with Encrypted Extension\n// MITRE ATT&CK: T1486 (Data Encrypted for Impact)\n// Platform: Microsoft Defender XDR (DeviceFileEvents)\n//\n// Description: Detects a rapid burst of file rename operations where files are appended with\n// suspicious extensions or mass-renamed by a single process, indicative of active ransomware encryption.\n\nlet lookback = 24h;\nlet burstWindow = 10m;\nlet renameThreshold = 20;\nlet knownRansomExts = dynamic([\n    \".locked\", \".lockbit\", \".crypted\", \".crypto\", \".enc\", \".wnry\", \".payme\",\n    \".ransom\", \".blackcat\", \".alphv\", \".hive\", \".mallox\", \".stop\", \".djvu\"\n]);\nDeviceFileEvents\n| where Timestamp > ago(lookback)\n| where ActionType == \"FileRenamed\"\n| extend CurrentExt = tostring(split(FileName, \".\")[-1])\n| extend PrevExt = tostring(split(PreviousFileName, \".\")[-1])\n| where CurrentExt != PrevExt\n| where FileName has_any (knownRansomExts) or isnotempty(CurrentExt)\n| summarize \n    FirstRename = min(Timestamp),\n    LastRename = max(Timestamp),\n    RenameCount = count(),\n    SampleNewFiles = make_set(FileName, 5),\n    SampleOldFiles = make_set(PreviousFileName, 5),\n    TargetFolders = make_set(FolderPath, 5)\n    by DeviceName, InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessAccountName, bin(Timestamp, burstWindow)\n| where RenameCount >= renameThreshold\n| extend DurationSeconds = datetime_diff('second', LastRename, FirstRename)\n| project FirstRename, LastRename, DurationSeconds, DeviceName, InitiatingProcessFileName,\n          InitiatingProcessAccountName, RenameCount, SampleNewFiles, SampleOldFiles, TargetFolders, InitiatingProcessCommandLine\n| order by RenameCount desc\n",
+      "query": "// Hunt: HB-RW-002 - Ransomware Mass File Rename with Encrypted Extension\n// MITRE ATT&CK: T1486 (Data Encrypted for Impact)\n// Platform: Microsoft Defender XDR (DeviceFileEvents)\n//\n// Description: Detects a rapid burst of file rename operations where documents are appended with\n// known ransomware extensions or stripped of standard document extensions by an untrusted process,\n// serving as a behavioral precursor indicator of active data encryption.\n\nlet lookback = 24h;\nlet burstWindow = 10m;\nlet renameThreshold = 20;\nlet knownRansomExts = dynamic([\n    \"locked\", \"lockbit\", \"crypted\", \"crypto\", \"enc\", \"wnry\", \"payme\",\n    \"ransom\", \"blackcat\", \"alphv\", \"hive\", \"mallox\", \"stop\", \"djvu\"\n]);\nlet targetDocumentExts = dynamic([\n    \"doc\", \"docx\", \"xls\", \"xlsx\", \"ppt\", \"pptx\", \"pdf\", \"txt\", \"csv\", \n    \"rtf\", \"jpg\", \"jpeg\", \"png\", \"pst\", \"ost\", \"db\", \"sql\", \"zip\", \"7z\"\n]);\nlet trustedProcesses = dynamic([\n    \"devenv.exe\", \"msbuild.exe\", \"git.exe\", \"onedrive.exe\", \"dropbox.exe\", \n    \"robocopy.exe\", \"msiexec.exe\", \"tiworker.exe\", \"trustedinstaller.exe\"\n]);\nDeviceFileEvents\n| where Timestamp > ago(lookback)\n| where ActionType == \"FileRenamed\"\n| where not(InitiatingProcessFileName in~ (trustedProcesses))\n| extend CurrentExt = tolower(tostring(split(FileName, \".\")[-1]))\n| extend PrevExt = tolower(tostring(split(PreviousFileName, \".\")[-1]))\n| where CurrentExt != PrevExt\n| where CurrentExt in~ (knownRansomExts) \n    or (PrevExt in~ (targetDocumentExts) and not(CurrentExt in~ (targetDocumentExts)))\n| summarize \n    FirstRename = min(Timestamp),\n    LastRename = max(Timestamp),\n    RenameCount = count(),\n    SampleNewFiles = make_set(FileName, 5),\n    SampleOldFiles = make_set(PreviousFileName, 5),\n    TargetFolders = make_set(FolderPath, 5)\n    by DeviceName, InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessAccountName, bin(Timestamp, burstWindow)\n| where RenameCount >= renameThreshold\n| extend DurationSeconds = datetime_diff('second', LastRename, FirstRename)\n| project FirstRename, LastRename, DurationSeconds, DeviceName, InitiatingProcessFileName,\n          InitiatingProcessAccountName, RenameCount, SampleNewFiles, SampleOldFiles, TargetFolders, InitiatingProcessCommandLine\n| order by RenameCount desc\n",
       "tests": {
         "passed": 2,
         "total": 2
@@ -1872,7 +1896,7 @@
           "url": "https://www.microsoft.com/security/blog/topic/threat-intelligence/"
         }
       ],
-      "query": "// Hunt: HB-RW-003 - Safe-Mode or Boot Recovery Disabled via Bcdedit\n// MITRE ATT&CK: T1490 (Inhibit System Recovery)\n// Platform: Microsoft Defender XDR (DeviceProcessEvents)\n//\n// Description: Detects the execution of bcdedit.exe with command-line switches designed\n// to disable Windows automatic startup recovery or tamper with safe-mode configuration,\n// a classic ransomware precursor designed to inhibit incident response and recovery.\n\nlet lookback = 7d;\nlet recoveryTamperingArgs = dynamic([\n    \"recoveryenabled\", \"bootstatuspolicy\", \"ignoreallfailures\", \"safeboot\"\n]);\nDeviceProcessEvents\n| where Timestamp > ago(lookback)\n| where FileName =~ \"bcdedit.exe\" or ProcessCommandLine has \"bcdedit\"\n| where ProcessCommandLine has_any (recoveryTamperingArgs)\n| extend TamperedFeature = case(\n    ProcessCommandLine has \"recoveryenabled\", \"Recovery Disabled\",\n    ProcessCommandLine has \"bootstatuspolicy\", \"Failure Policy Tampered\",\n    ProcessCommandLine has \"safeboot\", \"SafeBoot Modified\",\n    \"Other Boot Config Change\"\n)\n| project Timestamp, DeviceName, TamperedFeature, ProcessCommandLine,\n          InitiatingProcessFileName, InitiatingProcessCommandLine,\n          InitiatingProcessAccountName, AccountName, ProcessIntegrityLevel\n| order by Timestamp desc\n",
+      "query": "// Hunt: HB-RW-003 - Safe-Mode or Boot Recovery Disabled via Bcdedit\n// MITRE ATT&CK: T1490 (Inhibit System Recovery)\n// Platform: Microsoft Defender XDR (DeviceProcessEvents)\n//\n// Description: Detects the execution of bcdedit.exe with command-line switches designed\n// to disable Windows automatic startup recovery or tamper with safe-mode configuration,\n// a classic ransomware precursor designed to inhibit incident response and recovery.\n\nlet lookback = 7d;\nlet recoveryTamperingArgs = dynamic([\n    \"recoveryenabled\", \"bootstatuspolicy\", \"ignoreallfailures\", \"safeboot\"\n]);\nDeviceProcessEvents\n| where Timestamp > ago(lookback)\n| where FileName =~ \"bcdedit.exe\" or ProcessCommandLine has \"bcdedit\"\n| where ProcessCommandLine has_any (recoveryTamperingArgs)\n| extend TamperedFeature = case(\n    ProcessCommandLine has \"recoveryenabled\", \"Recovery Disabled\",\n    ProcessCommandLine has \"bootstatuspolicy\", \"Failure Policy Tampered\",\n    ProcessCommandLine has \"safeboot\", \"SafeBoot Modified\",\n    \"Other Boot Config Change\"\n)\n| project Timestamp, DeviceName, TamperedFeature, ProcessCommandLine,\n          InitiatingProcessFileName, InitiatingProcessCommandLine,\n          InitiatingProcessAccountName, AccountName, ProcessIntegrityLevel\n| order by Timestamp desc\n\n",
       "tests": {
         "passed": 2,
         "total": 2

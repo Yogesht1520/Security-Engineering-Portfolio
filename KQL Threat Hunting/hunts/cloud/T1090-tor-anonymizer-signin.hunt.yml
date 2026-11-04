@@ -9,13 +9,16 @@ time_column: TimeGenerated
 attack:
   tactics:
     - defense-evasion
-    - command-and-control
+    - initial-access
   techniques:
     - T1090
+    - T1078
 severity: high
 hypothesis: >
-  An adversary routes interactive authentication traffic through Tor exit nodes or commercial anonymizing proxies
-  to bypass geo-fencing Conditional Access rules and conceal their true geographic origin during credential stuffing.
+  An adversary routes authentication attempts through Tor exit nodes or commercial anonymizers (T1090)
+  to conceal their true geographic origin and bypass geo-blocking Conditional Access policies while
+  attempting to authenticate with compromised Valid Accounts (T1078). In isolation, VPN traffic can be benign;
+  it becomes actionable when paired with unusual sign-in hours, failure clusters, or sensitive app access.
 logic_summary: >
   Filters Entra ID SigninLogs for events where RiskDetail indicates an anonymous IP or Tor exit node,
   or where NetworkLocationDetails matches anonymizer tags, summarizing success versus failure counts per identity.

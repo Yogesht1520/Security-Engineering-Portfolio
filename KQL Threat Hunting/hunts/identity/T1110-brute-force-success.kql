@@ -1,27 +1,35 @@
-// HB-ID-002 | T1110 | Targeted brute force against a single account followed by success
-// Hypothesis: An attacker performs repeated password guessing against a specific user account until finding the correct password and gaining access.
+// Hunt: HB-ID-002 - Targeted Brute Force Against Single Account Followed by Success
+// MITRE ATT&CK: T1110 (Brute Force)
+// Platform: Microsoft Sentinel (SigninLogs)
+//
+// Description: Detects a concentrated burst of failed authentication attempts against a specific
+// user account followed chronologically by a successful sign-in within a follow-up window,
+// correlating whether success originated from the attack IP or an alternative egress point.
+
 let lookback = 1d;
 let window = 1h;
 let minFailures = 10;
-SigninLogs
+let followUpWindow = 2h;
+let BruteForceFailures = SigninLogs
 | where TimeGenerated > ago(lookback)
-| summarize
-    FailedAttempts = countif(ResultType == "50126"),
-    SuccessfulLogins = countif(ResultType == "0"),
-    FirstFailure = minif(TimeGenerated, ResultType == "50126"),
-    LastSuccess = maxif(TimeGenerated, ResultType == "0"),
-    Apps = make_set(AppDisplayName, 5)
-    by UserPrincipalName, IPAddress, bin(TimeGenerated, window)
-| where FailedAttempts >= minFailures and SuccessfulLogins > 0
-| where LastSuccess > FirstFailure
-| project
-    TimeGenerated,
-    UserPrincipalName,
-    IPAddress,
-    FailedAttempts,
-    SuccessfulLogins,
-    FirstFailure,
-    LastSuccess,
-    Apps
-| order by FailedAttempts desc
-
+| where ResultType in ("50126", "50053")
+| summarize 
+    FailureCount = count(),
+    FirstFailure = min(TimeGenerated),
+    LastFailure = max(TimeGenerated),
+    FailureIPs = make_set(IPAddress, 5)
+    by UserPrincipalName, bin(TimeGenerated, window)
+| where FailureCount >= minFailures;
+let SuccessfulLogins = SigninLogs
+| where TimeGenerated > ago(lookback)
+| where ResultType == "0"
+| project SuccessTime = TimeGenerated, UserPrincipalName, SuccessIP = IPAddress, AppDisplayName, UserAgent;
+BruteForceFailures
+| join kind=inner (
+    SuccessfulLogins
+) on UserPrincipalName
+| where SuccessTime between (LastFailure .. (LastFailure + followUpWindow))
+| extend SuccessFromAttackIP = set_has_element(FailureIPs, SuccessIP)
+| project UserPrincipalName, FailureCount, FirstFailure, LastFailure, 
+          SuccessTime, SuccessIP, FailureIPs, SuccessFromAttackIP, AppDisplayName, UserAgent
+| order by LastFailure desc

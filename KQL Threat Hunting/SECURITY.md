@@ -2,15 +2,15 @@
 
 ## Reporting Security Issues
 
-The HuntBook project takes the security of its code and detection library seriously. If you discover a security vulnerability or security-relevant bug in HuntBook or its detection rules:
+We take the security of this repository and its detection-as-code tooling seriously. If you identify a potential security issue in the CLI, Lab API, Web Console, or test harness:
 
-1. **Do not create a public GitHub issue.**
-2. Send an email to `security@huntbook.local` or contact the lead author directly via private channel.
-3. Include detailed steps to reproduce the vulnerability, along with sample proof-of-concept payloads or query triggers.
+1. **Please do not report vulnerabilities through public GitHub issues.**
+2. Use GitHub's **Private Vulnerability Reporting** feature on this repository (`Security` tab -> `Report a vulnerability`).
+3. Alternatively, contact the maintainer directly through the profile email listed on GitHub.
+4. Include reproduction steps, sample query payloads, or configuration snippets.
 
-We will acknowledge receipt within 48 hours and work with you on a coordinated disclosure timeline.
+We will review reports and coordinate any necessary fixes via security advisories.
 
-## Synthetic Data & Telemetry Privacy
+## Synthetic Data & Telemetry Notice
 
-HuntBook operates strictly on synthetic, deterministically generated telemetry. No customer, personal, or production enterprise data is ever accepted, committed, or processed within this repository.
-
+HuntBook operates strictly on synthetic, deterministically simulated telemetry. No proprietary, customer, or production enterprise data is stored, ingested, or committed to this repository. All hostnames, accounts, IP addresses, and domain names are synthetic or use reserved RFC test ranges (`203.0.113.0/24`, `198.51.100.0/24`, `192.0.2.0/24`, `*.example`, `*.test`).

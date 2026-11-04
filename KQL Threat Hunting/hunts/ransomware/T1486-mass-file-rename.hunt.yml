@@ -14,10 +14,11 @@ attack:
 severity: high
 hypothesis: >
   A ransomware binary is actively encrypting files across user documents and network shares, renaming files
-  in rapid succession and appending known encryption extensions (.locked, .crypted, .enc) to render data unusable.
+  in rapid succession and appending known encryption extensions or converting user documents (.docx, .pdf, .xlsx)
+  to arbitrary extensions, serving as a critical behavioral indicator of encryption.
 logic_summary: >
   Monitors DeviceFileEvents for FileRenamed operations, detecting rapid bursts exceeding 20 file renames within 10 minutes
-  where original extensions change or match known ransomware extension patterns.
+  by untrusted processes where target document extensions transition into known ransomware extensions or non-document formats.
 parameters:
   - name: lookback
     default: 24h
@@ -32,8 +33,8 @@ false_positives:
   - Software installation or patch update routines creating temporary backup files
   - Developer batch build scripts or archive compression utilities renaming build artifacts
 tuning:
-  - Exclude verified enterprise backup utilities and source code compilers (e.g. devenv.exe, msbuild.exe)
-  - Adjust renameThreshold upward if large legitimate data migration jobs frequently run
+  - Exclude verified enterprise backup utilities, source code compilers (e.g. msbuild.exe, devenv.exe), and sync agents
+  - Note that mass file renaming is a behavioral indicator, not absolute proof of encryption; correlate with shadow copy deletion and ransom note file creations
 triage_steps:
   - Inspect InitiatingProcessFileName and InitiatingProcessCommandLine to identify the encrypting binary or script
   - Examine SampleNewFiles to determine whether a ransom note (e.g. README.txt, HOW_TO_DECRYPT.txt) was dropped nearby

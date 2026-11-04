@@ -11,14 +11,17 @@ attack:
     - execution
     - initial-access
   techniques:
+    - T1059.001
     - T1204.002
 severity: high
 hypothesis: >
-  An adversary sends a spearphishing email with a weaponized Office attachment (docm, xlsm)
-  or malicious link that triggers macro code or an exploit, spawning cmd.exe, powershell.exe, or mshta.exe.
+  An adversary delivers a weaponized Office attachment (docm, xlsm) via spearphishing.
+  While T1204.002 describes the initial user execution of the document, this detection
+  identifies the subsequent Command and Scripting Interpreter execution (T1059.001) where
+  embedded VBA macro code or an exploit spawns cmd.exe, powershell.exe, or mshta.exe.
 logic_summary: >
   Inspects DeviceProcessEvents in Defender for Endpoint where the parent process (InitiatingProcessFileName)
-  is a Microsoft Office application and the newly spawned child process is a shell or scripting engine.
+  is a Microsoft Office application and the newly spawned child process is an interactive shell or script engine.
 parameters:
   - name: lookback
     default: 7d

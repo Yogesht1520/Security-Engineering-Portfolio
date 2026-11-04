@@ -1,27 +1,32 @@
 // HB-LM-003 | T1021.002 | SMB admin share access fan-out to multiple internal hosts
-// Hypothesis: An attacker uses SMB (port 445) to connect to admin shares (C$, ADMIN$) across multiple systems for lateral movement or staging.
+// Hypothesis: An attacker uses SMB (port 445) from an interactive script or utility to connect to admin shares (C$, ADMIN$) across multiple systems for lateral movement or staging.
 let lookback = 3d;
 let window = 1h;
 let minTargets = 5;
+let benignSystemProcs = dynamic(["System", "spoolsv.exe", "SearchIndexer.exe", "dfsrs.exe"]);
 DeviceNetworkEvents
 | where Timestamp > ago(lookback)
 | where ActionType =~ "ConnectionSuccess"
 | where RemotePort == 445
+| where not(InitiatingProcessFileName in~ (benignSystemProcs))
+| extend HasAdminSharePattern = iff(InitiatingProcessCommandLine has_any ("C$", "ADMIN$", "IPC$", "net use"), true, false)
 | summarize
     DistinctTargets = dcount(RemoteIP),
     TargetIPs = make_set(RemoteIP, 10),
     FirstConnection = min(Timestamp),
-    LastConnection = max(Timestamp)
-    by DeviceName, InitiatingProcessFileName, InitiatingProcessAccountName, bin(Timestamp, window)
+    LastConnection = max(Timestamp),
+    AdminShareHits = countif(HasAdminSharePattern)
+    by DeviceName, InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessAccountName, bin(Timestamp, window)
 | where DistinctTargets >= minTargets
 | project
     Timestamp,
     SourceDevice = DeviceName,
     InitiatingProcessFileName,
+    InitiatingProcessCommandLine,
     InitiatingProcessAccountName,
     DistinctTargets,
     TargetIPs,
+    AdminShareHits,
     FirstConnection,
     LastConnection
-| order by DistinctTargets desc
-
+| order by AdminShareHits desc, DistinctTargets desc

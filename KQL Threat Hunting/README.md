@@ -1,10 +1,10 @@
 # HuntBook: KQL Threat Hunting Library & Lab
 
-> **Detection-as-Code threat hunting library for Microsoft Defender XDR and Microsoft Sentinel.**  
-> Authored by **Yogesh Thakur** · Status: **v1.0.0 Production Complete**
+> **A locally runnable, synthetic-telemetry-validated KQL threat hunting and detection-as-code platform, designed around Microsoft Defender XDR and Sentinel schemas.**  
+> Authored by **Yogesh Thakur** · Status: **v1.0.0 Complete**
 
 [![CI Status](https://img.shields.io/badge/CI-passing-brightgreen)]()
-[![Validation Level](https://img.shields.io/badge/Validation-synthetic%20(100%25)-brightgreen)]()
+[![Validation Level](https://img.shields.io/badge/Validation-synthetic%20(100%25)-blue)]()
 [![Web Console](https://img.shields.io/badge/Web%20Console-React%2018%20%2B%20Tailwind-blue)]()
 [![Lab Mode](https://img.shields.io/badge/Lab%20Runtime-Kusto%20Emulator%20%2B%20Fastify-purple)]()
 [![Hunts Authored](https://img.shields.io/badge/Hunts-30%20%2F%2030-brightgreen)]()
@@ -16,7 +16,7 @@
 
 ## 🎯 What is HuntBook?
 
-HuntBook is an **enterprise detection-as-code library of 30 original KQL threat hunting queries** mapped to the MITRE ATT&CK framework across Identity, Endpoint, Email, Cloud, Persistence, Lateral Movement, Ransomware, and Command & Control.
+HuntBook is a **detection-as-code library of 30 original KQL threat hunting queries** mapped to the MITRE ATT&CK framework across Identity, Endpoint, Email, Cloud, Persistence, Lateral Movement, Ransomware, and Command & Control.
 
 Every hunt in this repository is:
 1. **Defined as Code:** Paired `.kql` query and `.hunt.yml` metadata (threat hypothesis, primary tables, false-positive sources, tuning guidance, SOC triage steps).
@@ -26,14 +26,15 @@ Every hunt in this repository is:
 
 ---
 
-## 🔬 Honest Validation Levels
+## 🔬 Transparent Validation Levels
 
 In security engineering, claiming a detection works without proof is a liability. Every hunt in HuntBook is strictly tagged with its verified validation level:
 
-| Level | Badge | Meaning |
+| Level | Badge | Meaning & Evidence |
 |---|---|---|
-| `syntax` | ![syntax](https://img.shields.io/badge/level-syntax-gray) | Query parsed and type-checked against Defender/Sentinel table schemas in CI. |
-| `synthetic` | ![synthetic](https://img.shields.io/badge/level-synthetic-blue) | Tested against seeded attack and benign telemetry in a local Kusto emulator. |
+| `static` | ![static](https://img.shields.io/badge/level-static-gray) | KQL query parsed and type-checked against supplied Microsoft table schemas in CI using `@kusto/language-service-next`. |
+| `emulator` | ![emulator](https://img.shields.io/badge/level-emulator-purple) | Query executed directly against a local Kusto container (`kustainer-linux`). |
+| `synthetic` | ![synthetic](https://img.shields.io/badge/level-synthetic-blue) | Tested against seeded attack and benign telemetry in a reproducible test harness. |
 | `tenant` | ![tenant](https://img.shields.io/badge/level-tenant-green) | Verified in a live Microsoft Sentinel or Defender XDR tenant (documented with notes). |
 
 ---
@@ -105,6 +106,8 @@ node packages/cli/dist/cli.js export sentinel HB-C2-001
 
 ## 📚 Interview Kit & Documentation
 
+- [End-to-End Threat Investigation Case Study (Operation BlackShard)](docs/incident-investigation-case-study.md)
+- [Detection Engineering Masterclass: Building HuntBook from First Principles](docs/detection-engineering-masterclass.md)
 - [3-Minute Technical Interview Demo Script](docs/demo-script.md)
 - [Top 10 Technical Interview Questions & Deep Answers](docs/interview-faq.md)
 - [System Architecture & Detection Pipeline](docs/architecture.md)

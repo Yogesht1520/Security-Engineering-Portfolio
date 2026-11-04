@@ -16,8 +16,9 @@ hypothesis: >
   An implant or agent from an adversary C2 framework (e.g. Cobalt Strike, Sliver, Mythic) executes periodic
   HTTP/HTTPS or TCP beacon check-ins to an external listener, exhibiting low inter-arrival jitter.
 logic_summary: >
-  Applies KQL window serialization (serialize and prev) across chronological DeviceNetworkEvents to calculate
-  the time delta between outbound connections, computing the coefficient of variation (jitter ratio) to flag periodic beaconing.
+  Applies KQL window serialization (serialize and prev) grouped per device, initiating process, and remote destination
+  to calculate the inter-arrival time deltas between outbound connections, computing the coefficient of variation
+  (jitter ratio) to flag regular, low-jitter periodic beaconing.
 parameters:
   - name: lookback
     default: 24h
@@ -27,13 +28,13 @@ parameters:
     description: Minimum number of connections required for statistical validity
   - name: maxJitterRatio
     default: 0.35
-    description: Maximum allowable coefficient of variation (stdev / avg) to qualify as regular beaconing
+    description: Experimental threshold for coefficient of variation (stdev / avg); calibrated against synthetic baseline noise
 false_positives:
   - Legitimate telemetry heartbeats from commercial software (e.g. cloud storage sync, antivirus update checks)
   - Network time protocol (NTP) or DNS forwarder lookups running on fixed timers
 tuning:
   - Exclude verified enterprise proxy egress points and CDNs (e.g. Microsoft 365, AWS CloudFront, Cloudflare)
-  - Lower maxJitterRatio threshold if noisy benign monitoring agents are triggering alerts
+  - Lower maxJitterRatio threshold if noisy benign monitoring agents are triggering alerts (treat thresholds as experimental heuristics)
 triage_steps:
   - Inspect RemoteIP and RemoteUrl reputation using threat intelligence lookups (VirusTotal, AlienVault OTX)
   - Check the InitiatingProcessFileName and full command line of the process responsible for network traffic

@@ -1,26 +1,39 @@
-// HB-ID-004 | T1621 | Multi-factor authentication fatigue attack followed by success
-// Hypothesis: An attacker with valid credentials repeatedly sends MFA push prompts until the victim user inadvertently accepts.
+// Hunt: HB-ID-004 - MFA Fatigue Attack Followed by Success
+// MITRE ATT&CK: T1621 (Multi-Factor Authentication Request Generation)
+// Platform: Microsoft Sentinel (SigninLogs)
+//
+// Description: Detects repeated multi-factor authentication push rejections or timeouts
+// (ResultType 500121 or MFA failure descriptions) against a user account followed chronologically
+// by a successful login within a sliding follow-up window, identifying MFA fatigue compromises
+// without tumbling bucket-boundary blindspots.
+
 let lookback = 1d;
 let window = 20m;
 let minDenials = 3;
-SigninLogs
+let followUpWindow = 30m;
+let MfaDenials = SigninLogs
 | where TimeGenerated > ago(lookback)
-| summarize
-    MfaDenials = countif(ResultType == "500121"),
-    Successes = countif(ResultType == "0"),
-    FirstDenial = minif(TimeGenerated, ResultType == "500121"),
-    LastSuccess = maxif(TimeGenerated, ResultType == "0"),
-    IPs = make_set(IPAddress, 5)
+| where ResultType in ("500121", "50074") 
+    or ResultDescription has_any ("MFA denied", "declined the authentication", "mobile app notification", "fraud reported")
+| summarize 
+    DenialCount = count(),
+    FirstDenial = min(TimeGenerated),
+    LastDenial = max(TimeGenerated),
+    DenialIPs = make_set(IPAddress, 5),
+    FailureDescriptions = make_set(ResultDescription, 3)
     by UserPrincipalName, bin(TimeGenerated, window)
-| where MfaDenials >= minDenials and Successes > 0
-| where LastSuccess > FirstDenial
-| project
-    TimeGenerated,
-    UserPrincipalName,
-    MfaDenials,
-    Successes,
-    FirstDenial,
-    LastSuccess,
-    IPs
-| order by MfaDenials desc
-
+| where DenialCount >= minDenials;
+let SuccessLogins = SigninLogs
+| where TimeGenerated > ago(lookback)
+| where ResultType == "0"
+| project SuccessTime = TimeGenerated, UserPrincipalName, SuccessIP = IPAddress, AppDisplayName, UserAgent;
+MfaDenials
+| join kind=inner (
+    SuccessLogins
+) on UserPrincipalName
+| where SuccessTime between (LastDenial .. (LastDenial + followUpWindow))
+| extend SuccessFromSameIP = set_has_element(DenialIPs, SuccessIP)
+| project UserPrincipalName, DenialCount, FirstDenial, LastDenial,
+          SuccessTime, SuccessIP, DenialIPs, SuccessFromSameIP,
+          AppDisplayName, UserAgent, FailureDescriptions
+| order by LastDenial desc

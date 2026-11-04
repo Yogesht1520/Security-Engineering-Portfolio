@@ -4,9 +4,13 @@ let lookback = 7d;
 DeviceEvents
 | where Timestamp > ago(lookback)
 | where ActionType =~ "ServiceInstalled"
-| extend ServiceName = tostring(AdditionalFields.ServiceName)
-| extend ServiceFileName = tostring(AdditionalFields.ServiceFileName)
-| where ServiceFileName has_any (
+| extend ServiceName = coalesce(tostring(AdditionalFields.ServiceName), tostring(AdditionalFields.Name))
+| extend ServiceBinary = coalesce(
+    tostring(AdditionalFields.ServiceFileName),
+    tostring(AdditionalFields.ImagePath),
+    FileName
+)
+| where ServiceBinary has_any (
     @"\AppData\", @"\Temp\", @"\Users\Public\", @"C:\ProgramData\",
     "powershell", "cmd.exe", "mshta", "rundll32", "certutil"
 )
@@ -15,8 +19,8 @@ DeviceEvents
     DeviceName,
     AccountName,
     ServiceName,
-    ServiceFileName,
+    ServiceBinary,
     InitiatingProcessFileName,
-    InitiatingProcessCommandLine
+    InitiatingProcessCommandLine,
+    AdditionalFields
 | order by Timestamp desc
-

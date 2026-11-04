@@ -2,23 +2,34 @@
 // MITRE ATT&CK: T1486 (Data Encrypted for Impact)
 // Platform: Microsoft Defender XDR (DeviceFileEvents)
 //
-// Description: Detects a rapid burst of file rename operations where files are appended with
-// suspicious extensions or mass-renamed by a single process, indicative of active ransomware encryption.
+// Description: Detects a rapid burst of file rename operations where documents are appended with
+// known ransomware extensions or stripped of standard document extensions by an untrusted process,
+// serving as a behavioral precursor indicator of active data encryption.
 
 let lookback = 24h;
 let burstWindow = 10m;
 let renameThreshold = 20;
 let knownRansomExts = dynamic([
-    ".locked", ".lockbit", ".crypted", ".crypto", ".enc", ".wnry", ".payme",
-    ".ransom", ".blackcat", ".alphv", ".hive", ".mallox", ".stop", ".djvu"
+    "locked", "lockbit", "crypted", "crypto", "enc", "wnry", "payme",
+    "ransom", "blackcat", "alphv", "hive", "mallox", "stop", "djvu"
+]);
+let targetDocumentExts = dynamic([
+    "doc", "docx", "xls", "xlsx", "ppt", "pptx", "pdf", "txt", "csv", 
+    "rtf", "jpg", "jpeg", "png", "pst", "ost", "db", "sql", "zip", "7z"
+]);
+let trustedProcesses = dynamic([
+    "devenv.exe", "msbuild.exe", "git.exe", "onedrive.exe", "dropbox.exe", 
+    "robocopy.exe", "msiexec.exe", "tiworker.exe", "trustedinstaller.exe"
 ]);
 DeviceFileEvents
 | where Timestamp > ago(lookback)
 | where ActionType == "FileRenamed"
-| extend CurrentExt = tostring(split(FileName, ".")[-1])
-| extend PrevExt = tostring(split(PreviousFileName, ".")[-1])
+| where not(InitiatingProcessFileName in~ (trustedProcesses))
+| extend CurrentExt = tolower(tostring(split(FileName, ".")[-1]))
+| extend PrevExt = tolower(tostring(split(PreviousFileName, ".")[-1]))
 | where CurrentExt != PrevExt
-| where FileName has_any (knownRansomExts) or isnotempty(CurrentExt)
+| where CurrentExt in~ (knownRansomExts) 
+    or (PrevExt in~ (targetDocumentExts) and not(CurrentExt in~ (targetDocumentExts)))
 | summarize 
     FirstRename = min(Timestamp),
     LastRename = max(Timestamp),
@@ -32,4 +43,3 @@ DeviceFileEvents
 | project FirstRename, LastRename, DurationSeconds, DeviceName, InitiatingProcessFileName,
           InitiatingProcessAccountName, RenameCount, SampleNewFiles, SampleOldFiles, TargetFolders, InitiatingProcessCommandLine
 | order by RenameCount desc
-
