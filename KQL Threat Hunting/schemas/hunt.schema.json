@@ -1,0 +1,154 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "HuntBookMetadata",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "status",
+    "validation_level",
+    "platform",
+    "tables",
+    "time_column",
+    "attack",
+    "severity",
+    "hypothesis",
+    "logic_summary",
+    "parameters",
+    "false_positives",
+    "tuning",
+    "triage_steps",
+    "response",
+    "author",
+    "created"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^HB-(ID|EP|PS|LM|EM|CL|RW|C2)-[0-9]{3}$",
+      "description": "Standardized hunt identifier, e.g., HB-ID-001"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 5
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "tested", "retired"]
+    },
+    "validation_level": {
+      "type": "string",
+      "enum": ["syntax", "synthetic", "tenant"]
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["sentinel", "defender-xdr", "both"]
+    },
+    "tables": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "time_column": {
+      "type": "string",
+      "enum": ["TimeGenerated", "Timestamp"]
+    },
+    "attack": {
+      "type": "object",
+      "required": ["tactics", "techniques"],
+      "properties": {
+        "tactics": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "techniques": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^T[0-9]{4}(\\.[0-9]{3})?$" },
+          "minItems": 1
+        }
+      }
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["informational", "low", "medium", "high"]
+    },
+    "hypothesis": {
+      "type": "string",
+      "minLength": 20
+    },
+    "logic_summary": {
+      "type": "string",
+      "minLength": 20
+    },
+    "parameters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "default", "description"],
+        "properties": {
+          "name": { "type": "string" },
+          "default": { "type": ["string", "number", "boolean"] },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "false_positives": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "tuning": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "triage_steps": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "response": {
+      "type": "string"
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["title", "url"],
+        "properties": {
+          "title": { "type": "string" },
+          "url": { "type": "string", "format": "uri" }
+        }
+      }
+    },
+    "tests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["dataset", "expect"],
+        "properties": {
+          "dataset": { "type": "string" },
+          "expect": {
+            "type": "object",
+            "properties": {
+              "min_rows": { "type": "integer", "minimum": 0 },
+              "max_rows": { "type": "integer", "minimum": 0 },
+              "contains": { "type": "object" }
+            }
+          }
+        }
+      }
+    },
+    "validation_notes": {
+      "type": "string"
+    },
+    "author": {
+      "type": "string"
+    },
+    "created": {
+      "type": "string"
+    }
+  }
+}
+

@@ -1,0 +1,55 @@
+id: HB-EP-003
+title: Ingress tool transfer via LOLBins (certutil, bitsadmin)
+status: tested
+validation_level: synthetic
+platform: defender-xdr
+tables:
+  - DeviceProcessEvents
+time_column: Timestamp
+attack:
+  tactics:
+    - command-and-control
+    - defense-evasion
+  techniques:
+    - T1105
+severity: high
+hypothesis: >
+  An adversary leverages built-in, trusted Microsoft utilities (LOLBins) such as certutil.exe or bitsadmin.exe
+  to download malicious binaries or scripts directly from remote staging servers without raising traditional perimeter alarms.
+logic_summary: >
+  Filters DeviceProcessEvents for executions of certutil.exe or bitsadmin.exe containing command-line switches
+  indicative of remote URL fetching (-urlcache, -split, /transfer) and extracts the remote destination URL.
+parameters:
+  - name: lookback
+    default: 7d
+    description: Historical search window to inspect
+false_positives:
+  - Legitimate IT admin maintenance scripts downloading CRL (Certificate Revocation Lists) using certutil
+  - Windows update background jobs utilizing BITS for legitimate patch distribution
+tuning:
+  - Whitelist internal corporate PKI certificate distribution endpoints (e.g. *.corp.contoso.com)
+  - Exclude executions running under the NT AUTHORITY\SYSTEM account targeting known Microsoft CRL endpoints
+triage_steps:
+  - Review the ExtractedUrl to determine the domain reputation, hosting provider, and file extension
+  - Search DeviceFileEvents for files written to disk by the parent or child process around that timestamp
+  - Check whether the downloaded file was subsequently executed in DeviceProcessEvents
+response: >
+  Block the remote URL and domain at the proxy/firewall level, quarantine the downloaded artifact on the host,
+  and submit the file hash to Microsoft Defender Threat Intelligence for organization-wide sweeping.
+references:
+  - title: MITRE ATT&CK T1105 Ingress Tool Transfer
+    url: https://attack.mitre.org/techniques/T1105/
+  - title: LOLBAS Project - Certutil
+    url: https://lolbas-project.github.io/lolbas/Binaries/Certutil/
+tests:
+  - dataset: scenario-02
+    expect:
+      min_rows: 1
+      contains:
+        FileName: certutil.exe
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

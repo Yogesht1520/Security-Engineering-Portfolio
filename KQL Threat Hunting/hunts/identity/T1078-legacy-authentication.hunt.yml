@@ -1,0 +1,52 @@
+id: HB-ID-005
+title: Successful sign-in using legacy authentication protocols bypassing MFA
+status: tested
+validation_level: synthetic
+platform: sentinel
+tables:
+  - SigninLogs
+time_column: TimeGenerated
+attack:
+  tactics:
+    - initial-access
+    - defense-evasion
+  techniques:
+    - T1078
+severity: medium
+hypothesis: >
+  An attacker deliberately authenticates via legacy mail protocols (IMAP, POP3, SMTP) that do not enforce
+  modern multi-factor authentication (MFA) prompts to access email mailboxes with compromised user passwords.
+logic_summary: >
+  Scans SigninLogs for successful authentications (ResultType 0) where the client application or user-agent
+  indicates legacy authentication protocols.
+parameters:
+  - name: lookback
+    default: 7d
+    description: Historical search window to inspect
+false_positives:
+  - Legacy multi-function printers, scanners, or on-premises ticketing systems authenticating via SMTP
+  - Rare unmanaged mobile email clients configured by legacy employees
+tuning:
+  - Block legacy authentication completely in Entra ID Conditional Access policies
+  - Whitelist dedicated corporate scan-to-email static IP addresses
+triage_steps:
+  - Check whether the account is an interactive human user or an automated service account
+  - Review the source IP address for external hosting providers or overseas geolocations
+  - Search for mailbox export or bulk message download activity following the legacy login
+response: >
+  Disable legacy authentication on the user account, enforce modern auth, and revoke active tokens.
+references:
+  - title: MITRE ATT&CK T1078 Valid Accounts
+    url: https://attack.mitre.org/techniques/T1078/
+  - title: Blocking Legacy Authentication in Microsoft Entra ID
+    url: https://learn.microsoft.com/en-us/entra/identity/conditional-access/howto-conditional-access-policy-block-legacy
+tests:
+  - dataset: scenario-01
+    expect:
+      min_rows: 0
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

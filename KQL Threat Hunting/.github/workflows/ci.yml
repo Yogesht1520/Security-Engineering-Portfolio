@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    name: Validate Hunts & Schemas
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Build Core & CLI Packages
+        run: |
+          pnpm --filter @huntbook/core build
+          pnpm --filter @huntbook/cli build
+
+      - name: Run HuntBook Detection-as-Code Validator
+        run: node packages/cli/dist/cli.js validate
+
+      - name: Run Synthetic Test Suite
+        run: node packages/cli/dist/cli.js test
+
+      - name: Run Unit Tests
+        run: pnpm test
+
+      - name: Build Catalog & Coverage Artifacts
+        run: node packages/cli/dist/cli.js build
+

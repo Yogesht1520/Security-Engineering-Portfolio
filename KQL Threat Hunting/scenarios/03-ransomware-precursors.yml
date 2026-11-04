@@ -1,0 +1,57 @@
+id: scenario-03
+title: Mass cloud file staging followed by Volume Shadow Copy deletion and recovery inhibition
+seed: 9999
+window:
+  start: "2026-03-01T14:00:00Z"
+  duration: 4h
+baseline:
+  users: 30
+  tables:
+    - CloudAppEvents
+    - DeviceProcessEvents
+steps:
+  # Step 1: Mass cloud exfiltration / file downloads
+  - at: "+00:30"
+    actor: "192.0.2.77"
+    user: "admin_user@contoso.test"
+    action: mass_download
+    table: CloudAppEvents
+    attack: T1530
+    targets: 65
+    details:
+      application: "Microsoft SharePoint Online"
+      activityType: "FileDownloaded"
+
+  # Step 2: Shadow copy deletion via vssadmin
+  - at: "+01:15"
+    actor: "DC-SRV-01"
+    user: "admin_user"
+    action: shadow_copy_deletion
+    table: DeviceProcessEvents
+    attack: T1490
+    process: "vssadmin.exe"
+    parent: "cmd.exe"
+    command: "vssadmin.exe delete shadows /all /quiet"
+
+  # Step 3: Secondary shadow copy deletion via WMIC
+  - at: "+01:16"
+    actor: "DC-SRV-01"
+    user: "admin_user"
+    action: wmic_shadow_deletion
+    table: DeviceProcessEvents
+    attack: T1490
+    process: "wmic.exe"
+    parent: "cmd.exe"
+    command: "wmic.exe shadowcopy delete /nointeractive"
+
+  # Step 4: Disabling system recovery via bcdedit
+  - at: "+01:18"
+    actor: "DC-SRV-01"
+    user: "admin_user"
+    action: bcdedit_inhibit
+    table: DeviceProcessEvents
+    attack: T1490
+    process: "bcdedit.exe"
+    parent: "cmd.exe"
+    command: "bcdedit.exe /set {default} recoveryenabled No"
+

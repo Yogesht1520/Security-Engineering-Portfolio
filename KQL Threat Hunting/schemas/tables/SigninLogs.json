@@ -1,0 +1,25 @@
+{
+  "name": "SigninLogs",
+  "platform": "sentinel",
+  "timeColumn": "TimeGenerated",
+  "description": "Azure Active Directory / Entra ID user sign-in events",
+  "columns": [
+    { "name": "TimeGenerated", "type": "datetime", "description": "Timestamp when signin occurred" },
+    { "name": "UserPrincipalName", "type": "string", "description": "UPN / account email of the user" },
+    { "name": "UserId", "type": "string", "description": "Unique GUID of the user object" },
+    { "name": "IPAddress", "type": "string", "description": "Source IP address of the sign-in request" },
+    { "name": "ResultType", "type": "string", "description": "Error / status code (0 = success, 50126 = bad password)" },
+    { "name": "ResultDescription", "type": "string", "description": "Human readable sign-in error or success note" },
+    { "name": "AppDisplayName", "type": "string", "description": "Name of the target cloud application" },
+    { "name": "AppId", "type": "string", "description": "Application client GUID" },
+    { "name": "UserAgent", "type": "string", "description": "Client user-agent string" },
+    { "name": "Location", "type": "string", "description": "Country / region of source IP" },
+    { "name": "LocationDetails", "type": "dynamic", "description": "City, state, coordinates of sign-in" },
+    { "name": "DeviceDetail", "type": "dynamic", "description": "Operating system, browser, trust state" },
+    { "name": "ConditionalAccessStatus", "type": "string", "description": "success | failure | notApplied" },
+    { "name": "NetworkLocationDetails", "type": "dynamic", "description": "Named network or anonymizer network details" },
+    { "name": "AutonomousSystemNumber", "type": "int", "description": "Autonomous System Number (ASN) of source IP" },
+    { "name": "RiskDetail", "type": "string", "description": "Entra ID Protection risk detail (e.g. anonymousIp, anonymizedIP)" }
+  ]
+}
+

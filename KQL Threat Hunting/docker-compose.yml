@@ -1,0 +1,30 @@
+services:
+  kusto-emulator:
+    image: mcr.microsoft.com/azuredataexplorer/kustainer-linux:latest
+    container_name: huntbook-kusto-emulator
+    restart: unless-stopped
+    environment:
+      - ACCEPT_EULA=Y
+    ports:
+      - "8080:8080"
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+  lab-api:
+    build:
+      context: .
+      dockerfile: packages/lab-api/Dockerfile
+    container_name: huntbook-lab-api
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - KUSTO_ENDPOINT=http://kusto-emulator:8080
+      - PORT=3001
+    depends_on:
+      - kusto-emulator
+    profiles:
+      - lab
+

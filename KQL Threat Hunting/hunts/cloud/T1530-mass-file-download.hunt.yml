@@ -1,0 +1,61 @@
+id: HB-CL-001
+title: Anomalous burst of cloud file downloads from SharePoint or OneDrive
+status: tested
+validation_level: synthetic
+platform: defender-xdr
+tables:
+  - CloudAppEvents
+time_column: Timestamp
+attack:
+  tactics:
+    - exfiltration
+    - collection
+  techniques:
+    - T1530
+severity: medium
+hypothesis: >
+  An adversary with compromised credentials or a malicious insider rapidly downloads a significant volume
+  of documents, spreadsheets, or source code from SharePoint or OneDrive prior to extortion or data theft.
+logic_summary: >
+  Aggregates FileDownloaded actions across SharePoint and OneDrive in 1-hour tumbling windows per user account,
+  flagging any account exceeding the threshold of 50 downloads within a single window.
+parameters:
+  - name: lookback
+    default: 1d
+    description: Historical search window to inspect
+  - name: window
+    default: 1h
+    description: Tumbling time bucket window for grouping download spikes
+  - name: minDownloads
+    default: 50
+    description: Minimum number of file downloads required to trigger a lead
+false_positives:
+  - Users syncing a large newly shared SharePoint folder or migrating local files using the OneDrive sync client
+  - Automated enterprise data backup or DLP scanning service accounts
+tuning:
+  - Exclude verified enterprise service accounts and migration tooling service principals
+  - Raise the minDownloads threshold for departments that legitimately perform high-volume batch processing
+triage_steps:
+  - Inspect the SampleFiles list to see what sensitive keywords or document types (e.g. financials, contracts, patents) were downloaded
+  - Check whether the downloads originated from a managed corporate device or an unmanaged personal device / anonymous proxy
+  - Review HR status to determine if the user has recently submitted a resignation or has pending disciplinary action
+response: >
+  Temporarily restrict the user's SharePoint access via Conditional Access or session controls,
+  engage the user's manager and legal/insider risk team, and preserve DLP audit trails.
+references:
+  - title: MITRE ATT&CK T1530 Data from Cloud Storage
+    url: https://attack.mitre.org/techniques/T1530/
+  - title: Microsoft Defender Advanced Hunting CloudAppEvents
+    url: https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-cloudappevents-table
+tests:
+  - dataset: scenario-03
+    expect:
+      min_rows: 1
+      contains:
+        ActionType: FileDownloaded
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

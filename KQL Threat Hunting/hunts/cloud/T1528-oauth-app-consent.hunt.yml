@@ -1,0 +1,53 @@
+id: HB-CL-002
+title: New OAuth application consent granted with sensitive scopes
+status: tested
+validation_level: synthetic
+platform: sentinel
+tables:
+  - AuditLogs
+time_column: TimeGenerated
+attack:
+  tactics:
+    - initial-access
+    - credential-access
+  techniques:
+    - T1528
+severity: high
+hypothesis: >
+  An adversary creates a malicious cloud app and conducts an Illicit Consent Grant attack, tricking an employee
+  into authorizing high-privilege Microsoft Graph API permissions to silently extract mail and files.
+logic_summary: >
+  Queries Entra ID AuditLogs for successful application consent operations under ApplicationManagement
+  where requested scopes include high-risk API permissions like Mail.ReadWrite or Files.ReadWrite.All.
+parameters:
+  - name: lookback
+    default: 7d
+    description: Historical search window to inspect
+false_positives:
+  - Legitimate enterprise integrations configured by IT administrators (e.g. DocuSign, Slack, Salesforce)
+  - Approved developer sandbox applications created in internal Azure subscriptions
+tuning:
+  - Restrict user consent policies in Entra ID so standard users cannot consent to unverified multi-tenant apps
+  - Whitelist pre-approved corporate enterprise applications by verified Microsoft Publisher ID
+triage_steps:
+  - Check the AppDisplayName and verified publisher domain in the Microsoft Entra admin center
+  - Identify who consented to the application and what specific permissions were granted
+  - Search SigninLogs and CloudAppEvents for API activities executed by the application Service Principal
+response: >
+  Revoke the application's consent immediately via Entra ID (Enterprise Applications -> Permissions -> Revoke),
+  delete the service principal, and investigate user mailbox audit logs for exfiltration.
+references:
+  - title: MITRE ATT&CK T1528 Steal Application Access Token
+    url: https://attack.mitre.org/techniques/T1528/
+  - title: Detect and Remediate Illicit Consent Grants in Microsoft 365
+    url: https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/detect-and-remediate-illicit-consent-grants
+tests:
+  - dataset: scenario-01
+    expect:
+      min_rows: 0
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

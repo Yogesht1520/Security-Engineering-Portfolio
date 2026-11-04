@@ -1,0 +1,17 @@
+// HB-EP-006 | T1070.001 | Windows security or system event log cleared
+// Hypothesis: An attacker uses wevtutil or PowerShell to clear Windows event logs to destroy forensic evidence of malicious activity.
+let lookback = 7d;
+DeviceEvents
+| where Timestamp > ago(lookback)
+| where ActionType =~ "EventLogCleared"
+     or (InitiatingProcessFileName =~ "wevtutil.exe" and InitiatingProcessCommandLine has_any ("cl", "clear-log"))
+| project
+    Timestamp,
+    DeviceName,
+    AccountName,
+    ActionType,
+    InitiatingProcessFileName,
+    InitiatingProcessCommandLine,
+    AdditionalFields
+| order by Timestamp desc
+

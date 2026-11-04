@@ -1,0 +1,58 @@
+id: HB-LM-001
+title: RDP lateral movement fan-out to multiple internal endpoints
+status: tested
+validation_level: synthetic
+platform: defender-xdr
+tables:
+  - DeviceLogonEvents
+time_column: Timestamp
+attack:
+  tactics:
+    - lateral-movement
+  techniques:
+    - T1021.001
+severity: high
+hypothesis: >
+  An adversary with valid credentials utilizes Remote Desktop Protocol (RDP) to rapidly access
+  and compromise multiple endpoints across the corporate network from a single staging system.
+logic_summary: >
+  Aggregates successful RemoteInteractive (RDP) logons from DeviceLogonEvents grouped by source IP and account
+  in 2-hour windows, alerting when connections fan out to 4 or more distinct target hostnames.
+parameters:
+  - name: lookback
+    default: 3d
+    description: Historical search window to inspect
+  - name: window
+    default: 2h
+    description: Tumbling time bucket window for grouping RDP sessions
+  - name: minHosts
+    default: 4
+    description: Minimum number of unique target endpoints accessed
+false_positives:
+  - Centralized IT administrative jump boxes / bastion hosts used by authorized helpdesk technicians
+  - Automated enterprise vulnerability management or patch deployment scanners
+tuning:
+  - Whitelist dedicated corporate Privileged Access Workstations (PAWs) and jump hosts by RemoteIP
+  - Raise minHosts threshold if system administrators legitimately connect to multiple servers concurrently
+triage_steps:
+  - Verify whether the AccountName belongs to an authorized IT systems administrator
+  - Identify the RemoteIP and examine telemetry on the source machine for evidence of prior malware infection
+  - Check what commands were executed on the target endpoints immediately following the RDP sessions
+response: >
+  Isolate the source workstation, terminate active RDP sessions across all affected targets,
+  and temporarily disable the compromised user account pending credential rotation.
+references:
+  - title: MITRE ATT&CK T1021.001 Remote Services - Remote Desktop Protocol
+    url: https://attack.mitre.org/techniques/T1021/001/
+  - title: Microsoft Defender Advanced Hunting DeviceLogonEvents
+    url: https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-devicelogonevents-table
+tests:
+  - dataset: scenario-01
+    expect:
+      min_rows: 0
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

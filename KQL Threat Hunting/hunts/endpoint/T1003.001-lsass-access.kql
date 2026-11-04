@@ -1,0 +1,21 @@
+// HB-EP-004 | T1003.001 | Suspicious process access targeting LSASS memory for credential dumping
+// Hypothesis: An attacker opens a handle to the lsass.exe process from an unusual utility or script to dump memory and harvest plaintext passwords or Kerberos tickets.
+let lookback = 7d;
+DeviceEvents
+| where Timestamp > ago(lookback)
+| where ActionType =~ "OpenProcessApiCall"
+| where FileName =~ "lsass.exe"
+| where InitiatingProcessFileName !in~ (
+    "csrss.exe", "svchost.exe", "MsMpEng.exe", "Sense.exe",
+    "winlogon.exe", "lsass.exe", "services.exe"
+)
+| project
+    Timestamp,
+    DeviceName,
+    AccountName,
+    TargetProcess = FileName,
+    InitiatingProcessFileName,
+    InitiatingProcessCommandLine,
+    AdditionalFields
+| order by Timestamp desc
+

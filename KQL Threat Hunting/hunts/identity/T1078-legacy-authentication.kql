@@ -1,0 +1,18 @@
+// HB-ID-005 | T1078 | Successful sign-in using legacy authentication protocols bypassing MFA
+// Hypothesis: An attacker uses legacy authentication protocols (e.g. IMAP, POP3, SMTP) that do not support modern MFA to authenticate using stolen credentials.
+let lookback = 7d;
+SigninLogs
+| where TimeGenerated > ago(lookback)
+| where ResultType == "0"
+| where UserAgent has_any ("IMAP", "POP3", "SMTP", "MAPI", "BAV2ROPC", "Exchange ActiveSync")
+     or AppDisplayName has_any ("IMAP", "POP", "SMTP")
+| project
+    TimeGenerated,
+    UserPrincipalName,
+    IPAddress,
+    Location,
+    AppDisplayName,
+    UserAgent,
+    ConditionalAccessStatus
+| order by TimeGenerated desc
+

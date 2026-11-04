@@ -1,0 +1,18 @@
+// HB-LM-002 | T1569.002 | Remote service or PsExec-like execution spawned by services.exe
+// Hypothesis: An attacker uses PsExec, PaExec, or remote service installation to spawn command shells on remote endpoints for lateral movement.
+let lookback = 7d;
+DeviceProcessEvents
+| where Timestamp > ago(lookback)
+| where FileName in~ ("psexesvc.exe", "paexec.exe", "winexesvc.exe", "remotesvc.exe")
+     or (InitiatingProcessFileName =~ "services.exe" and FileName in~ ("cmd.exe", "powershell.exe", "pwsh.exe", "mshta.exe"))
+| project
+    Timestamp,
+    DeviceName,
+    AccountName,
+    FileName,
+    ProcessCommandLine,
+    InitiatingProcessFileName,
+    InitiatingProcessCommandLine,
+    ProcessIntegrityLevel
+| order by Timestamp desc
+

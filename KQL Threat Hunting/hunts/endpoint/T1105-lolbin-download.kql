@@ -1,0 +1,22 @@
+// HB-EP-003 | T1105 | Ingress tool transfer via LOLBins (certutil, bitsadmin)
+// Hypothesis: An attacker uses legitimate native Windows utilities to download external payloads, evading typical egress restrictions.
+let lookback = 7d;
+DeviceProcessEvents
+| where Timestamp > ago(lookback)
+| where FileName in~ ("certutil.exe", "bitsadmin.exe")
+| where (FileName =~ "certutil.exe" and ProcessCommandLine has_any ("-urlcache", "/urlcache", "-split", "/split"))
+     or (FileName =~ "bitsadmin.exe" and ProcessCommandLine has_any ("/transfer", "/create", "/addfile"))
+| extend ExtractedUrl = extract(@"https?://[^\s""']+", 0, ProcessCommandLine)
+| project
+    Timestamp,
+    DeviceName,
+    AccountName,
+    FileName,
+    ProcessCommandLine,
+    ExtractedUrl,
+    InitiatingProcessFileName,
+    InitiatingProcessCommandLine,
+    FolderPath,
+    SHA256
+| order by Timestamp desc
+

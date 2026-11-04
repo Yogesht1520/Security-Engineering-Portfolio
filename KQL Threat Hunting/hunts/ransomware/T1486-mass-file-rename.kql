@@ -1,0 +1,35 @@
+// Hunt: HB-RW-002 - Ransomware Mass File Rename with Encrypted Extension
+// MITRE ATT&CK: T1486 (Data Encrypted for Impact)
+// Platform: Microsoft Defender XDR (DeviceFileEvents)
+//
+// Description: Detects a rapid burst of file rename operations where files are appended with
+// suspicious extensions or mass-renamed by a single process, indicative of active ransomware encryption.
+
+let lookback = 24h;
+let burstWindow = 10m;
+let renameThreshold = 20;
+let knownRansomExts = dynamic([
+    ".locked", ".lockbit", ".crypted", ".crypto", ".enc", ".wnry", ".payme",
+    ".ransom", ".blackcat", ".alphv", ".hive", ".mallox", ".stop", ".djvu"
+]);
+DeviceFileEvents
+| where Timestamp > ago(lookback)
+| where ActionType == "FileRenamed"
+| extend CurrentExt = tostring(split(FileName, ".")[-1])
+| extend PrevExt = tostring(split(PreviousFileName, ".")[-1])
+| where CurrentExt != PrevExt
+| where FileName has_any (knownRansomExts) or isnotempty(CurrentExt)
+| summarize 
+    FirstRename = min(Timestamp),
+    LastRename = max(Timestamp),
+    RenameCount = count(),
+    SampleNewFiles = make_set(FileName, 5),
+    SampleOldFiles = make_set(PreviousFileName, 5),
+    TargetFolders = make_set(FolderPath, 5)
+    by DeviceName, InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessAccountName, bin(Timestamp, burstWindow)
+| where RenameCount >= renameThreshold
+| extend DurationSeconds = datetime_diff('second', LastRename, FirstRename)
+| project FirstRename, LastRename, DurationSeconds, DeviceName, InitiatingProcessFileName,
+          InitiatingProcessAccountName, RenameCount, SampleNewFiles, SampleOldFiles, TargetFolders, InitiatingProcessCommandLine
+| order by RenameCount desc
+

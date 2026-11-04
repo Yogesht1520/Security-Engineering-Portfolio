@@ -1,0 +1,54 @@
+id: HB-RW-001
+title: Volume Shadow Copy deletion and system recovery inhibition
+status: tested
+validation_level: synthetic
+platform: defender-xdr
+tables:
+  - DeviceProcessEvents
+time_column: Timestamp
+attack:
+  tactics:
+    - impact
+    - defense-evasion
+  techniques:
+    - T1490
+severity: high
+hypothesis: >
+  An active ransomware operator or automated ransomware payload inhibits system recovery
+  by purging Volume Shadow Copies and system backups via vssadmin, wmic, or bcdedit immediately prior to encrypting files.
+logic_summary: >
+  Scans DeviceProcessEvents for invocations of native recovery utilities (vssadmin, wmic, wbadmin, bcdedit, PowerShell)
+  with command-line switches specifically targeting shadow copy deletion, catalog removal, or boot recovery disabling.
+parameters:
+  - name: lookback
+    default: 3d
+    description: Historical search window to inspect
+false_positives:
+  - Rare legitimate disk management operations or proprietary enterprise backup agents that clean up temporary snapshots
+  - Operating system re-imaging scripts running in dedicated staging environments
+tuning:
+  - Allow-list approved enterprise backup agent service binaries (e.g. Veeam, Commvault) if they utilize vssadmin with strict parent process validation
+  - Exclude lab environments dedicated to OS image deployment
+triage_steps:
+  - "Treat as a critical P1 incident: immediately check if multiple endpoints are exhibiting this behavior concurrently"
+  - Review DeviceFileEvents for mass file renaming, file drops with unusual extensions (.lockbit, .blackcat), or ransom notes
+  - Inspect InitiatingProcessFileName and CommandLine to find the parent process or malware loader responsible
+response: >
+  Immediately isolate the host from the network using Defender for Endpoint API, trigger an automated investigation,
+  and page the incident response on-call team to contain potential lateral ransomware spreading.
+references:
+  - title: MITRE ATT&CK T1490 Inhibit System Recovery
+    url: https://attack.mitre.org/techniques/T1490/
+  - title: Microsoft Defender Threat Analytics - Ransomware Defense
+    url: https://learn.microsoft.com/en-us/defender-xdr/threat-analytics
+tests:
+  - dataset: scenario-03
+    expect:
+      min_rows: 1
+      contains:
+        FileName: vssadmin.exe
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05

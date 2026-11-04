@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ScenarioSchema",
+  "type": "object",
+  "required": ["id", "title", "seed", "window", "baseline", "steps"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^scenario-[0-9]{2}$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 5
+    },
+    "seed": {
+      "type": "integer"
+    },
+    "window": {
+      "type": "object",
+      "required": ["start", "duration"],
+      "properties": {
+        "start": { "type": "string" },
+        "duration": { "type": "string" }
+      }
+    },
+    "baseline": {
+      "type": "object",
+      "required": ["users", "tables"],
+      "properties": {
+        "users": { "type": "integer", "minimum": 1 },
+        "tables": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["at", "action", "table"],
+        "properties": {
+          "at": { "type": "string" },
+          "actor": { "type": "string" },
+          "action": { "type": "string" },
+          "table": { "type": "string" },
+          "attack": { "type": "string" },
+          "user": { "type": "string" },
+          "targets": { "type": "integer" },
+          "command": { "type": "string" },
+          "process": { "type": "string" },
+          "parent": { "type": "string" },
+          "details": { "type": "object" }
+        }
+      }
+    }
+  }
+}
+

@@ -1,0 +1,24 @@
+// HB-EM-003 | T1114.003 | Suspicious email inbox rule created to forward or delete messages
+// Hypothesis: An attacker with compromised mailbox access creates inbox rules to exfiltrate emails or hide detection notices by forwarding or deleting incoming messages.
+let lookback = 7d;
+CloudAppEvents
+| where Timestamp > ago(lookback)
+| where Application =~ "Microsoft Exchange Online"
+| where ActionType in~ ("New-InboxRule", "Set-InboxRule", "UpdateInboxRules")
+| extend Parameters = tostring(RawEventData.Parameters)
+| where Parameters has_any (
+    "ForwardTo", "ForwardAsAttachmentTo", "RedirectTo",
+    "DeleteMessage", "MoveToFolder", "MarkAsRead"
+)
+| project
+    Timestamp,
+    AccountDisplayName,
+    AccountId,
+    ActionType,
+    IPAddress,
+    CountryCode,
+    City,
+    Parameters,
+    UserAgent
+| order by Timestamp desc
+

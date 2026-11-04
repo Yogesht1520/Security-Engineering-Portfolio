@@ -1,0 +1,20 @@
+// HB-EM-001 | T1566.001 | Inbound email delivered with high-risk executable or script attachment
+// Hypothesis: An attacker delivers phishing emails containing weaponized container files (ISO, VHD) or scripts (HTA, LNK, JS) to bypass gateway defenses.
+let lookback = 7d;
+EmailAttachmentInfo
+| where Timestamp > ago(lookback)
+| where FileType in~ (
+    "iso", "vhd", "hta", "lnk", "js", "vbs", "ps1", "wsf", "scr", "jar", "bat", "cmd"
+)
+| project
+    Timestamp,
+    NetworkMessageId,
+    SenderFromAddress,
+    RecipientEmailAddress,
+    FileName,
+    FileType,
+    SHA256,
+    ThreatTypes,
+    DetectionMethods
+| order by Timestamp desc
+

@@ -1,0 +1,26 @@
+// HB-PS-001 | T1547.001 | Persistence via Windows registry Run or RunOnce keys
+// Hypothesis: An attacker establishes persistence by modifying registry Run/RunOnce keys so their payload executes upon user logon.
+let lookback = 7d;
+DeviceRegistryEvents
+| where Timestamp > ago(lookback)
+| where ActionType =~ "RegistryValueSet"
+| where RegistryKey has_any (
+    @"\Software\Microsoft\Windows\CurrentVersion\Run",
+    @"\Software\Microsoft\Windows\CurrentVersion\RunOnce"
+)
+| where RegistryValueData has_any (
+    "powershell", "cmd.exe", "wscript", "cscript", "mshta", "rundll32", "regsvr32",
+    @"\AppData\Local\Temp", @"\Users\Public\", @"C:\ProgramData\"
+)
+| project
+    Timestamp,
+    DeviceName,
+    RegistryKey,
+    RegistryValueName,
+    RegistryValueData,
+    PreviousRegistryValueData,
+    InitiatingProcessFileName,
+    InitiatingProcessCommandLine,
+    InitiatingProcessAccountName
+| order by Timestamp desc
+

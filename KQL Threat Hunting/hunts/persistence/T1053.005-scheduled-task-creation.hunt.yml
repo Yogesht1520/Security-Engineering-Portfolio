@@ -1,0 +1,55 @@
+id: HB-PS-002
+title: Scheduled task created by uncommon parent process
+status: tested
+validation_level: synthetic
+platform: defender-xdr
+tables:
+  - DeviceProcessEvents
+time_column: Timestamp
+attack:
+  tactics:
+    - persistence
+    - execution
+  techniques:
+    - T1053.005
+severity: high
+hypothesis: >
+  An adversary creates a Windows scheduled task via schtasks.exe spawned from an interactive shell,
+  script interpreter, or Office application to establish persistent execution or schedule lateral movement.
+logic_summary: >
+  Detects process creation of schtasks.exe with /create in its arguments where the parent initiating process
+  is a shell, script host, or office document rather than typical system installation binaries.
+parameters:
+  - name: lookback
+    default: 7d
+    description: Historical search window to inspect
+false_positives:
+  - Enterprise deployment scripts or IT automation batch files executing schtasks /create during software rollouts
+  - Developer environment scripts setting up local recurring background jobs
+tuning:
+  - Whitelist approved administrative IT deployment batch scripts executed from dedicated management shares
+  - Require elevated integrity level or filter by specific task paths (e.g. tasks created under \Microsoft\Windows\)
+triage_steps:
+  - Analyze ProcessCommandLine to extract the scheduled task name (/tn), binary path (/tr), and frequency (/sc)
+  - Inspect the task action payload to determine if it downloads a remote script or launches a malicious executable
+  - Correlate with InitiatingProcessCommandLine to see how the parent shell received the command
+response: >
+  Delete the rogue scheduled task using schtasks /delete /tn <TaskName> /f, remove the associated payload from disk,
+  and isolate the host for forensic imaging.
+references:
+  - title: MITRE ATT&CK T1053.005 Scheduled Task/Job - Scheduled Task
+    url: https://attack.mitre.org/techniques/T1053/005/
+  - title: Microsoft Defender Advanced Hunting DeviceProcessEvents
+    url: https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceprocessevents-table
+tests:
+  - dataset: scenario-02
+    expect:
+      min_rows: 1
+      contains:
+        FileName: schtasks.exe
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

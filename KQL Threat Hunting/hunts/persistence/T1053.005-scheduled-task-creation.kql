@@ -1,0 +1,22 @@
+// HB-PS-002 | T1053.005 | Scheduled task created by uncommon parent process
+// Hypothesis: An attacker uses schtasks.exe to establish persistence or execute delayed tasks, spawned from a command-line script or office document.
+let lookback = 7d;
+DeviceProcessEvents
+| where Timestamp > ago(lookback)
+| where FileName =~ "schtasks.exe"
+| where ProcessCommandLine has_any ("/create", "-create")
+| where InitiatingProcessFileName in~ (
+    "powershell.exe", "pwsh.exe", "cmd.exe", "wscript.exe", "cscript.exe",
+    "winword.exe", "excel.exe", "mshta.exe", "rundll32.exe"
+)
+| project
+    Timestamp,
+    DeviceName,
+    AccountName,
+    ProcessCommandLine,
+    InitiatingProcessFileName,
+    InitiatingProcessCommandLine,
+    InitiatingProcessParentFileName,
+    ProcessIntegrityLevel
+| order by Timestamp desc
+

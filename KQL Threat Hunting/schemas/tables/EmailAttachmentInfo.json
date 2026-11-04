@@ -1,0 +1,18 @@
+{
+  "name": "EmailAttachmentInfo",
+  "platform": "defender-xdr",
+  "timeColumn": "Timestamp",
+  "description": "Microsoft Defender for Office 365 email attachment telemetry",
+  "columns": [
+    { "name": "Timestamp", "type": "datetime", "description": "Timestamp when email was processed" },
+    { "name": "NetworkMessageId", "type": "string", "description": "Unique identifier for the email message" },
+    { "name": "SenderFromAddress", "type": "string", "description": "Sender header email address" },
+    { "name": "RecipientEmailAddress", "type": "string", "description": "Recipient email address" },
+    { "name": "FileName", "type": "string", "description": "Attachment file name" },
+    { "name": "FileType", "type": "string", "description": "Attachment file type extension" },
+    { "name": "SHA256", "type": "string", "description": "SHA-256 hash of attachment" },
+    { "name": "ThreatTypes", "type": "string", "description": "Malware, Phish, Spam, or None" },
+    { "name": "DetectionMethods", "type": "string", "description": "Anti-malware engine, reputation, detonator" }
+  ]
+}
+

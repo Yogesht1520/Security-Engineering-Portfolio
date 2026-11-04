@@ -1,0 +1,59 @@
+id: HB-ID-002
+title: Targeted brute force against a single account followed by success
+status: tested
+validation_level: synthetic
+platform: sentinel
+tables:
+  - SigninLogs
+time_column: TimeGenerated
+attack:
+  tactics:
+    - credential-access
+    - initial-access
+  techniques:
+    - T1110
+severity: high
+hypothesis: >
+  An attacker focuses an aggressive password brute-force attack against a specific executive or admin account
+  from a single source IP, successfully guessing the password within an hour.
+logic_summary: >
+  Groups SigninLogs by user and source IP in 1-hour tumbling windows, counting failed logins (50126) and successful
+  logins (0), alerting when failures exceed threshold and are immediately followed by a successful login.
+parameters:
+  - name: lookback
+    default: 1d
+    description: Historical search window to inspect
+  - name: window
+    default: 1h
+    description: Tumbling time bucket window
+  - name: minFailures
+    default: 10
+    description: Minimum number of failed attempts prior to success
+false_positives:
+  - A user who recently changed their password on their phone/laptop and forgot to update cached credentials on other apps
+  - Automated enterprise sync service accounts experiencing temporary authentication desync
+tuning:
+  - Correlate with AppDisplayName to exclude automated mobile device sync (e.g. Apple Internet Accounts)
+  - Allow-list internal trusted office network IP ranges
+triage_steps:
+  - Verify whether the user was legitimately attempting to log in during that hour
+  - Review the IP geolocation and threat reputation to determine if the source IP is external or a commercial proxy
+  - Check whether subsequent actions were performed in Azure AD / Microsoft 365 by the newly logged-in session
+response: >
+  Revoke the session immediately via Entra ID, enforce a mandatory password reset, and investigate
+  endpoint telemetry for evidence of subsequent lateral movement.
+references:
+  - title: MITRE ATT&CK T1110 Brute Force
+    url: https://attack.mitre.org/techniques/T1110/
+  - title: Microsoft Entra Password Protection & Smart Lockout
+    url: https://learn.microsoft.com/en-us/entra/identity/authentication/howto-password-smart-lockout
+tests:
+  - dataset: scenario-01
+    expect:
+      min_rows: 0
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

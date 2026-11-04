@@ -1,0 +1,20 @@
+{
+  "name": "DeviceRegistryEvents",
+  "platform": "defender-xdr",
+  "timeColumn": "Timestamp",
+  "description": "Microsoft Defender for Endpoint registry creation and modification events",
+  "columns": [
+    { "name": "Timestamp", "type": "datetime", "description": "Timestamp when the registry event occurred" },
+    { "name": "DeviceId", "type": "string", "description": "Unique identifier for the device" },
+    { "name": "DeviceName", "type": "string", "description": "Fully qualified domain name or hostname of the device" },
+    { "name": "ActionType", "type": "string", "description": "RegistryValueSet, RegistryKeyCreated, RegistryValueDeleted, etc." },
+    { "name": "RegistryKey", "type": "string", "description": "Full path of the affected registry key" },
+    { "name": "RegistryValueName", "type": "string", "description": "Name of the modified or created registry value" },
+    { "name": "RegistryValueData", "type": "string", "description": "Data payload assigned to the registry value" },
+    { "name": "PreviousRegistryValueData", "type": "string", "description": "Previous data before modification" },
+    { "name": "InitiatingProcessFileName", "type": "string", "description": "Process that modified the registry" },
+    { "name": "InitiatingProcessCommandLine", "type": "string", "description": "Command line of the modifying process" },
+    { "name": "InitiatingProcessAccountName", "type": "string", "description": "User account that modified the registry" }
+  ]
+}
+

@@ -1,0 +1,24 @@
+// Hunt: HB-PS-004 - WMI Event Subscription Persistence
+// MITRE ATT&CK: T1546.003 (Event Triggered Execution: Windows Management Instrumentation Event Subscription)
+// Platform: Microsoft Defender XDR (DeviceEvents)
+//
+// Description: Detects the creation of permanent WMI event filters, consumers, and bindings.
+// Adversaries establish WMI subscriptions to maintain stealthy persistence and execute malicious code
+// upon specific OS triggers (e.g., system startup, network connection, user logon).
+
+let lookback = 14d;
+let wmiActions = dynamic([
+    "WmiEventConsumerCreated",
+    "WmiEventFilterCreated",
+    "WmiEventConsumerToFilterCreated"
+]);
+DeviceEvents
+| where Timestamp > ago(lookback)
+| where ActionType in~ (wmiActions) or ActionType has "WmiEvent"
+| extend ConsumerName = tostring(AdditionalFields.ConsumerName)
+| extend FilterName = tostring(AdditionalFields.FilterName)
+| extend Query = tostring(AdditionalFields.Query)
+| project Timestamp, DeviceName, ActionType, ConsumerName, FilterName, Query,
+          InitiatingProcessFileName, InitiatingProcessCommandLine, AccountName, AdditionalFields
+| order by Timestamp desc
+

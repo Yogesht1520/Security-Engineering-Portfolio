@@ -1,0 +1,22 @@
+// HB-PS-003 | T1543.003 | New Windows service installed pointing to untrusted path
+// Hypothesis: An attacker installs a rogue Windows service to establish persistence with SYSTEM-level execution privileges.
+let lookback = 7d;
+DeviceEvents
+| where Timestamp > ago(lookback)
+| where ActionType =~ "ServiceInstalled"
+| extend ServiceName = tostring(AdditionalFields.ServiceName)
+| extend ServiceFileName = tostring(AdditionalFields.ServiceFileName)
+| where ServiceFileName has_any (
+    @"\AppData\", @"\Temp\", @"\Users\Public\", @"C:\ProgramData\",
+    "powershell", "cmd.exe", "mshta", "rundll32", "certutil"
+)
+| project
+    Timestamp,
+    DeviceName,
+    AccountName,
+    ServiceName,
+    ServiceFileName,
+    InitiatingProcessFileName,
+    InitiatingProcessCommandLine
+| order by Timestamp desc
+

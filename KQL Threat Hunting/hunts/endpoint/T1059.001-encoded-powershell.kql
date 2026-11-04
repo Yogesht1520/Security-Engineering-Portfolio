@@ -1,0 +1,20 @@
+// HB-EP-002 | T1059.001 | PowerShell executed with Base64 encoded command arguments
+// Hypothesis: An attacker uses Base64 encoded PowerShell commands (-enc, -encodedcommand) to obfuscate malicious payloads and evade simple command-line string matching.
+let lookback = 7d;
+let minEncodedLength = 30;
+DeviceProcessEvents
+| where Timestamp > ago(lookback)
+| where FileName in~ ("powershell.exe", "pwsh.exe")
+| where ProcessCommandLine matches regex @"(?i)\s-(e|enc|encodedcommand)\s+[A-Za-z0-9+/=]{30,}"
+| project
+    Timestamp,
+    DeviceName,
+    AccountName,
+    FileName,
+    ProcessCommandLine,
+    InitiatingProcessFileName,
+    InitiatingProcessCommandLine,
+    FolderPath,
+    SHA256
+| order by Timestamp desc
+

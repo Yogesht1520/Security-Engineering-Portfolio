@@ -1,0 +1,32 @@
+# Node.js dependencies
+node_modules/
+.pnpm-store/
+
+# Build artifacts
+dist/
+build/
+.cache/
+coverage/
+
+# Environment and local lab
+.env
+.env.local
+.data/
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# Test outputs
+test-results/
+playwright-report/
+blob-report/
+

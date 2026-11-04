@@ -1,0 +1,22 @@
+{
+  "name": "CloudAppEvents",
+  "platform": "defender-xdr",
+  "timeColumn": "Timestamp",
+  "description": "Microsoft Defender for Cloud Apps and Office 365 cloud activity events",
+  "columns": [
+    { "name": "Timestamp", "type": "datetime", "description": "Timestamp when cloud activity occurred" },
+    { "name": "ActionType", "type": "string", "description": "Specific cloud action, e.g. FileDownloaded, New-InboxRule, Set-Mailbox" },
+    { "name": "Application", "type": "string", "description": "Target cloud application, e.g. Microsoft Exchange Online, SharePoint Online" },
+    { "name": "AccountDisplayName", "type": "string", "description": "User display name" },
+    { "name": "AccountId", "type": "string", "description": "Unique user account ID" },
+    { "name": "AccountType", "type": "string", "description": "Regular, Admin, Guest, etc." },
+    { "name": "IPAddress", "type": "string", "description": "Client IP address initiating the cloud action" },
+    { "name": "CountryCode", "type": "string", "description": "Two-letter ISO country code of client IP" },
+    { "name": "City", "type": "string", "description": "City of client IP" },
+    { "name": "UserAgent", "type": "string", "description": "Client User-Agent string" },
+    { "name": "ActivityType", "type": "string", "description": "Category of activity" },
+    { "name": "ActivityObjects", "type": "dynamic", "description": "JSON array of affected objects such as files, folders, or rules" },
+    { "name": "RawEventData", "type": "dynamic", "description": "Raw payload of the cloud audit event" }
+  ]
+}
+

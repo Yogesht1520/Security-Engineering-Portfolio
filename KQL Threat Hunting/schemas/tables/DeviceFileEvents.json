@@ -1,0 +1,21 @@
+{
+  "name": "DeviceFileEvents",
+  "platform": "defender-xdr",
+  "timeColumn": "Timestamp",
+  "description": "Microsoft Defender for Endpoint file creation, modification, and deletion events",
+  "columns": [
+    { "name": "Timestamp", "type": "datetime", "description": "Timestamp when file operation occurred" },
+    { "name": "DeviceId", "type": "string", "description": "Unique identifier for the device" },
+    { "name": "DeviceName", "type": "string", "description": "Hostname or FQDN of the device" },
+    { "name": "ActionType", "type": "string", "description": "FileCreated, FileModified, FileRenamed, FileDeleted" },
+    { "name": "FileName", "type": "string", "description": "Current file name" },
+    { "name": "FolderPath", "type": "string", "description": "Target folder path" },
+    { "name": "SHA256", "type": "string", "description": "SHA256 hash of the file" },
+    { "name": "PreviousFileName", "type": "string", "description": "Original file name before rename" },
+    { "name": "PreviousFolderPath", "type": "string", "description": "Original folder path" },
+    { "name": "InitiatingProcessFileName", "type": "string", "description": "Process that performed the file operation" },
+    { "name": "InitiatingProcessCommandLine", "type": "string", "description": "Command line of the initiating process" },
+    { "name": "InitiatingProcessAccountName", "type": "string", "description": "User account that owns the initiating process" }
+  ]
+}
+

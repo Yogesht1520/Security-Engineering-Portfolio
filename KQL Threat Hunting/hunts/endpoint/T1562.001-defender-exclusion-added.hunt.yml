@@ -1,0 +1,52 @@
+id: HB-EP-005
+title: Microsoft Defender Antivirus exclusion added
+status: tested
+validation_level: synthetic
+platform: defender-xdr
+tables:
+  - DeviceRegistryEvents
+time_column: Timestamp
+attack:
+  tactics:
+    - defense-evasion
+  techniques:
+    - T1562.001
+severity: high
+hypothesis: >
+  An adversary with local admin privileges tampers with Windows Defender Antivirus exclusions
+  to carve out directories (e.g. C:\Temp, C:\Users\Public) where secondary malware tools can run unhindered.
+logic_summary: >
+  Detects modifications and key creations in DeviceRegistryEvents under the Microsoft\Windows Defender\Exclusions
+  registry branch.
+parameters:
+  - name: lookback
+    default: 7d
+    description: Historical search window to inspect
+false_positives:
+  - Legitimate enterprise IT deployment scripts configuring performance exclusions for databases or developer tooling
+  - Antivirus configuration deployed via Microsoft Intune or Group Policy Objects (GPO)
+tuning:
+  - Exclude changes initiated by svchost.exe running under the NT AUTHORITY\SYSTEM account from verified Intune policies
+  - Alert immediately if the excluded path is a user-writable directory (e.g. \AppData\, \Users\Public\, \Temp\)
+triage_steps:
+  - Inspect RegistryValueName and RegistryValueData to see which specific path or file extension was excluded
+  - Review the InitiatingProcessCommandLine to see if PowerShell (Add-MpPreference) or reg.exe was used
+  - Search DeviceFileEvents for files created inside the newly excluded path
+response: >
+  Remove the unauthorized exclusion via PowerShell (Remove-MpPreference), initiate a full Microsoft Defender
+  antivirus scan, and investigate the host for dropped payloads.
+references:
+  - title: MITRE ATT&CK T1562.001 Impair Defenses - Disable or Modify Tools
+    url: https://attack.mitre.org/techniques/T1562/001/
+  - title: Configure Exclusions in Microsoft Defender Antivirus
+    url: https://learn.microsoft.com/en-us/defender-endpoint/configure-exclusions-microsoft-defender-antivirus
+tests:
+  - dataset: scenario-02
+    expect:
+      min_rows: 0
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

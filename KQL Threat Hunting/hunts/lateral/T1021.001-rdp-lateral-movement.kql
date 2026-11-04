@@ -1,0 +1,28 @@
+// HB-LM-001 | T1021.001 | RDP lateral movement fan-out to multiple internal endpoints
+// Hypothesis: An attacker uses Remote Desktop Protocol (RDP) from a single compromised internal host to fan out and log into multiple target machines across the network.
+let lookback = 3d;
+let window = 2h;
+let minHosts = 4;
+DeviceLogonEvents
+| where Timestamp > ago(lookback)
+| where ActionType =~ "LogonSuccess"
+| where LogonType =~ "RemoteInteractive"
+| where isnotempty(RemoteIP)
+| summarize
+    TargetHostsCount = dcount(DeviceName),
+    TargetHosts = make_set(DeviceName, 10),
+    FirstLogon = min(Timestamp),
+    LastLogon = max(Timestamp)
+    by RemoteIP, RemoteDeviceName, AccountName, bin(Timestamp, window)
+| where TargetHostsCount >= minHosts
+| project
+    Timestamp,
+    RemoteIP,
+    RemoteDeviceName,
+    AccountName,
+    TargetHostsCount,
+    TargetHosts,
+    FirstLogon,
+    LastLogon
+| order by TargetHostsCount desc
+

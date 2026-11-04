@@ -1,0 +1,53 @@
+id: HB-ID-006
+title: Highly privileged directory role assigned in Entra ID
+status: tested
+validation_level: synthetic
+platform: sentinel
+tables:
+  - AuditLogs
+time_column: TimeGenerated
+attack:
+  tactics:
+    - persistence
+    - privilege-escalation
+  techniques:
+    - T1098.003
+severity: high
+hypothesis: >
+  An attacker with administrative credentials elevates an auxiliary user account or service principal
+  by granting Global Administrator or other sensitive tenant roles to secure persistent access.
+logic_summary: >
+  Monitors Entra ID AuditLogs for successful role assignment operations under RoleManagement
+  where the assigned role is a sensitive tier-0 directory administrative role.
+parameters:
+  - name: lookback
+    default: 7d
+    description: Historical search window to inspect
+false_positives:
+  - Legitimate scheduled role activations through Privileged Identity Management (PIM) by approved administrators
+  - New IT staff onboarding or role re-assignment during business reorganizations
+tuning:
+  - Whitelist automated PIM activations if pre-approved change ticket metadata is present
+  - Alert on permanent role assignments rather than time-limited eligible activations
+triage_steps:
+  - Contact the initiating administrator (Actor) to confirm if they authorized the role grant
+  - Check whether the target account had recent anomalous logins or MFA resets
+  - Verify if a corresponding IT change management ticket was logged for the privileged role change
+response: >
+  Remove the assigned privileged role immediately via Entra ID, disable the target account,
+  and audit all activities performed by both accounts in the preceding 48 hours.
+references:
+  - title: MITRE ATT&CK T1098.003 Account Manipulation - Additional Cloud Roles
+    url: https://attack.mitre.org/techniques/T1098/003/
+  - title: Microsoft Entra Audit Activity Reference
+    url: https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-audit-activities
+tests:
+  - dataset: scenario-01
+    expect:
+      min_rows: 0
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

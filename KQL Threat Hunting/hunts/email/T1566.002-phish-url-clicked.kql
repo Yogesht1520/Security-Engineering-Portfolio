@@ -1,0 +1,19 @@
+// HB-EM-002 | T1566.002 | Safe Links click on potential phishing URL or warning dismissed
+// Hypothesis: A user clicks an inbound email link to an external phishing or credential-harvesting site, potentially entering credentials or downloading malware.
+let lookback = 7d;
+UrlClickEvents
+| where Timestamp > ago(lookback)
+| where ActionType in~ ("ClickAllowed", "WarningDismissed")
+| where ThreatTypes in~ ("Phish", "Malware")
+     or (ClickType =~ "WarningDismissed")
+| project
+    Timestamp,
+    AccountUpn,
+    IPAddress,
+    Url,
+    ClickType,
+    ActionType,
+    ThreatTypes,
+    NetworkMessageId
+| order by Timestamp desc
+

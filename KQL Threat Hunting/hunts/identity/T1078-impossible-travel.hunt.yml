@@ -1,0 +1,59 @@
+id: HB-ID-003
+title: Impossible travel sign-ins from distant locations in unrealistic time
+status: tested
+validation_level: synthetic
+platform: sentinel
+tables:
+  - SigninLogs
+time_column: TimeGenerated
+attack:
+  tactics:
+    - initial-access
+    - defense-evasion
+  techniques:
+    - T1078
+severity: high
+hypothesis: >
+  An adversary is authenticating using compromised valid credentials from a different country
+  or cloud provider hosting site while the authentic employee is concurrently active from their home region.
+logic_summary: >
+  Tracks consecutive successful sign-ins per user, orders chronologically, calculates the time delta
+  between different geographic locations using serialize and prev(), and flags logins where the speed
+  required to travel between the locations exceeds physical limits (e.g. < 60 minutes between countries).
+parameters:
+  - name: lookback
+    default: 1d
+    description: Historical search window to inspect
+  - name: maxTravelMinutes
+    default: 60
+    description: Maximum allowable time difference between different country logins
+false_positives:
+  - Users connecting to or disconnecting from enterprise VPN gateways or zero-trust reverse proxies
+  - Cloud service principal / app proxy logins executing on behalf of users in international Azure datacenters
+tuning:
+  - Exclude corporate VPN egress gateways and known SaaS proxy networks using a Sentinel watchlist
+  - Correlate with DeviceDetail to suppress if both sign-ins originate from the same Intune-managed device ID
+triage_steps:
+  - Review the UserAgent and DeviceDetail for both sign-ins to see if one is a recognized work device and the other is unknown
+  - Check whether MFA was completed for the suspicious sign-in or if conditional access was bypassed
+  - Contact the affected user directly via out-of-band communication (phone/Slack) to verify their current physical location
+response: >
+  Immediately revoke all active refresh tokens for the user in Entra ID, trigger an interactive MFA prompt,
+  and temporarily disable the account if unauthorized access is confirmed.
+references:
+  - title: MITRE ATT&CK T1078 Valid Accounts
+    url: https://attack.mitre.org/techniques/T1078/
+  - title: Microsoft Entra Identity Protection Anomalous Travel
+    url: https://learn.microsoft.com/en-us/entra/id-protection/concept-identity-protection-risks
+tests:
+  - dataset: scenario-01
+    expect:
+      min_rows: 1
+      contains:
+        UserPrincipalName: user017@contoso.test
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

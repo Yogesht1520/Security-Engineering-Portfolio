@@ -1,0 +1,33 @@
+// HB-ID-003 | T1078 | Impossible travel: consecutive sign-ins from distant locations in unrealistic time
+// Hypothesis: An attacker uses compromised credentials from a foreign location while the legitimate user is actively logged in from their home region.
+let lookback = 1d;
+let maxTravelMinutes = 60;
+SigninLogs
+| where TimeGenerated > ago(lookback)
+| where ResultType == "0" // Only successful sign-ins represent actual session establishment
+| where isnotempty(Location) and isnotempty(UserPrincipalName)
+| project TimeGenerated, UserPrincipalName, IPAddress, Location, AppDisplayName, UserAgent
+| order by UserPrincipalName asc, TimeGenerated asc
+| serialize
+| extend PrevLocation = prev(Location),
+         PrevIP = prev(IPAddress),
+         PrevTime = prev(TimeGenerated),
+         PrevUser = prev(UserPrincipalName),
+         PrevApp = prev(AppDisplayName)
+| where UserPrincipalName == PrevUser
+| where Location != PrevLocation and IPAddress != PrevIP
+| extend MinutesBetweenLogins = datetime_diff('minute', TimeGenerated, PrevTime)
+| where MinutesBetweenLogins > 0 and MinutesBetweenLogins <= maxTravelMinutes
+| project
+    TimeGenerated,
+    UserPrincipalName,
+    CurrentLocation = Location,
+    CurrentIP = IPAddress,
+    CurrentApp = AppDisplayName,
+    PrevLocation,
+    PrevIP,
+    PrevApp,
+    MinutesBetweenLogins,
+    UserAgent
+| order by MinutesBetweenLogins asc
+

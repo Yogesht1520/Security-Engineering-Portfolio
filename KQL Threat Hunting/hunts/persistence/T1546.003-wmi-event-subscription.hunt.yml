@@ -1,0 +1,54 @@
+id: HB-PS-004
+title: WMI Event Subscription Persistence
+status: tested
+validation_level: synthetic
+platform: defender-xdr
+tables:
+  - DeviceEvents
+time_column: Timestamp
+attack:
+  tactics:
+    - persistence
+    - privilege-escalation
+  techniques:
+    - T1546.003
+severity: high
+hypothesis: >
+  An adversary creates a permanent Windows Management Instrumentation (WMI) event filter and consumer binding
+  to establish stealthy persistence, executing malicious code with SYSTEM privileges whenever target system events fire.
+logic_summary: >
+  Inspects DeviceEvents for WMI subscription creation actions (WmiEventFilterCreated, WmiEventConsumerCreated,
+  WmiEventConsumerToFilterCreated), parsing consumer names, trigger queries, and initiating process telemetry.
+parameters:
+  - name: lookback
+    default: 14d
+    description: Historical search window to inspect
+false_positives:
+  - Enterprise endpoint management agents (e.g. SCCM/MECM, Dell Command, HP Support Assistant) registering health filters
+  - Antivirus and EDR software maintaining local system state watchdogs
+tuning:
+  - Whitelist known IT management consumer names matching verified vendor binaries
+  - Suppress benign OEM hardware telemetry monitors signed by trusted root certificates
+triage_steps:
+  - Inspect the CommandLine and Query within AdditionalFields to identify the payload or script being executed
+  - Determine whether the Consumer is a CommandLineEventConsumer (runs an EXE/script) or ActiveScriptEventConsumer (executes VBScript/JScript)
+  - Trace the InitiatingProcessCommandLine that installed the subscription (e.g. wmic.exe, powershell.exe, or mofcomp.exe)
+  - Check the device for persistence removal using Get-CimInstance -Namespace root\subscription
+response: >
+  Remove the malicious WMI filter, consumer, and binding objects via PowerShell CIM commands,
+  isolate the infected host, and conduct memory and disk forensic analysis.
+references:
+  - title: MITRE ATT&CK T1546.003 WMI Event Subscription
+    url: https://attack.mitre.org/techniques/T1546/003/
+  - title: Microsoft Defender for Endpoint DeviceEvents Reference
+    url: https://learn.microsoft.com/en-us/microsoft-365/security/defender/advanced-hunting-deviceevents-table
+tests:
+  - dataset: scenario-02
+    expect:
+      min_rows: 0
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

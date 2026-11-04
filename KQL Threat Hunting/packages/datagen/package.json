@@ -1,0 +1,19 @@
+{
+  "name": "@huntbook/datagen",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@faker-js/faker": "^9.5.0",
+    "@huntbook/core": "workspace:*",
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}
+

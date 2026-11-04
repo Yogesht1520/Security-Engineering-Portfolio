@@ -1,0 +1,18 @@
+// HB-EP-005 | T1562.001 | Microsoft Defender Antivirus exclusion added
+// Hypothesis: An attacker adds folder or file exclusions to Windows Defender to prevent detection of malware payloads dropped onto the endpoint.
+let lookback = 7d;
+DeviceRegistryEvents
+| where Timestamp > ago(lookback)
+| where ActionType in~ ("RegistryValueSet", "RegistryKeyCreated")
+| where RegistryKey has @"Microsoft\Windows Defender\Exclusions"
+| project
+    Timestamp,
+    DeviceName,
+    RegistryKey,
+    RegistryValueName,
+    RegistryValueData,
+    InitiatingProcessFileName,
+    InitiatingProcessCommandLine,
+    InitiatingProcessAccountName
+| order by Timestamp desc
+

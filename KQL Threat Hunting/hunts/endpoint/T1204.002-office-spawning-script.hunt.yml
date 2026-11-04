@@ -1,0 +1,55 @@
+id: HB-EP-001
+title: Office application spawning script interpreter or shell
+status: tested
+validation_level: synthetic
+platform: defender-xdr
+tables:
+  - DeviceProcessEvents
+time_column: Timestamp
+attack:
+  tactics:
+    - execution
+    - initial-access
+  techniques:
+    - T1204.002
+severity: high
+hypothesis: >
+  An adversary sends a spearphishing email with a weaponized Office attachment (docm, xlsm)
+  or malicious link that triggers macro code or an exploit, spawning cmd.exe, powershell.exe, or mshta.exe.
+logic_summary: >
+  Inspects DeviceProcessEvents in Defender for Endpoint where the parent process (InitiatingProcessFileName)
+  is a Microsoft Office application and the newly spawned child process is a shell or scripting engine.
+parameters:
+  - name: lookback
+    default: 7d
+    description: Historical search window to inspect
+false_positives:
+  - Legitimate enterprise accounting or financial spreadsheets utilizing complex approved VBA macros that call cmd.exe for internal scripts
+  - Add-ins from security software, Adobe Acrobat, or document management systems
+tuning:
+  - Allow-list verified corporate Excel macro add-ins by filtering on specific InitiatingProcessCommandLine patterns or digital signature status
+  - Restrict child interpreters to specific untrusted directories or unusual command-line flags
+triage_steps:
+  - Review the OfficeCommandLine to identify the file name and path of the document that was opened
+  - Inspect the ProcessCommandLine to see what script or remote URL the child interpreter attempted to run
+  - Check DeviceFileEvents and DeviceNetworkEvents for the same DeviceId around the same Timestamp
+response: >
+  Isolate the affected endpoint via Defender for Endpoint APIs, collect the suspicious document for malware analysis,
+  and search email gateway logs for other recipients of the same attachment.
+references:
+  - title: MITRE ATT&CK T1204.002 User Execution - Malicious File
+    url: https://attack.mitre.org/techniques/T1204/002/
+  - title: Microsoft Defender Advanced Hunting DeviceProcessEvents
+    url: https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceprocessevents-table
+tests:
+  - dataset: scenario-02
+    expect:
+      min_rows: 1
+      contains:
+        FileName: powershell.exe
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

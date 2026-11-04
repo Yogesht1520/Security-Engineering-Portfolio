@@ -1,0 +1,26 @@
+// Hunt: HB-CL-003 - Sign-in from Known Anonymizer or Tor Exit Node
+// MITRE ATT&CK: T1090 (Proxy)
+// Platform: Microsoft Sentinel (SigninLogs)
+//
+// Description: Identifies user sign-in activity originating from anonymizing proxies,
+// Tor exit nodes, or high-risk IP sources flagged by Entra ID Protection risk signals
+// or anonymizer network telemetry.
+
+let lookback = 7d;
+let anonymizerRiskSignals = dynamic(["anonymousIp", "anonymizedIP", "torExitNode", "maliciousIP"]);
+SigninLogs
+| where TimeGenerated > ago(lookback)
+| where RiskDetail in~ (anonymizerRiskSignals) 
+    or tostring(NetworkLocationDetails) has_any ("Tor", "Anonymizer", "Proxy")
+| summarize 
+    FirstSeen = min(TimeGenerated),
+    LastSeen = max(TimeGenerated),
+    Attempts = count(),
+    SuccessCount = countif(ResultType == "0"),
+    FailureCount = countif(ResultType != "0"),
+    TargetApps = make_set(AppDisplayName, 10),
+    UserAgents = make_set(UserAgent, 5)
+    by UserPrincipalName, IPAddress, Location, RiskDetail
+| extend SigninStatus = iff(SuccessCount > 0, "Compromise Likely (Successful)", "Probing (Failed Only)")
+| project FirstSeen, LastSeen, UserPrincipalName, IPAddress, Location, RiskDetail, SigninStatus, Attempts, SuccessCount, FailureCount, TargetApps, UserAgents
+| order by SuccessCount desc, Attempts desc

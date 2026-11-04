@@ -1,0 +1,58 @@
+id: HB-RW-002
+title: Ransomware Mass File Rename with Encrypted Extension
+status: tested
+validation_level: synthetic
+platform: defender-xdr
+tables:
+  - DeviceFileEvents
+time_column: Timestamp
+attack:
+  tactics:
+    - impact
+  techniques:
+    - T1486
+severity: high
+hypothesis: >
+  A ransomware binary is actively encrypting files across user documents and network shares, renaming files
+  in rapid succession and appending known encryption extensions (.locked, .crypted, .enc) to render data unusable.
+logic_summary: >
+  Monitors DeviceFileEvents for FileRenamed operations, detecting rapid bursts exceeding 20 file renames within 10 minutes
+  where original extensions change or match known ransomware extension patterns.
+parameters:
+  - name: lookback
+    default: 24h
+    description: Historical search window to inspect
+  - name: burstWindow
+    default: 10m
+    description: Aggregation window for burst detection
+  - name: renameThreshold
+    default: 20
+    description: Minimum number of renamed files within the window
+false_positives:
+  - Software installation or patch update routines creating temporary backup files
+  - Developer batch build scripts or archive compression utilities renaming build artifacts
+tuning:
+  - Exclude verified enterprise backup utilities and source code compilers (e.g. devenv.exe, msbuild.exe)
+  - Adjust renameThreshold upward if large legitimate data migration jobs frequently run
+triage_steps:
+  - Inspect InitiatingProcessFileName and InitiatingProcessCommandLine to identify the encrypting binary or script
+  - Examine SampleNewFiles to determine whether a ransom note (e.g. README.txt, HOW_TO_DECRYPT.txt) was dropped nearby
+  - Immediately check if other hosts on the same network subnet are reporting similar mass rename bursts
+  - Review DeviceNetworkEvents from the source process for outbound command-and-control communication
+response: >
+  Immediately isolate the host from the network via Defender for Endpoint portal, kill the initiating process tree,
+  preserve volatile RAM and disk forensic artifacts, and begin recovery from off-site immutable backups.
+references:
+  - title: MITRE ATT&CK T1486 Data Encrypted for Impact
+    url: https://attack.mitre.org/techniques/T1486/
+  - title: Microsoft Incident Response Ransomware Playbook
+    url: https://learn.microsoft.com/en-us/security/compass/human-operated-ransomware
+tests:
+  - dataset: scenario-03
+    expect:
+      min_rows: 0
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05

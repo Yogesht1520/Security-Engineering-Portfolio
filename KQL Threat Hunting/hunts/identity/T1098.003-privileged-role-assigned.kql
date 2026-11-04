@@ -1,0 +1,32 @@
+// HB-ID-006 | T1098.003 | Highly privileged directory role assigned in Entra ID
+// Hypothesis: An attacker assigns Global Administrator or other sensitive directory roles to a rogue account to solidify persistence and tenant-wide control.
+let lookback = 7d;
+AuditLogs
+| where TimeGenerated > ago(lookback)
+| where Category =~ "RoleManagement"
+| where OperationName in~ (
+    "Add member to role",
+    "Add eligible member to role",
+    "Add member to role in PIM completed"
+)
+| where Result =~ "success"
+| extend RoleName = tostring(TargetResources[0].modifiedProperties[1].newValue)
+| extend TargetUser = tostring(TargetResources[0].userPrincipalName)
+| extend Actor = tostring(InitiatedBy.user.userPrincipalName)
+| where RoleName has_any (
+    "Global Administrator",
+    "Privileged Role Administrator",
+    "Security Administrator",
+    "Exchange Administrator",
+    "User Administrator"
+)
+| project
+    TimeGenerated,
+    OperationName,
+    RoleName,
+    TargetUser,
+    Actor,
+    ResultDescription,
+    TargetResources
+| order by TimeGenerated desc
+

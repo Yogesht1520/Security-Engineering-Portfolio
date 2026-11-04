@@ -1,0 +1,22 @@
+// HB-RW-001 | T1490 | Volume Shadow Copy deletion and system recovery inhibition
+// Hypothesis: Ransomware or a destructive attacker deletes Volume Shadow Copies and disables Windows recovery options to prevent file restoration prior to encryption.
+let lookback = 3d;
+DeviceProcessEvents
+| where Timestamp > ago(lookback)
+| where (FileName =~ "vssadmin.exe" and ProcessCommandLine has_all ("delete", "shadows"))
+     or (FileName =~ "wmic.exe" and ProcessCommandLine has_all ("shadowcopy", "delete"))
+     or (FileName =~ "wbadmin.exe" and ProcessCommandLine has_all ("delete", "catalog"))
+     or (FileName =~ "bcdedit.exe" and ProcessCommandLine has_any ("recoveryenabled", "bootstatuspolicy"))
+     or (FileName in~ ("powershell.exe", "pwsh.exe") and ProcessCommandLine has_any ("Delete-WmiObject", "Win32_ShadowCopy"))
+| project
+    Timestamp,
+    DeviceName,
+    AccountName,
+    FileName,
+    ProcessCommandLine,
+    InitiatingProcessFileName,
+    InitiatingProcessCommandLine,
+    InitiatingProcessParentFileName,
+    ProcessIntegrityLevel
+| order by Timestamp desc
+

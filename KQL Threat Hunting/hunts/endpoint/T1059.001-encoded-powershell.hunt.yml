@@ -1,0 +1,58 @@
+id: HB-EP-002
+title: PowerShell executed with Base64 encoded command arguments
+status: tested
+validation_level: synthetic
+platform: defender-xdr
+tables:
+  - DeviceProcessEvents
+time_column: Timestamp
+attack:
+  tactics:
+    - execution
+    - defense-evasion
+  techniques:
+    - T1059.001
+severity: medium
+hypothesis: >
+  An adversary executes Base64-encoded PowerShell payloads to bypass signature-based endpoint defenses,
+  obfuscate remote download cradles, or execute in-memory shellcode runners.
+logic_summary: >
+  Queries DeviceProcessEvents for powershell.exe or pwsh.exe where the command-line parameters
+  contain encoded argument flags (-e, -enc, -encodedcommand) followed by a Base64 string of at least 30 characters.
+parameters:
+  - name: lookback
+    default: 7d
+    description: Historical search window to inspect
+  - name: minEncodedLength
+    default: 30
+    description: Minimum length of the Base64 string payload to filter trivial flags
+false_positives:
+  - Enterprise systems management tools (Microsoft Endpoint Configuration Manager / SCCM, Intune, Tanium)
+  - Software deployment installers and monitoring agents executing pre-packaged health checks
+tuning:
+  - Filter out approved management parent processes (e.g. CcmExec.exe, taniumclient.exe)
+  - Exclude known benign script command lines signed by internal enterprise certificates
+triage_steps:
+  - Extract the Base64 encoded payload and decode it (UTF-16LE / Unicode) in a sandbox or CyberChef
+  - Inspect the decoded command for download cradles (e.g. IEX, Net.WebClient, Invoke-RestMethod) or credential access
+  - Identify the parent process and account that initiated the PowerShell command
+response: >
+  Terminate the malicious process, isolate the endpoint if remote connections or secondary payloads are detected,
+  and block any remote command and control (C2) domains identified in the decoded payload.
+references:
+  - title: MITRE ATT&CK T1059.001 Command and Scripting Interpreter - PowerShell
+    url: https://attack.mitre.org/techniques/T1059/001/
+  - title: Microsoft Defender Advanced Hunting DeviceProcessEvents
+    url: https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceprocessevents-table
+tests:
+  - dataset: scenario-02
+    expect:
+      min_rows: 1
+      contains:
+        FileName: powershell.exe
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

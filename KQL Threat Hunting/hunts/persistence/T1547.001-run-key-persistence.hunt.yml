@@ -1,0 +1,53 @@
+id: HB-PS-001
+title: Persistence via Windows registry Run or RunOnce keys
+status: tested
+validation_level: synthetic
+platform: defender-xdr
+tables:
+  - DeviceRegistryEvents
+time_column: Timestamp
+attack:
+  tactics:
+    - persistence
+  techniques:
+    - T1547.001
+severity: medium
+hypothesis: >
+  An adversary creates or modifies values under the Run or RunOnce registry keys pointing to a script engine
+  or untrusted directory so that their malware maintains persistence across system reboots or user logons.
+logic_summary: >
+  Monitors DeviceRegistryEvents for RegistryValueSet operations targeting CurrentVersion\Run or RunOnce
+  where the stored command value references suspicious scripting interpreters or staging directories.
+parameters:
+  - name: lookback
+    default: 7d
+    description: Historical search window to inspect
+false_positives:
+  - Legitimate enterprise software updates or new software installations adding auto-start launchers
+  - Antivirus or VPN client updater binaries writing to ProgramData
+tuning:
+  - Allow-list approved vendor executable paths located strictly under C:\Program Files or C:\Program Files (x86)
+  - Filter out trusted administrative install processes such as msiexec.exe when initiating process signer is trusted
+triage_steps:
+  - Inspect RegistryValueData to see the exact binary or command line scheduled for auto-run
+  - Verify if the file exists on disk and calculate its SHA256 hash using DeviceFileEvents
+  - Determine if the InitiatingProcess was an interactive user shell or an unexpected process
+response: >
+  Delete the malicious registry value, remove the referenced executable from disk, and perform a full host scan.
+references:
+  - title: MITRE ATT&CK T1547.001 Boot or Logon Autostart Execution - Registry Run Keys / Startup Folder
+    url: https://attack.mitre.org/techniques/T1547/001/
+  - title: Microsoft Defender Advanced Hunting DeviceRegistryEvents
+    url: https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceregistryevents-table
+tests:
+  - dataset: scenario-02
+    expect:
+      min_rows: 1
+      contains:
+        ActionType: RegistryValueSet
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

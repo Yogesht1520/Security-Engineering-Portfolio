@@ -1,0 +1,52 @@
+id: HB-EP-004
+title: Suspicious process access targeting LSASS memory for credential dumping
+status: tested
+validation_level: synthetic
+platform: defender-xdr
+tables:
+  - DeviceEvents
+time_column: Timestamp
+attack:
+  tactics:
+    - credential-access
+  techniques:
+    - T1003.001
+severity: high
+hypothesis: >
+  An attacker accesses the LSASS process with high-privilege read access via Windows APIs
+  (MiniDumpWriteDump, OpenProcess) to extract NTLM password hashes or Kerberos tickets from memory.
+logic_summary: >
+  Filters DeviceEvents for OpenProcessApiCall where the target process is lsass.exe and the initiating
+  parent process is not a standard Windows OS component or security agent.
+parameters:
+  - name: lookback
+    default: 7d
+    description: Historical search window to inspect
+false_positives:
+  - Legitimate third-party endpoint protection, backup software, or performance diagnostics agents
+  - Security vulnerability scanners performing credential audit checks
+tuning:
+  - Allow-list trusted third-party security agents verified by digital code signing certificates
+  - Exclude known IT administrative diagnostic tools executed from approved system directories
+triage_steps:
+  - Identify the InitiatingProcessCommandLine and check where the binary is running from
+  - Check DeviceFileEvents for new .dmp or .tmp files created on the host around the same time
+  - Search DeviceNetworkEvents for outbound connections from the same device
+response: >
+  Isolate the endpoint immediately via Defender for Endpoint API, terminate the offending process,
+  and rotate passwords and Kerberos tickets (krbtgt) for any users logged into that endpoint.
+references:
+  - title: MITRE ATT&CK T1003.001 OS Credential Dumping - LSASS Memory
+    url: https://attack.mitre.org/techniques/T1003/001/
+  - title: Microsoft Defender Advanced Hunting DeviceEvents
+    url: https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceevents-table
+tests:
+  - dataset: scenario-02
+    expect:
+      min_rows: 0
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

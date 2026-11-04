@@ -1,0 +1,28 @@
+// HB-CL-001 | T1530 | Anomalous burst of cloud file downloads
+// Hypothesis: An attacker or departing insider rapidly downloads a large volume of files from cloud storage (SharePoint / OneDrive) for exfiltration.
+let lookback = 1d;
+let window = 1h;
+let minDownloads = 50;
+CloudAppEvents
+| where Timestamp > ago(lookback)
+| where Application in~ ("Microsoft SharePoint Online", "Microsoft OneDrive for Business")
+| where ActionType =~ "FileDownloaded"
+| summarize
+    DownloadCount = count(),
+    FirstDownload = min(Timestamp),
+    LastDownload = max(Timestamp),
+    SampleFiles = make_set(tostring(ActivityObjects), 10)
+    by AccountDisplayName, AccountId, IPAddress, CountryCode, bin(Timestamp, window)
+| where DownloadCount >= minDownloads
+| project
+    Timestamp,
+    AccountDisplayName,
+    AccountId,
+    DownloadCount,
+    IPAddress,
+    CountryCode,
+    FirstDownload,
+    LastDownload,
+    SampleFiles
+| order by DownloadCount desc
+

@@ -1,0 +1,22 @@
+{
+  "name": "DeviceNetworkEvents",
+  "platform": "defender-xdr",
+  "timeColumn": "Timestamp",
+  "description": "Microsoft Defender for Endpoint network connection and communication telemetry",
+  "columns": [
+    { "name": "Timestamp", "type": "datetime", "description": "Timestamp when the network event occurred" },
+    { "name": "DeviceId", "type": "string", "description": "Unique identifier for the device" },
+    { "name": "DeviceName", "type": "string", "description": "Hostname or FQDN of the device" },
+    { "name": "ActionType", "type": "string", "description": "ConnectionSuccess, ConnectionFailed, InboundConnectionAccepted, etc." },
+    { "name": "RemoteIP", "type": "string", "description": "Destination IP address" },
+    { "name": "RemotePort", "type": "int", "description": "Destination port (e.g. 445 for SMB, 443 for HTTPS)" },
+    { "name": "RemoteUrl", "type": "string", "description": "Destination domain or URL" },
+    { "name": "LocalIP", "type": "string", "description": "Source IP of the sending host" },
+    { "name": "LocalPort", "type": "int", "description": "Source ephemeral port" },
+    { "name": "Protocol", "type": "string", "description": "Tcp, Udp" },
+    { "name": "InitiatingProcessFileName", "type": "string", "description": "Process that initiated the network traffic" },
+    { "name": "InitiatingProcessCommandLine", "type": "string", "description": "Command line of the initiating process" },
+    { "name": "InitiatingProcessAccountName", "type": "string", "description": "User account that owns the initiating process" }
+  ]
+}
+

@@ -1,0 +1,22 @@
+{
+  "name": "huntbook-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HuntBook: Detection-as-Code KQL Threat Hunting Library & Lab",
+  "author": "Yogesh Thakur",
+  "license": "MIT",
+  "packageManager": "pnpm@12.16.1",
+  "scripts": {
+    "lint": "eslint . --ext .ts,.tsx",
+    "format": "prettier --write \"**/*.{ts,tsx,json,yml,yaml,md}\"",
+    "test": "vitest run",
+    "validate": "pnpm --filter @huntbook/cli huntbook validate",
+    "build": "pnpm --filter @huntbook/cli huntbook build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

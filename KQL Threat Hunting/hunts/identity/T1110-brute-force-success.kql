@@ -1,0 +1,27 @@
+// HB-ID-002 | T1110 | Targeted brute force against a single account followed by success
+// Hypothesis: An attacker performs repeated password guessing against a specific user account until finding the correct password and gaining access.
+let lookback = 1d;
+let window = 1h;
+let minFailures = 10;
+SigninLogs
+| where TimeGenerated > ago(lookback)
+| summarize
+    FailedAttempts = countif(ResultType == "50126"),
+    SuccessfulLogins = countif(ResultType == "0"),
+    FirstFailure = minif(TimeGenerated, ResultType == "50126"),
+    LastSuccess = maxif(TimeGenerated, ResultType == "0"),
+    Apps = make_set(AppDisplayName, 5)
+    by UserPrincipalName, IPAddress, bin(TimeGenerated, window)
+| where FailedAttempts >= minFailures and SuccessfulLogins > 0
+| where LastSuccess > FirstFailure
+| project
+    TimeGenerated,
+    UserPrincipalName,
+    IPAddress,
+    FailedAttempts,
+    SuccessfulLogins,
+    FirstFailure,
+    LastSuccess,
+    Apps
+| order by FailedAttempts desc
+

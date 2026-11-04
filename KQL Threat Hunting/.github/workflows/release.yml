@@ -1,0 +1,76 @@
+name: Release & Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: 'pages'
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Build Core & CLI Packages
+        run: |
+          pnpm --filter @huntbook/core build
+          pnpm --filter @huntbook/datagen build
+          pnpm --filter @huntbook/cli build
+
+      - name: Validate Hunts & Run Tests
+        run: |
+          node packages/cli/dist/cli.js validate
+          node packages/cli/dist/cli.js test
+          pnpm test
+
+      - name: Build Catalog & Coverage Artifacts
+        run: node packages/cli/dist/cli.js build
+
+      - name: Build Web Application
+        run: pnpm --filter @huntbook/web build
+
+      - name: Copy Artifacts to Web Dist
+        run: |
+          cp dist/catalog.json packages/web/dist/catalog.json
+          cp dist/coverage.json packages/web/dist/coverage.json
+          cp dist/navigator-layer.json packages/web/dist/navigator-layer.json
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'packages/web/dist'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+

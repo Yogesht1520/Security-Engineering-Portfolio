@@ -1,0 +1,27 @@
+// HB-LM-003 | T1021.002 | SMB admin share access fan-out to multiple internal hosts
+// Hypothesis: An attacker uses SMB (port 445) to connect to admin shares (C$, ADMIN$) across multiple systems for lateral movement or staging.
+let lookback = 3d;
+let window = 1h;
+let minTargets = 5;
+DeviceNetworkEvents
+| where Timestamp > ago(lookback)
+| where ActionType =~ "ConnectionSuccess"
+| where RemotePort == 445
+| summarize
+    DistinctTargets = dcount(RemoteIP),
+    TargetIPs = make_set(RemoteIP, 10),
+    FirstConnection = min(Timestamp),
+    LastConnection = max(Timestamp)
+    by DeviceName, InitiatingProcessFileName, InitiatingProcessAccountName, bin(Timestamp, window)
+| where DistinctTargets >= minTargets
+| project
+    Timestamp,
+    SourceDevice = DeviceName,
+    InitiatingProcessFileName,
+    InitiatingProcessAccountName,
+    DistinctTargets,
+    TargetIPs,
+    FirstConnection,
+    LastConnection
+| order by DistinctTargets desc
+

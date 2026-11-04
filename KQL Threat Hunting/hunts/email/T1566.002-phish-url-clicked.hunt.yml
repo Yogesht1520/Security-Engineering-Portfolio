@@ -1,0 +1,52 @@
+id: HB-EM-002
+title: Safe Links click on potential phishing URL or warning dismissed
+status: tested
+validation_level: synthetic
+platform: defender-xdr
+tables:
+  - UrlClickEvents
+time_column: Timestamp
+attack:
+  tactics:
+    - initial-access
+  techniques:
+    - T1566.002
+severity: high
+hypothesis: >
+  An employee clicks an inbound email phishing link where Microsoft Defender Safe Links either permitted
+  navigation or the user explicitly bypassed a red security warning screen to reach the destination.
+logic_summary: >
+  Monitors UrlClickEvents in Defender for Office 365 for ClickAllowed on URLs determined to be Phish/Malware
+  or user clicks where WarningDismissed indicates deliberate override of security controls.
+parameters:
+  - name: lookback
+    default: 7d
+    description: Historical search window to inspect
+false_positives:
+  - Legitimate corporate marketing or HR survey URLs incorrectly classified by automated reputation feeds
+  - Authorized internal phishing awareness simulation campaigns (e.g. KnowBe4, Defender Attack Simulation)
+tuning:
+  - Exclude verified internal authorized phishing simulation header IDs or sender IPs
+  - Whitelist internal domain single sign-on URLs and verified SaaS portals
+triage_steps:
+  - Review the destination URL to determine if it mimics a Microsoft 365 login page or contains a file download
+  - Check SigninLogs for subsequent sign-ins from the user's IP or foreign IPs within the next 4 hours
+  - Interview the user to determine if they submitted credentials or downloaded any files
+response: >
+  Block the URL tenant-wide using the Tenant Allow/Block List (TABL), reset the user's password,
+  revoke active sessions, and verify MFA device registrations.
+references:
+  - title: MITRE ATT&CK T1566.002 Phishing - Spearphishing Link
+    url: https://attack.mitre.org/techniques/T1566/002/
+  - title: Microsoft Defender Advanced Hunting UrlClickEvents
+    url: https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-urlclickevents-table
+tests:
+  - dataset: scenario-01
+    expect:
+      min_rows: 0
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

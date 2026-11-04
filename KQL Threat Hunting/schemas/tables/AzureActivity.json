@@ -1,0 +1,17 @@
+{
+  "name": "AzureActivity",
+  "platform": "sentinel",
+  "timeColumn": "TimeGenerated",
+  "description": "Azure Resource Manager subscription control plane audit logs",
+  "columns": [
+    { "name": "TimeGenerated", "type": "datetime", "description": "Timestamp when ARM activity occurred" },
+    { "name": "OperationNameValue", "type": "string", "description": "ARM resource action (e.g. Microsoft.Compute/virtualMachines/delete)" },
+    { "name": "ActivityStatusValue", "type": "string", "description": "Success, Failed, Started" },
+    { "name": "Caller", "type": "string", "description": "UPN or Service Principal ID of the caller" },
+    { "name": "CallerIpAddress", "type": "string", "description": "Client IP that initiated the Azure ARM call" },
+    { "name": "ResourceGroup", "type": "string", "description": "Target Azure Resource Group" },
+    { "name": "SubscriptionId", "type": "string", "description": "Azure subscription GUID" },
+    { "name": "Properties", "type": "dynamic", "description": "Extended properties and request body parameters" }
+  ]
+}
+

@@ -1,0 +1,58 @@
+id: HB-LM-003
+title: SMB admin share access fan-out to multiple internal hosts
+status: tested
+validation_level: synthetic
+platform: defender-xdr
+tables:
+  - DeviceNetworkEvents
+time_column: Timestamp
+attack:
+  tactics:
+    - lateral-movement
+  techniques:
+    - T1021.002
+severity: high
+hypothesis: >
+  An adversary who has compromised internal administrative credentials uses SMB (TCP port 445)
+  to connect to multiple target machines in rapid succession to stage payloads or execute remote tasks.
+logic_summary: >
+  Aggregates successful outbound connections on port 445 from DeviceNetworkEvents grouped by source host
+  and initiating process in 1-hour windows, alerting when connections reach 5 or more distinct internal IPs.
+parameters:
+  - name: lookback
+    default: 3d
+    description: Historical search window to inspect
+  - name: window
+    default: 1h
+    description: Tumbling time bucket window
+  - name: minTargets
+    default: 5
+    description: Minimum number of unique target IPs on port 445
+false_positives:
+  - Enterprise vulnerability management scanners (Nessus, Qualys) performing authenticated credentialed scans
+  - Centralized domain file servers or automated backup servers communicating with endpoints
+tuning:
+  - Whitelist verified corporate vulnerability scanner IP addresses using a Sentinel watchlist
+  - Exclude trusted domain controller replication and dedicated enterprise file servers
+triage_steps:
+  - Identify the InitiatingProcessFileName and CommandLine on the source machine (e.g. net.exe, powershell.exe, impacket)
+  - Inspect target machines for corresponding 4624/4672 logon events or remote service creations
+  - Check whether the user account has legitimate administrative responsibilities over all targeted endpoints
+response: >
+  Isolate the source endpoint via Defender for Endpoint API, block outbound SMB lateral movement,
+  and rotate passwords for the affected administrative account.
+references:
+  - title: MITRE ATT&CK T1021.002 Remote Services - SMB/Windows Admin Shares
+    url: https://attack.mitre.org/techniques/T1021/002/
+  - title: Microsoft Defender Advanced Hunting DeviceNetworkEvents
+    url: https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-devicenetworkevents-table
+tests:
+  - dataset: scenario-02
+    expect:
+      min_rows: 0
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

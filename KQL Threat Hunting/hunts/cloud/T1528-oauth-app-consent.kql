@@ -1,0 +1,30 @@
+// HB-CL-002 | T1528 | New OAuth application consent granted with sensitive scopes
+// Hypothesis: An attacker tricks a user into consenting to a rogue third-party OAuth app (Illicit Consent Grant) to gain API access to emails and cloud files.
+let lookback = 7d;
+AuditLogs
+| where TimeGenerated > ago(lookback)
+| where Category =~ "ApplicationManagement"
+| where OperationName in~ (
+    "Consent to application",
+    "Add delegated permission grant",
+    "Add service principal"
+)
+| where Result =~ "success"
+| extend AppDisplayName = tostring(TargetResources[0].displayName)
+| extend AppId = tostring(TargetResources[0].id)
+| extend Actor = tostring(InitiatedBy.user.userPrincipalName)
+| extend Permissions = tostring(TargetResources[0].modifiedProperties[0].newValue)
+| where Permissions has_any (
+    "Mail.Read", "Mail.ReadWrite", "MailboxSettings.ReadWrite",
+    "Files.ReadWrite.All", "offline_access", "User.ReadWrite.All"
+)
+| project
+    TimeGenerated,
+    OperationName,
+    AppDisplayName,
+    AppId,
+    Actor,
+    Permissions,
+    ResultDescription
+| order by TimeGenerated desc
+

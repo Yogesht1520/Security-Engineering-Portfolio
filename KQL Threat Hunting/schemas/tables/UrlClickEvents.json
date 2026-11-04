@@ -1,0 +1,17 @@
+{
+  "name": "UrlClickEvents",
+  "platform": "defender-xdr",
+  "timeColumn": "Timestamp",
+  "description": "Microsoft Defender for Office 365 Safe Links click telemetry",
+  "columns": [
+    { "name": "Timestamp", "type": "datetime", "description": "Timestamp when URL was clicked" },
+    { "name": "AccountUpn", "type": "string", "description": "User account that clicked the link" },
+    { "name": "IPAddress", "type": "string", "description": "Source IP of the user client" },
+    { "name": "Url", "type": "string", "description": "Destination clicked URL" },
+    { "name": "ClickType", "type": "string", "description": "Normal, Blocked, Allowed, WarningDismissed" },
+    { "name": "ActionType", "type": "string", "description": "ClickAllowed, ClickBlocked, UrlBlocked" },
+    { "name": "ThreatTypes", "type": "string", "description": "Malware, Phish, None" },
+    { "name": "NetworkMessageId", "type": "string", "description": "Associated email message ID" }
+  ]
+}
+

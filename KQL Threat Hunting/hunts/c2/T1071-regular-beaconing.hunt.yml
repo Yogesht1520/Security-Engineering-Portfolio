@@ -1,0 +1,59 @@
+id: HB-C2-001
+title: Command and Control Periodic Beaconing Detection
+status: tested
+validation_level: synthetic
+platform: defender-xdr
+tables:
+  - DeviceNetworkEvents
+time_column: Timestamp
+attack:
+  tactics:
+    - command-and-control
+  techniques:
+    - T1071
+severity: high
+hypothesis: >
+  An implant or agent from an adversary C2 framework (e.g. Cobalt Strike, Sliver, Mythic) executes periodic
+  HTTP/HTTPS or TCP beacon check-ins to an external listener, exhibiting low inter-arrival jitter.
+logic_summary: >
+  Applies KQL window serialization (serialize and prev) across chronological DeviceNetworkEvents to calculate
+  the time delta between outbound connections, computing the coefficient of variation (jitter ratio) to flag periodic beaconing.
+parameters:
+  - name: lookback
+    default: 24h
+    description: Historical search window to inspect
+  - name: minConnections
+    default: 15
+    description: Minimum number of connections required for statistical validity
+  - name: maxJitterRatio
+    default: 0.35
+    description: Maximum allowable coefficient of variation (stdev / avg) to qualify as regular beaconing
+false_positives:
+  - Legitimate telemetry heartbeats from commercial software (e.g. cloud storage sync, antivirus update checks)
+  - Network time protocol (NTP) or DNS forwarder lookups running on fixed timers
+tuning:
+  - Exclude verified enterprise proxy egress points and CDNs (e.g. Microsoft 365, AWS CloudFront, Cloudflare)
+  - Lower maxJitterRatio threshold if noisy benign monitoring agents are triggering alerts
+triage_steps:
+  - Inspect RemoteIP and RemoteUrl reputation using threat intelligence lookups (VirusTotal, AlienVault OTX)
+  - Check the InitiatingProcessFileName and full command line of the process responsible for network traffic
+  - Determine if the initiating process is unsigned, running from a temporary directory (e.g. AppData\Local\Temp), or injected
+  - Correlate with process execution and file creation events on the device immediately preceding the start of the beacon
+response: >
+  Isolate the endpoint from the network via Defender XDR portal, terminate the beaconing process tree,
+  dump process memory for C2 configuration extraction, and block the remote IP across corporate perimeter firewalls.
+references:
+  - title: MITRE ATT&CK T1071 Application Layer Protocol
+    url: https://attack.mitre.org/techniques/T1071/
+  - title: Hunting for C2 Beacons using KQL
+    url: https://techcommunity.microsoft.com/t5/microsoft-sentinel-blog/hunting-for-c2-beacons-using-kql/ba-p/2275463
+tests:
+  - dataset: scenario-02
+    expect:
+      min_rows: 0
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

@@ -1,0 +1,25 @@
+{
+  "name": "DeviceProcessEvents",
+  "platform": "defender-xdr",
+  "timeColumn": "Timestamp",
+  "description": "Microsoft Defender for Endpoint process creation and execution events",
+  "columns": [
+    { "name": "Timestamp", "type": "datetime", "description": "Timestamp when the process event occurred" },
+    { "name": "DeviceId", "type": "string", "description": "Unique identifier for the device in Defender" },
+    { "name": "DeviceName", "type": "string", "description": "Fully qualified domain name or hostname of the device" },
+    { "name": "ActionType", "type": "string", "description": "ProcessCreated or similar action type" },
+    { "name": "FileName", "type": "string", "description": "Name of the process executable" },
+    { "name": "FolderPath", "type": "string", "description": "Directory folder containing the process executable" },
+    { "name": "SHA256", "type": "string", "description": "SHA-256 hash of the process executable" },
+    { "name": "ProcessCommandLine", "type": "string", "description": "Command line used to create the new process" },
+    { "name": "ProcessIntegrityLevel", "type": "string", "description": "Integrity level (Low, Medium, High, System)" },
+    { "name": "ProcessTokenElevation", "type": "string", "description": "Token elevation type (TokenElevationTypeFull, etc.)" },
+    { "name": "AccountName", "type": "string", "description": "User account name executing the process" },
+    { "name": "AccountDomain", "type": "string", "description": "Domain of the account" },
+    { "name": "InitiatingProcessFileName", "type": "string", "description": "Parent process executable name" },
+    { "name": "InitiatingProcessCommandLine", "type": "string", "description": "Command line of the parent process" },
+    { "name": "InitiatingProcessParentFileName", "type": "string", "description": "Grandparent process executable name" },
+    { "name": "InitiatingProcessAccountName", "type": "string", "description": "Account that launched the parent process" }
+  ]
+}
+

@@ -1,0 +1,53 @@
+id: HB-LM-002
+title: Remote service or PsExec-like execution spawned by services.exe
+status: tested
+validation_level: synthetic
+platform: defender-xdr
+tables:
+  - DeviceProcessEvents
+time_column: Timestamp
+attack:
+  tactics:
+    - lateral-movement
+    - execution
+  techniques:
+    - T1569.002
+severity: high
+hypothesis: >
+  An adversary moves laterally by using PsExec or remote service creation tools to execute
+  interactive shells or payload binaries on remote systems spawned directly by services.exe.
+logic_summary: >
+  Filters DeviceProcessEvents for known remote execution service wrappers (psexesvc, paexec)
+  or instances where the Windows Service Control Manager (services.exe) directly spawns an interactive shell.
+parameters:
+  - name: lookback
+    default: 7d
+    description: Historical search window to inspect
+false_positives:
+  - Legitimate IT remote administration batch scripts utilizing Sysinternals PsExec
+  - Enterprise monitoring or remote management and maintenance (RMM) software agents
+tuning:
+  - Allow-list approved administrative automation tools executed exclusively by designated domain admin service accounts
+  - Correlate with DeviceNetworkEvents to verify incoming SMB connections on port 445
+triage_steps:
+  - Inspect ProcessCommandLine to see what commands or secondary scripts were executed
+  - Identify the source machine that initiated the remote service via network and logon telemetry
+  - Check whether the user account executing the command has authorized administrative permissions
+response: >
+  Terminate the remote process, disable the compromised administrative account, isolate the target machine,
+  and inspect the originating system for primary infection vectors.
+references:
+  - title: MITRE ATT&CK T1569.002 System Services - Service Execution
+    url: https://attack.mitre.org/techniques/T1569/002/
+  - title: Microsoft Defender Advanced Hunting DeviceProcessEvents
+    url: https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceprocessevents-table
+tests:
+  - dataset: scenario-02
+    expect:
+      min_rows: 0
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

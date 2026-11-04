@@ -1,0 +1,55 @@
+id: HB-EM-003
+title: Suspicious email inbox rule created to forward or delete messages
+status: tested
+validation_level: synthetic
+platform: defender-xdr
+tables:
+  - CloudAppEvents
+time_column: Timestamp
+attack:
+  tactics:
+    - collection
+    - defense-evasion
+  techniques:
+    - T1114.003
+severity: high
+hypothesis: >
+  An attacker who gains unauthorized access to a victim mailbox configures hidden inbox forwarding
+  or auto-deletion rules to silently exfiltrate sensitive corporate communications or hide password reset and security alerts.
+logic_summary: >
+  Queries CloudAppEvents for Microsoft Exchange Online inbox rule creation or modification events
+  where the parameters specify external forwarding, redirecting, or automatic deletion/marking as read.
+parameters:
+  - name: lookback
+    default: 7d
+    description: Historical search window to inspect
+false_positives:
+  - Legitimate employees configuring vacation out-of-office forwards to internal teammates or corporate shared mailboxes
+  - Users organizing high-volume notification emails into designated subfolders
+tuning:
+  - Whitelist internal corporate domain recipient addresses (e.g. *@contoso.com) to alert only on external forwarding rules
+  - Correlate with SigninLogs to suppress if created from a known Intune compliant device in the user's typical home location
+triage_steps:
+  - Extract the destination email address from the Parameters string to see where emails are being forwarded
+  - Check whether the IPAddress that created the rule matches the user's usual work location or an anomalous country/VPN
+  - Search SigninLogs for recent failed or anomalous logins for the same AccountId
+response: >
+  Remove the malicious inbox rule via Exchange Online PowerShell (Remove-InboxRule), revoke all active sessions
+  for the user, reset account credentials, and inspect sent items for fraudulent financial requests.
+references:
+  - title: MITRE ATT&CK T1114.003 Email Collection - Email Forwarding Rule
+    url: https://attack.mitre.org/techniques/T1114/003/
+  - title: Detect and Remediate Illicit Consent and Rule Grants
+    url: https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/detect-and-remediate-illicit-consent-grants
+tests:
+  - dataset: scenario-01
+    expect:
+      min_rows: 1
+      contains:
+        ActionType: New-InboxRule
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

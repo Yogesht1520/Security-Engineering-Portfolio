@@ -1,0 +1,17 @@
+{
+  "name": "AuditLogs",
+  "platform": "sentinel",
+  "timeColumn": "TimeGenerated",
+  "description": "Azure Active Directory / Entra ID administrative audit logs",
+  "columns": [
+    { "name": "TimeGenerated", "type": "datetime", "description": "Timestamp when audit event occurred" },
+    { "name": "OperationName", "type": "string", "description": "Name of the administrative operation performed" },
+    { "name": "Category", "type": "string", "description": "RoleManagement, UserManagement, GroupManagement, etc." },
+    { "name": "Result", "type": "string", "description": "success | failure" },
+    { "name": "ResultDescription", "type": "string", "description": "Additional details on the operation result" },
+    { "name": "InitiatedBy", "type": "dynamic", "description": "UPN or AppId of user/service principal that performed action" },
+    { "name": "TargetResources", "type": "dynamic", "description": "Resources/users modified by the operation" },
+    { "name": "AdditionalDetails", "type": "dynamic", "description": "Extended properties of the change" }
+  ]
+}
+

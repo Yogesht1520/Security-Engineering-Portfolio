@@ -1,0 +1,28 @@
+// Hunt: HB-CL-004 - Azure Resource Deletion Burst
+// MITRE ATT&CK: T1485 (Data Destruction)
+// Platform: Microsoft Sentinel (AzureActivity)
+//
+// Description: Detects a rapid sequence of cloud resource deletions (VMs, storage accounts, 
+// databases, key vaults) by a single identity within a short time window, indicating 
+// potential cloud extortion, ransomware impact, or rogue administrator activity.
+
+let lookback = 24h;
+let burstWindow = 30m;
+let deletionThreshold = 3;
+AzureActivity
+| where TimeGenerated > ago(lookback)
+| where ActivityStatusValue in~ ("Success", "Succeeded")
+| where OperationNameValue endswith "/delete"
+| summarize 
+    FirstDeletion = min(TimeGenerated),
+    LastDeletion = max(TimeGenerated),
+    DeletionCount = count(),
+    DeletedOperations = make_set(OperationNameValue, 10),
+    ResourceGroups = make_set(ResourceGroup, 10),
+    SourceIPs = make_set(CallerIpAddress, 5)
+    by Caller, SubscriptionId, bin(TimeGenerated, burstWindow)
+| where DeletionCount >= deletionThreshold
+| extend DurationMinutes = datetime_diff('minute', LastDeletion, FirstDeletion)
+| project FirstDeletion, LastDeletion, DurationMinutes, Caller, SubscriptionId, DeletionCount, DeletedOperations, ResourceGroups, SourceIPs
+| order by DeletionCount desc
+

@@ -1,0 +1,52 @@
+id: HB-EM-001
+title: Inbound email delivered with high-risk executable or script attachment
+status: tested
+validation_level: synthetic
+platform: defender-xdr
+tables:
+  - EmailAttachmentInfo
+time_column: Timestamp
+attack:
+  tactics:
+    - initial-access
+  techniques:
+    - T1566.001
+severity: high
+hypothesis: >
+  An adversary sends spearphishing emails carrying container files (ISO, VHD) or standalone scripts
+  (HTA, LNK, VBS) to evade Mark-of-the-Web (MOTW) protections and execute malicious downloaders.
+logic_summary: >
+  Searches EmailAttachmentInfo in Defender for Office 365 for inbound delivered emails with high-risk
+  attachment file types typically abused in initial access campaigns.
+parameters:
+  - name: lookback
+    default: 7d
+    description: Historical search window to inspect
+false_positives:
+  - Rare legitimate developer communications sharing script snippets or IT administration tools
+  - Software vendor distribution of installation disk images (ISOs) to technical staff
+tuning:
+  - Block high-risk file types outright at the Defender for Office 365 tenant transport rule level
+  - Allow-list trusted business partner sender domains verified via SPF, DKIM, and DMARC
+triage_steps:
+  - Check whether the recipient user opened or saved the attachment to disk using DeviceFileEvents
+  - Inspect the SHA256 file hash in Microsoft Defender Threat Intelligence and VirusTotal
+  - Search EmailEvents for other employees in the organization who received the same NetworkMessageId
+response: >
+  Purge the email message across all inboxes using Microsoft Defender for Office 365 Explorer / ZAP,
+  block the sender domain, and isolate the endpoint if execution occurred.
+references:
+  - title: MITRE ATT&CK T1566.001 Phishing - Spearphishing Attachment
+    url: https://attack.mitre.org/techniques/T1566/001/
+  - title: Microsoft Defender Advanced Hunting EmailAttachmentInfo
+    url: https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-emailattachmentinfo-table
+tests:
+  - dataset: scenario-01
+    expect:
+      min_rows: 0
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

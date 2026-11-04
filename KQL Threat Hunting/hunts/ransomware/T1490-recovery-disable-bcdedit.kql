@@ -1,0 +1,27 @@
+// Hunt: HB-RW-003 - Safe-Mode or Boot Recovery Disabled via Bcdedit
+// MITRE ATT&CK: T1490 (Inhibit System Recovery)
+// Platform: Microsoft Defender XDR (DeviceProcessEvents)
+//
+// Description: Detects the execution of bcdedit.exe with command-line switches designed
+// to disable Windows automatic startup recovery or tamper with safe-mode configuration,
+// a classic ransomware precursor designed to inhibit incident response and recovery.
+
+let lookback = 7d;
+let recoveryTamperingArgs = dynamic([
+    "recoveryenabled", "bootstatuspolicy", "ignoreallfailures", "safeboot"
+]);
+DeviceProcessEvents
+| where Timestamp > ago(lookback)
+| where FileName =~ "bcdedit.exe" or ProcessCommandLine has "bcdedit"
+| where ProcessCommandLine has_any (recoveryTamperingArgs)
+| extend TamperedFeature = case(
+    ProcessCommandLine has "recoveryenabled", "Recovery Disabled",
+    ProcessCommandLine has "bootstatuspolicy", "Failure Policy Tampered",
+    ProcessCommandLine has "safeboot", "SafeBoot Modified",
+    "Other Boot Config Change"
+)
+| project Timestamp, DeviceName, TamperedFeature, ProcessCommandLine,
+          InitiatingProcessFileName, InitiatingProcessCommandLine,
+          InitiatingProcessAccountName, AccountName, ProcessIntegrityLevel
+| order by Timestamp desc
+

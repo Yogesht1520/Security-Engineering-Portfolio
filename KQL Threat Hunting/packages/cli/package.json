@@ -1,0 +1,23 @@
+{
+  "name": "@huntbook/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "huntbook": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "validate": "node ./dist/cli.js validate"
+  },
+  "dependencies": {
+    "@huntbook/core": "workspace:*",
+    "@huntbook/datagen": "workspace:*",
+    "commander": "^13.1.0",
+    "picocolors": "^1.1.1",
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}
+

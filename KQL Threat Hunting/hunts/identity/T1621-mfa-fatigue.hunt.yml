@@ -1,0 +1,57 @@
+id: HB-ID-004
+title: Multi-factor authentication fatigue attack followed by success
+status: tested
+validation_level: synthetic
+platform: sentinel
+tables:
+  - SigninLogs
+time_column: TimeGenerated
+attack:
+  tactics:
+    - credential-access
+    - defense-evasion
+  techniques:
+    - T1621
+severity: high
+hypothesis: >
+  An adversary with valid credentials spams MFA push prompts to the victim's mobile device
+  until the fatigued user clicks approve or enters a verification code.
+logic_summary: >
+  Aggregates SigninLogs for Entra ID MFA failures (code 500121) grouped by user in 20-minute windows,
+  alerting when 3 or more denials occur immediately before a successful login.
+parameters:
+  - name: lookback
+    default: 1d
+    description: Historical search window to inspect
+  - name: window
+    default: 20m
+    description: Tumbling time bucket window for grouping fatigue prompts
+  - name: minDenials
+    default: 3
+    description: Minimum number of MFA prompt denials required
+false_positives:
+  - Flaky mobile cellular connectivity causing multiple failed authentication attempts
+  - A user repeatedly denying an MFA prompt because they did not recognize the prompt, then realizing it was legitimate
+tuning:
+  - Enforce Entra ID number matching to eliminate blind push approvals
+  - "Correlate source IP: alert primarily if the successful login originates from an IP different from the user's regular device"
+triage_steps:
+  - Contact the employee to ask if they approved an unexpected MFA prompt
+  - Check the source IP and geolocation of the successful login
+  - Review AuditLogs for privileged changes made during the newly authenticated session
+response: >
+  Revoke all active refresh tokens for the user in Entra ID, reset credentials, and enable strict FIDO2/Passkey MFA.
+references:
+  - title: MITRE ATT&CK T1621 Multi-Factor Authentication Request Generation
+    url: https://attack.mitre.org/techniques/T1621/
+  - title: Defending Against MFA Fatigue Attacks
+    url: https://techcommunity.microsoft.com/t5/security-compliance-and-identity/defending-against-mfa-fatigue/ba-p/3639144
+tests:
+  - dataset: scenario-01
+    expect:
+      min_rows: 0
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05

@@ -1,0 +1,26 @@
+// HB-ID-004 | T1621 | Multi-factor authentication fatigue attack followed by success
+// Hypothesis: An attacker with valid credentials repeatedly sends MFA push prompts until the victim user inadvertently accepts.
+let lookback = 1d;
+let window = 20m;
+let minDenials = 3;
+SigninLogs
+| where TimeGenerated > ago(lookback)
+| summarize
+    MfaDenials = countif(ResultType == "500121"),
+    Successes = countif(ResultType == "0"),
+    FirstDenial = minif(TimeGenerated, ResultType == "500121"),
+    LastSuccess = maxif(TimeGenerated, ResultType == "0"),
+    IPs = make_set(IPAddress, 5)
+    by UserPrincipalName, bin(TimeGenerated, window)
+| where MfaDenials >= minDenials and Successes > 0
+| where LastSuccess > FirstDenial
+| project
+    TimeGenerated,
+    UserPrincipalName,
+    MfaDenials,
+    Successes,
+    FirstDenial,
+    LastSuccess,
+    IPs
+| order by MfaDenials desc
+

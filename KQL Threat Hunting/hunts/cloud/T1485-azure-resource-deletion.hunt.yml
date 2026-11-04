@@ -1,0 +1,59 @@
+id: HB-CL-004
+title: Azure Resource Deletion Burst
+status: tested
+validation_level: synthetic
+platform: sentinel
+tables:
+  - AzureActivity
+time_column: TimeGenerated
+attack:
+  tactics:
+    - impact
+  techniques:
+    - T1485
+severity: high
+hypothesis: >
+  An adversary with compromised Azure administrative credentials or a rogue employee initiates a mass deletion
+  of critical cloud infrastructure (VMs, storage accounts, databases, or key vaults) to paralyze business operations.
+logic_summary: >
+  Aggregates AzureActivity control plane events with OperationNameValue ending in '/delete' and status 'Success',
+  grouping by Caller identity and 30-minute time buckets to flag accounts deleting 3 or more resources in rapid succession.
+parameters:
+  - name: lookback
+    default: 24h
+    description: Historical search window to inspect
+  - name: burstWindow
+    default: 30m
+    description: Grouping window for identifying rapid deletion bursts
+  - name: deletionThreshold
+    default: 3
+    description: Minimum number of deletions within the window to trigger an alert
+false_positives:
+  - Automated CI/CD teardown pipelines cleaning up ephemeral test environments
+  - Terraform or ARM template deployments destroying and recreating infrastructure
+tuning:
+  - Whitelist dedicated automation service principals used by authorized deployment pipelines
+  - Scope alerts specifically to production subscriptions where mass deletions are never normal
+triage_steps:
+  - Identify the Caller identity (UPN or AppId) and verify if the action was part of an approved change ticket
+  - Inspect CallerIpAddress against known corporate locations or VPN gateways
+  - Review the specific resources deleted and check if Azure Soft Delete or backup snapshots can restore them
+  - Check AzureActivity for prior privilege escalation or role assignment events involving this identity
+response: >
+  If unauthorized, immediately disable the user account or revoke the service principal credentials in Entra ID,
+  lock down Azure subscription management permissions, and initiate cloud disaster recovery procedures.
+references:
+  - title: MITRE ATT&CK T1485 Data Destruction
+    url: https://attack.mitre.org/techniques/T1485/
+  - title: Azure Activity Log Operations Reference
+    url: https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/activity-log
+tests:
+  - dataset: scenario-03
+    expect:
+      min_rows: 0
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

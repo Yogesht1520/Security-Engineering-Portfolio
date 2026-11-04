@@ -1,0 +1,53 @@
+id: HB-PS-003
+title: New Windows service installed pointing to untrusted path
+status: tested
+validation_level: synthetic
+platform: defender-xdr
+tables:
+  - DeviceEvents
+time_column: Timestamp
+attack:
+  tactics:
+    - persistence
+    - privilege-escalation
+  techniques:
+    - T1543.003
+severity: high
+hypothesis: >
+  An adversary creates a new Windows service executing binaries from user-writable directories
+  or invoking script interpreters to gain persistent, elevated execution as NT AUTHORITY\SYSTEM.
+logic_summary: >
+  Searches DeviceEvents for ServiceInstalled events where the installed service binary path
+  resides in staging directories (AppData, Temp, Users\Public, ProgramData) or references script engines.
+parameters:
+  - name: lookback
+    default: 7d
+    description: Historical search window to inspect
+false_positives:
+  - Legitimate enterprise applications installing background helper services in ProgramData (e.g. Chrome / Edge update services)
+  - Developer tooling creating local debugging or microservice instances
+tuning:
+  - Whitelist digitally signed executables from trusted software vendors
+  - Suppress services created during scheduled software deployment maintenance windows
+triage_steps:
+  - Inspect the ServiceFileName and ServiceName to determine the purpose and origin of the binary
+  - Check the binary SHA256 hash against threat intelligence databases using DeviceFileEvents
+  - Identify which account and process created the service
+response: >
+  Stop and delete the malicious service (sc.exe stop <ServiceName> && sc.exe delete <ServiceName>),
+  remove the binary, and inspect the endpoint for lateral movement activity.
+references:
+  - title: MITRE ATT&CK T1543.003 Create or Modify System Process - Windows Service
+    url: https://attack.mitre.org/techniques/T1543/003/
+  - title: Microsoft Defender Advanced Hunting DeviceEvents
+    url: https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceevents-table
+tests:
+  - dataset: scenario-02
+    expect:
+      min_rows: 0
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

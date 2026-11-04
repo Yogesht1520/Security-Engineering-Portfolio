@@ -1,0 +1,54 @@
+id: HB-RW-003
+title: Safe-Mode or Boot Recovery Disabled via Bcdedit
+status: tested
+validation_level: synthetic
+platform: defender-xdr
+tables:
+  - DeviceProcessEvents
+time_column: Timestamp
+attack:
+  tactics:
+    - impact
+    - defense-evasion
+  techniques:
+    - T1490
+severity: high
+hypothesis: >
+  An adversary executes bcdedit.exe commands to disable Windows Startup Repair and boot error handling
+  immediately prior to executing ransomware encryption, preventing victim machines from recovering automatically.
+logic_summary: >
+  Filters DeviceProcessEvents for invocations of bcdedit.exe where command-line switches include
+  'recoveryenabled', 'bootstatuspolicy', or 'ignoreallfailures', classifying the tampered boot configuration.
+parameters:
+  - name: lookback
+    default: 7d
+    description: Historical search window to inspect
+false_positives:
+  - Enterprise OS imaging, system deployment scripts, or hypervisor template provisioning workflows
+  - Authorized system administrators testing diagnostic boot environments
+tuning:
+  - Whitelist dedicated corporate deployment scripts executing from approved imaging servers
+  - Suppress alerts during pre-scheduled bare-metal workstation rollout windows
+triage_steps:
+  - Review the full ProcessCommandLine to observe the exact configuration parameters modified
+  - Inspect InitiatingProcessFileName and InitiatingProcessCommandLine (e.g. cmd.exe launched from a batch script or malicious document)
+  - Search DeviceProcessEvents on the same host within +/- 30 minutes for shadow copy deletion (vssadmin, wmic shadowcopy)
+  - Check for suspicious child processes or unauthorized persistence mechanisms installed concurrently
+response: >
+  Immediately isolate the host from the corporate network, re-enable startup repair using
+  'bcdedit /set {default} recoveryenabled Yes', and trigger a full Defender antivirus and EDR remediation scan.
+references:
+  - title: MITRE ATT&CK T1490 Inhibit System Recovery
+    url: https://attack.mitre.org/techniques/T1490/
+  - title: Microsoft Defender Threat Intelligence on Ransomware Recovery Inhibition
+    url: https://www.microsoft.com/security/blog/topic/threat-intelligence/
+tests:
+  - dataset: scenario-03
+    expect:
+      min_rows: 0
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
+

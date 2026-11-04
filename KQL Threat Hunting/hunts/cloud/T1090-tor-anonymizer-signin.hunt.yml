@@ -1,0 +1,53 @@
+id: HB-CL-003
+title: Sign-in from Known Anonymizer or Tor Exit Node
+status: tested
+validation_level: synthetic
+platform: sentinel
+tables:
+  - SigninLogs
+time_column: TimeGenerated
+attack:
+  tactics:
+    - defense-evasion
+    - command-and-control
+  techniques:
+    - T1090
+severity: high
+hypothesis: >
+  An adversary routes interactive authentication traffic through Tor exit nodes or commercial anonymizing proxies
+  to bypass geo-fencing Conditional Access rules and conceal their true geographic origin during credential stuffing.
+logic_summary: >
+  Filters Entra ID SigninLogs for events where RiskDetail indicates an anonymous IP or Tor exit node,
+  or where NetworkLocationDetails matches anonymizer tags, summarizing success versus failure counts per identity.
+parameters:
+  - name: lookback
+    default: 7d
+    description: Historical search window to inspect
+false_positives:
+  - Corporate employees using approved commercial privacy VPNs or cellular carrier networks with shared proxy egress
+  - Authorized security teams conducting external penetration tests or simulated red team engagements
+tuning:
+  - Filter out verified enterprise corporate VPN egress CIDRs and authorized secure web gateway egress IPs
+  - Require Conditional Access location enforcement that strictly blocks non-compliant network locations
+triage_steps:
+  - Verify if the sign-in was successful (ResultType == 0) or failed (ResultType != 0)
+  - Examine the user's typical login locations and devices using Entra ID sign-in history
+  - Review whether multi-factor authentication was satisfied during the session
+  - Check for anomalous cloud resource access or inbox rule modifications directly following this session
+response: >
+  If unauthorized success is confirmed, revoke all active user refresh tokens via Revoke-AzureADUserAllRefreshToken,
+  force a password reset, and enable strict Conditional Access policies blocking untrusted anonymous IPs.
+references:
+  - title: MITRE ATT&CK T1090 Proxy
+    url: https://attack.mitre.org/techniques/T1090/
+  - title: Microsoft Entra ID Protection Risk Detections
+    url: https://learn.microsoft.com/en-us/entra/id-protection/concept-identity-protection-risks
+tests:
+  - dataset: scenario-01
+    expect:
+      min_rows: 0
+  - dataset: baseline
+    expect:
+      max_rows: 0
+author: Yogesh Thakur
+created: 2026-11-05
